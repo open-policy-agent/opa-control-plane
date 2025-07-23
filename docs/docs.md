@@ -720,14 +720,6 @@ data:
 
 * Reference [OPA Docs](https://www.openpolicyagent.org/docs/latest/) for custom integrations.
 
----
-
-Great catch\! Yes, some context from your earlier *brain dump* and detailed reasoning around the nuances of **policy promotion and bundle lifecycle** in DAS versus OPA Control Plane got shortened in the last version to keep the doc more reference-style and concise. The details about manual mode, stack propagation risks, and how promotion in DAS can cause git/policy divergence—those are critical *for understanding why OPA Control Plane does things differently*.
-
-If you want the **Bundle and Policy Promotion** section to stand alone for someone who hasn’t read the rest, it’s worth bringing back some of that context. Here’s a revised, more detailed section, bringing together the key points you outlined, while keeping the reference style clear:
-
----
-
 ## 10. Bundle and Policy Promotion
 
 ### 10.1. Overview: Promotion in DAS vs. OPA Control Plane
