@@ -43,6 +43,9 @@ Table of Contents
    1. [What’s Supported in OPA Control Plane](#112-whats-supported-in-opa-control-plane)
    1. [Migration Recommendations](#113-migration-recommendations)
 1. [Appendix: Troubleshooting & FAQs](#12-appendix-troubleshooting--faqs)
+   1. [OPA Control Plane command reference](#121-opa-control-plane-command-reference)
+
+   
 
 ---
 
@@ -97,9 +100,9 @@ Table of Contents
 
 * (Optional) DAS decision logs for backtesting
 
-  ### 3.2. Recommended Workflow
+### 3.2. Recommended Workflow
 
-* **Migrate** DAS system(s) one at a time, or all systems using `ocp migrate`
+* **Migrate** DAS system(s) one at a time, or all systems using `opactl migrate`
 
 * **Organize configs** in `config.d/<system-id>/` per system for easier management
 
@@ -113,7 +116,7 @@ Table of Contents
 
 ## 4. Migration Preparation
 
-### **Prerequisites** {#prerequisites}
+### Prerequisites
 
 * **Styra DAS Token:** API token with at least Workspace Viewer permission.
 
@@ -146,7 +149,7 @@ The token must have at least **Workspace Viewer** permissions.
 Run OPA Control Plane migrate for a system, with S3 and datasources options:
 
 ```shell
-./ocp migrate \
+./opactl migrate \
   --url https://expo.styra.com \
   --system-id "<your system id>" \ 
   --s3-bucket-name <your bucket name> \
@@ -285,7 +288,7 @@ Currently the following secret types are supported:
 With your configs ready (in `config.d/`), run OPA Control Plane:
 
 ```shell
-./ocp run -c config.d
+./opactl run -c config.d
 ```
 
 *   
@@ -302,7 +305,7 @@ With your configs ready (in `config.d/`), run OPA Control Plane:
 Backtest against DAS historical decisions:
 
 ```shell
-./ocp backtest --config config.d --url http://expo.styra.com
+./opactl backtest --config config.d --url http://expo.styra.com
 ```
 
 *   
@@ -401,7 +404,7 @@ OPA Control Plane **does not serve bundles** itself. It pushes them to your conf
 **Usage:**
 
 ```shell
-ocp run --config config.d
+opactl run --config config.d
 ```
 
 **Common Flags:**
@@ -427,7 +430,7 @@ ocp run --config config.d
 **Example:**
 
 ```shell
-ocp run --config config.yaml --once
+opactl run --config config.yaml --once
 ```
 
 ### 6.1. Discovery Bundles & Multi-Bundle Support
@@ -454,7 +457,7 @@ After migration, disable decision logging to DAS and ensure OPA is configured on
 **Usage:**
 
 ```shell
-ocp backtest --config config.d --url https://your-tenant.styra.com
+opactl backtest --config config.d --url https://your-tenant.styra.com
 ```
 
 **Common Flags:**
@@ -472,7 +475,7 @@ ocp backtest --config config.d --url https://your-tenant.styra.com
 **Example:**
 
 ```shell
-ocp backtest --config config.yaml --url https://john.styra.com --decisions 200 --policy-type validating
+opactl backtest --config config.yaml --url https://john.styra.com --decisions 200 --policy-type validating
 ```
 
 **Note:** Backtesting is most useful during initial migration. After switching to OPA Control Plane, new DAS decision logs will not be available unless you continue running DAS in parallel.
@@ -505,7 +508,7 @@ sh
 
 CopyEdit
 
-`ocp compare --config config.yaml --url https://your-tenant.styra.com`
+`opactl compare --config config.yaml --url https://your-tenant.styra.com`
 
 * Compares files, libraries, and dependencies.
 
@@ -571,7 +574,7 @@ CopyEdit
 
 ```shell
 export STYRA_TOKEN=<your_token>
-ocp migrate -u https://your-tenant.styra.com --system-id <system_id> > config.yaml
+opactl migrate -u https://your-tenant.styra.com --system-id <system_id> > config.yaml
 ```
 
 *   
@@ -584,7 +587,7 @@ ocp migrate -u https://your-tenant.styra.com --system-id <system_id> > config.ya
 **4\. Deploy OPA Control Plane and Build Bundles**
 
 ```shell
-ocp run -c config.yaml
+opactl run -c config.yaml
 ```
 
 **5\. Prepare OPA and kube-mgmt for New Bundle**
@@ -654,7 +657,7 @@ See [OPA S3 Bundle Management Docs](https://www.openpolicyagent.org/docs/managem
 
 ### 9.3. Envoy System Type
 
-#### **Overview** {#overview-1}
+#### Overview
 
 * OPA deployed as ext\_authz for Envoy.
 
@@ -664,7 +667,7 @@ See [OPA S3 Bundle Management Docs](https://www.openpolicyagent.org/docs/managem
 
 #### Migration Steps
 
-* Export policies/config via `ocp migrate`.
+* Export policies/config via `opactl migrate`.
 
 * Set `object_storage` and `git` in config.yaml.
 
@@ -887,6 +890,95 @@ Styra DAS supports a wide variety of datasources—including Kubernetes state, S
 * Decision logs: set up external log storage (e.g., Loki, Elasticsearch, cloud logging).
 
 * Webhook errors: verify TLS/certs, webhook config, and OPA health endpoints.
+
+### 12.1 OPA Control Plane command reference
+
+#### backtest
+
+```sh
+Run backtest on OPA Control Plane bundles against decisions from Styra
+
+Usage:
+  opactl backtest [flags]
+
+Flags:
+  -b, --bundle strings                Set one or more bundle names to build, backtest, etc.
+  -c, --config strings                Path to the configuration (file or directory) (default [config.d])
+  -n, --decisions int                 Number of decisions to backtest (default 100)
+      --format string                 Set output format (json, pretty) (default "pretty")
+      --header strings                Set additional HTTP headers for requests to Styra API
+  -h, --help                          help for backtest
+      --log-level log-level           set log level (debug, info, warn, error) (default info)
+      --max-eval-time-inflation int   Maximum allowed increase in decision evaluation time (in percents, <0 to disable) (default 100)
+      --merge-conflict-fail           Fail on config merge conflicts
+      --non-interactive               Do not show progress meters
+      --policy-type string            Specify policy type to backtest against (e.g., validating, mutating, etc.)
+  -u, --url string                    Styra tenant URL (e.g., https://expo.styra.com)
+```
+
+#### build
+
+```sh
+Build and distribute configured bundles
+
+Usage:
+  opactl build [flags]
+
+Flags:
+  -b, --bundle strings        Set one or more bundle names to build, backtest, etc.
+  -c, --config strings        Path to the configuration (file or directory) (default [config.d])
+  -d, --data-dir string       Path to the persistence directory (default "data")
+  -h, --help                  help for build
+      --log-level log-level   set log level (debug, info, warn, error) (default info)
+      --merge-conflict-fail   Fail on config merge conflicts
+      --non-interactive       Do not show progress meters
+      --reset-persistence     Reset the persistence directory (for development purposes)
+```
+
+#### migrate
+
+```sh
+Migrate configuration and policies from Styra
+
+Usage:
+  opactl migrate [flags]
+
+Flags:
+      --datasources                  Copy datasource content
+      --embed-files                  Embed non-git stored files into output configuration
+      --files string                 Path to write the non-git stored files to (default "files")
+      --filesystem-root-dir string   Set root directory for filesystem object storage (default "bundles")
+      --header strings               Set additional HTTP headers for requests to Styra API
+  -h, --help                         help for migrate
+      --log-level log-level          set log level (debug, info, warn, error) (default info)
+      --non-interactive              Do not show progress meters
+      --object-storage string        Set object storage type (e.g., filesystem, aws, azure, gcp.) Disable object storage config by providing an empty string. (default "filesystem")
+  -o, --output-dir string            Directory to output configuration files to (default "config.d[/<system-id>]")
+      --prune                        Prune unused resources
+      --s3-bucket-name string        Set placeholder AWS S3 bucket name for object storage (default "BUCKET_NAME")
+      --s3-bucket-region string      Set placeholder AWS S3 bucket region for object storage (default "BUCKET_REGION")
+      --stdout                       Write configuration to stdout
+      --system-id string             Scope migraton to a specific system (id)
+  -u, --url string                   Styra tenant URL (e.g., https://expo.styra.com)
+```
+
+#### run 
+
+```sh
+Run the OPA Control Plane service
+
+Usage:
+  opactl run [flags]
+
+Flags:
+  -a, --addr string           Set listening address of the server (default "localhost:8282")
+  -c, --config strings        Path to the configuration (file or directory) (default [config.d])
+  -d, --data-dir string       Path to the persistence directory (default "data")
+  -h, --help                  help for run
+      --log-level log-level   set log level (debug, info, warn, error) (default info)
+      --merge-conflict-fail   Fail on config merge conflicts
+      --reset-persistence     Reset the persistence directory (for development purposes)
+```
 
 ---
 
