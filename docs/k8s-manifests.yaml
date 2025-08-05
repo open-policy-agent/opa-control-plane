@@ -1,0 +1,523 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opactl-config
+  namespace: default
+data:
+  # Main OPA Control Plane Configuration
+  config.yaml: |
+    # OPA Control Plane Configuration
+    # PostgreSQL Database Configuration
+    database:
+      sql:
+        driver: postgres
+        dsn: "postgres://opactl:password@postgres-service:5432/opactl?sslmode=disable"
+
+  # Authentication tokens configuration
+  tokens.yaml: |
+    # Example API tokens for authentication
+    # You should generate secure API keys and manage them as secrets
+    tokens:
+      admin-user:
+        api_key: "admin-api-key-change-me"
+        scopes:
+          - role: administrator
+      viewer-user:
+        api_key: "viewer-api-key-change-me"
+        scopes:
+          - role: viewer
+  credentials.yaml: |
+    secrets:
+      git-creds:
+        type: "basic_auth"
+        username: "${GIT_USERNAME}"
+        password: "${GIT_PASSWORD}"
+      httpbin-credentials:
+        type: "token_auth"
+        token: "my-fake-token"
+
+  my-alpha-app.yaml: |
+    bundles:
+      my-alpha-app:
+        object_storage:
+          aws:
+            bucket: my-aws-bucket-name                  # Change to your S3 bucket name
+            key: bundles/my-alpha-app/bundle.tar.gz
+            region: us-east-2                           # Change to your AWS region
+        requirements:
+          - source: my-alpha-app
+          - source: my-shared-datasource
+    sources:
+      my-alpha-app:
+        git:
+          repo: https://github.com/your-org/my-alpha-app.git  # Change to your Git repository URL
+          reference: refs/heads/main
+          # path: rules                                       # Path within the Git repo
+          excluded_files:
+              - .*/*
+          credentials: git-creds
+  my-beta-app.yaml: |
+    bundles:
+      my-beta-app:
+        object_storage:
+          filesystem:
+            path: /bundles/my-beta-app/bundle.tar.gz
+        requirements:
+          - source: my-beta-app
+          - source: my-shared-datasource
+    sources:
+      my-beta-app:
+        directory: /files/sources/my-beta-app
+        paths:
+          - rules/rules.rego
+    secrets:                                            # Credentials can be configured in a common file or individual files, but the names have to be unique
+      my-beta-app-storage-creds:
+        type: "aws_auth"
+        access_key_id: "${AWS_ACCESS_KEY_ID}"
+        secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      my-beta-app-git-creds:
+        type: "basic_auth"
+        username: "${GIT_USERNAME}"
+        password: "${GIT_PASSWORD}"
+  my-shared-datasource.yaml: |
+    sources:
+      my-shared-datasource:
+        datasources:
+          - name: httpbin-json
+            path: httpbin
+            type: http
+            config:
+              # url: https://httpbin.org/bearer   #TODO: this is not working for some reason (the header doesn't seem to be passed)
+              url: https://httpbin.org/headers
+              credentials: httpbin-credentials
+---
+# Local policy files for my-beta-app bundle
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-beta-app-policies
+  namespace: default
+data:
+  rules.rego: |
+    package rules
+
+    import rego.v1
+
+    default allow := false
+    allow if {
+      input.user == "alice"
+    }
+
+---
+# opa Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-config
+  namespace: default
+data:
+  config.yaml: |
+    services:
+      s3:
+        url: https://my-aws-bucket-name.s3.us-east-2.amazonaws.com     # Change to your S3 bucket URL
+        credentials:
+          s3_signing:
+            environment_credentials: {}
+    bundles:
+      authz:
+        service: s3
+        resource: bundles/my-alpha-app/bundle.tar.gz                    # Change to your bundle path
+    decision_logs:
+      console: true
+
+---
+# PostgreSQL Database
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: default
+type: Opaque
+data:
+  # echo -n 'opactl' | base64
+  username: b3BhY3Rs
+  # echo -n 'password' | base64
+  password: cGFzc3dvcmQ=
+  # echo -n 'opactl' | base64
+  database: b3BhY3Rs
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: default
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16-alpine
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: database
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+          name: postgres
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: default
+  labels:
+    app: postgres
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: postgres
+  selector:
+    app: postgres
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opactl-server
+  namespace: default
+  labels:
+    app: opactl
+    component: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opactl
+      component: server
+  template:
+    metadata:
+      labels:
+        app: opactl
+        component: server
+    spec:
+      containers:
+      - name: opactl
+        image: openpolicyagent/opactl
+        imagePullPolicy: IfNotPresent
+        command: ["/app/opactl"]
+        args:
+        - "run"
+        - "--addr=0.0.0.0:8282"
+        - "--data-dir=/data"
+        - "--config=/config.d/config.yaml"
+        - "--config=/config.d/tokens.yaml"
+        - "--config=/config.d/credentials.yaml"
+        - "--config=/config.d/my-alpha-app.yaml"
+        - "--config=/config.d/my-beta-app.yaml"
+        - "--config=/config.d/my-shared-datasource.yaml"
+        # - "--reset-persistence"                     # Not suitable for production, but useful for testing
+        - "--log-level=debug"
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_REGION
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: AWS_REGION
+        - name: GIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: git-credentials
+              key: GIT_USERNAME
+        - name: GIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: git-credentials
+              key: GIT_PASSWORD
+        ports:
+        - name: http
+          containerPort: 8282
+          protocol: TCP
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config.d
+          readOnly: true
+        - name: data-volume
+          mountPath: /data
+        - name: bundles-volume
+          mountPath: /bundles
+        - name: local-policies-volume
+          mountPath: /files/sources/my-beta-app/rules
+          readOnly: true
+        # Remove health check probes for now as we need to verify endpoints
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: config-volume
+        configMap:
+          name: opactl-config
+      - name: data-volume
+        emptyDir: {}
+      - name: bundles-volume
+        emptyDir: {}
+      - name: local-policies-volume
+        configMap:
+          name: my-beta-app-policies
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opactl-service
+  namespace: default
+  labels:
+    app: opactl
+    component: server
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8282
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: opactl
+    component: server
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opa
+  namespace: default
+  labels:
+    app: opa
+    component: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opa
+      component: agent
+  template:
+    metadata:
+      labels:
+        app: opa
+        component: agent
+    spec:
+      containers:
+      - name: opa
+        image: openpolicyagent/opa:latest-envoy
+        imagePullPolicy: IfNotPresent
+        command: ["/opa"]
+        args:
+        - "run"
+        - "--server"
+        - "--config-file=/config/config.yaml"
+        - "--addr=0.0.0.0:8181"
+        - "--diagnostic-addr=0.0.0.0:8282"
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_REGION
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: AWS_REGION
+        ports:
+        - name: http
+          containerPort: 8181
+          protocol: TCP
+        - name: diagnostic
+          containerPort: 8282
+          protocol: TCP
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+          readOnly: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          runAsGroup: 1001
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: config-volume
+        configMap:
+          name: opa-config
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa-service
+  namespace: default
+  labels:
+    app: opa
+    component: agent
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8181
+    targetPort: http
+    protocol: TCP
+  - name: diagnostic
+    port: 8282
+    targetPort: diagnostic
+    protocol: TCP
+  selector:
+    app: opa
+    component: agent
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: git-credentials
+  namespace: default
+type: Opaque
+data:
+  # echo -n 'your-git-username' | base64
+  GIT_USERNAME: eW91ci1naXQtdXNlcm5hbWU=
+  # echo -n 'your-git-password-or-token' | base64
+  GIT_PASSWORD: eW91ci1naXQtcGFzc3dvcmQtb3ItdG9rZW4=
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-credentials
+  namespace: default
+type: Opaque
+data:
+  # echo -n 'your-access-key-id' | base64
+  AWS_ACCESS_KEY_ID: eW91ci1hY2Nlc3Mta2V5LWlk
+  # echo -n 'your-secret-access-key' | base64
+  AWS_SECRET_ACCESS_KEY: eW91ci1zZWNyZXQtYWNjZXNzLWtleQ==
+  # echo -n 'us-east-2' | base64
+  AWS_REGION: dXMtZWFzdC0y
