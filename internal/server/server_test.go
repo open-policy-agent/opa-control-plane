@@ -51,7 +51,7 @@ func TestServerSourcesData(t *testing.T) {
 		{
 			name:       "GET",
 			method:     "GET",
-			path:       "/v1/sources/system1/foo",
+			path:       "/v1/sources/system1/data/foo",
 			body:       "",
 			apikey:     adminKey,
 			statusCode: 200,
@@ -60,7 +60,7 @@ func TestServerSourcesData(t *testing.T) {
 		{
 			name:       "PUT",
 			method:     "PUT",
-			path:       "/v1/sources/system1/foo",
+			path:       "/v1/sources/system1/data/foo",
 			body:       `{"key": "value"}`,
 			apikey:     adminKey,
 			statusCode: 200,
@@ -69,7 +69,7 @@ func TestServerSourcesData(t *testing.T) {
 		{
 			name:       "GET after PUT",
 			method:     "GET",
-			path:       "/v1/sources/system1/foo",
+			path:       "/v1/sources/system1/data/foo",
 			body:       "",
 			apikey:     adminKey,
 			statusCode: 200,
@@ -79,7 +79,7 @@ func TestServerSourcesData(t *testing.T) {
 		{
 			name:       "POST",
 			method:     "POST",
-			path:       "/v1/sources/system1/foo",
+			path:       "/v1/sources/system1/data/foo",
 			body:       `{"key": "value2"}`,
 			apikey:     adminKey,
 			statusCode: 200,
@@ -88,7 +88,7 @@ func TestServerSourcesData(t *testing.T) {
 		{
 			name:       "GET after POST",
 			method:     "GET",
-			path:       "/v1/sources/system1/foo",
+			path:       "/v1/sources/system1/data/foo",
 			body:       "",
 			apikey:     adminKey,
 			statusCode: 200,
@@ -98,7 +98,7 @@ func TestServerSourcesData(t *testing.T) {
 		{
 			name:       "DELETE",
 			method:     "DELETE",
-			path:       "/v1/sources/system1/foo",
+			path:       "/v1/sources/system1/data/foo",
 			body:       "",
 			apikey:     adminKey,
 			statusCode: 200,
@@ -107,7 +107,7 @@ func TestServerSourcesData(t *testing.T) {
 		{
 			name:       "GET after DELETE",
 			method:     "GET",
-			path:       "/v1/sources/system1/foo",
+			path:       "/v1/sources/system1/data/foo",
 			body:       "",
 			apikey:     adminKey,
 			statusCode: 200,

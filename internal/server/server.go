@@ -32,9 +32,9 @@ func (s *Server) Init() *Server {
 		s.router = mux.NewRouter()
 	}
 
-	s.router.Handle("/v1/sources/{source:.+}/{path:.+}", http.HandlerFunc(s.v1SourcesDataGet)).Methods(http.MethodGet)
-	s.router.Handle("/v1/sources/{source:.+}/{path:.+}", http.HandlerFunc(s.v1SourcesDataPut)).Methods(http.MethodPost, http.MethodPut)
-	s.router.Handle("/v1/sources/{source:.+}/{path:.+}", http.HandlerFunc(s.v1SourcesDataDelete)).Methods(http.MethodDelete)
+	s.router.Handle("/v1/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataGet)).Methods(http.MethodGet)
+	s.router.Handle("/v1/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataPut)).Methods(http.MethodPost, http.MethodPut)
+	s.router.Handle("/v1/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataDelete)).Methods(http.MethodDelete)
 	s.router.Handle("/v1/sources", http.HandlerFunc(s.v1SourcesList)).Methods(http.MethodGet)
 	s.router.Handle("/v1/sources/{source:.+}", http.HandlerFunc(s.v1SourcesPut)).Methods(http.MethodPut)
 	s.router.Handle("/v1/sources/{source:.+}", http.HandlerFunc(s.v1SourcesGet)).Methods(http.MethodGet)
