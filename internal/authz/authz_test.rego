@@ -33,6 +33,13 @@ test_viewer_cannot_create_bundles if {
 		with input.permission as "bundles.create"
 }
 
+test_viewer_cannot_delet_bundles if {
+	not data.authz.allow with input.principal as "testuser"
+		with data.principals.id as "testuser"
+		with data.principals.role as "viewer"
+		with input.permission as "bundles.delete"
+}
+
 create_permissions := {
 	"bundles.create",
 	"sources.create",
@@ -46,6 +53,13 @@ test_owner_can_create_bundles_sources_and_secrets if {
 			with data.principals.role as "owner"
 			with input.permission as p
 	}
+}
+
+test_owner_can_delete_bundles if {
+	data.authz.allow with input.principal as "testuser"
+		with data.principals.id as "testuser"
+		with data.principals.role as "owner"
+		with input.permission as "bundles.delete"
 }
 
 test_owner_cannot_create_stacks if {
@@ -67,6 +81,13 @@ test_stack_owner_cannot_create_bundles if {
 		with data.principals.id as "testuser"
 		with data.principals.role as "stack_owner"
 		with input.permission as "bundles.create"
+}
+
+test_stack_owner_cannot_delete_bundles if {
+	not data.authz.allow with input.principal as "testuser"
+		with data.principals.id as "testuser"
+		with data.principals.role as "stack_owner"
+		with input.permission as "bundles.delete"
 }
 
 test_owners_can_edit_bundles if {

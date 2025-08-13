@@ -413,8 +413,16 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 			return err
 		}
 
-		_, err = tx.Exec(fmt.Sprintf(`DELETE FROM sources_data WHERE source_name = %s AND path = %s AND (`+expr.SQL()+")", d.arg(0), d.arg(1)), sourceName, path)
-		return err
+		res, err := tx.Exec(fmt.Sprintf(`DELETE FROM sources_data WHERE source_name = %s AND path = %s AND (`+expr.SQL()+")", d.arg(0), d.arg(1)), sourceName, path)
+		if err != nil {
+			return err
+		}
+		rowsAffected, _ := res.RowsAffected()
+		if rowsAffected == 0 {
+
+			return ErrNotFound // or ErrNotAuthorized
+		}
+		return nil
 	})
 }
 
@@ -661,6 +669,36 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 		}
 
 		return sl, nextCursor, nil
+	})
+}
+
+func (d *Database) DeleteBundle(ctx context.Context, principal string, bundleName string) error {
+	return tx1(ctx, d, func(tx *sql.Tx) error {
+		if err := d.resourceExists(ctx, tx, "bundles", bundleName); err != nil {
+			return err
+		}
+
+		expr, err := authz.Partial(ctx, authz.Access{
+			Principal:  principal,
+			Permission: "bundles.delete",
+			Resource:   "bundles",
+			Name:       bundleName,
+		}, nil)
+		fmt.Printf("Deleting bundle %q with expression: %s\n", bundleName, expr.SQL())
+		if err != nil {
+			return err
+		}
+
+		res, err := tx.Exec(fmt.Sprintf(`DELETE FROM bundles WHERE name = %s AND (`+expr.SQL()+")", d.arg(0)), bundleName)
+		fmt.Printf("Delete result: %v, error: %v\n", &res, &err)
+		if err != nil {
+			return err
+		}
+		rowsAffected, _ := res.RowsAffected()
+		if rowsAffected == 0 {
+			return ErrNotFound // or ErrNotAuthorized
+		}
+		return nil
 	})
 }
 

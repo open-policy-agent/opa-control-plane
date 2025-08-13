@@ -40,6 +40,7 @@ type BundlesGetResponseV1 struct {
 
 type BundlesPutResponseV1 struct {
 }
+type BundlesDeleteResponseV1 struct{}
 
 type SourcesGetResponseV1 struct {
 	Result *config.Source `json:"result,omitempty"`

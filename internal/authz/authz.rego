@@ -27,6 +27,7 @@ allow if {
 		"bundles.create",
 		"sources.create",
 		"secrets.create",
+		"bundles.delete",
 	]
 }
 
