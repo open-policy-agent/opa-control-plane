@@ -413,16 +413,8 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 			return err
 		}
 
-		res, err := tx.Exec(fmt.Sprintf(`DELETE FROM sources_data WHERE source_name = %s AND path = %s AND (`+expr.SQL()+")", d.arg(0), d.arg(1)), sourceName, path)
-		if err != nil {
-			return err
-		}
-		rowsAffected, _ := res.RowsAffected()
-		if rowsAffected == 0 {
-
-			return ErrNotFound // or ErrNotAuthorized
-		}
-		return nil
+		_, err = tx.Exec(fmt.Sprintf(`DELETE FROM sources_data WHERE source_name = %s AND path = %s AND (`+expr.SQL()+")", d.arg(0), d.arg(1)), sourceName, path)
+		return err
 	})
 }
 
