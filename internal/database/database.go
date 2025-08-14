@@ -1023,6 +1023,34 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 	})
 }
 
+func (d *Database) DeleteStack(ctx context.Context, principal string, stackName string) error {
+	return tx1(ctx, d, func(tx *sql.Tx) error {
+		if err := d.resourceExists(ctx, tx, "stacks", stackName); err != nil {
+			return err
+		}
+
+		expr, err := authz.Partial(ctx, authz.Access{
+			Principal:  principal,
+			Permission: "stacks.delete",
+			Resource:   "stacks",
+			Name:       stackName,
+		}, nil)
+		if err != nil {
+			return err
+		}
+
+		res, err := tx.Exec(fmt.Sprintf(`DELETE FROM stacks WHERE name = %s AND (`+expr.SQL()+")", d.arg(0)), stackName)
+		if err != nil {
+			return err
+		}
+		rowsAffected, _ := res.RowsAffected()
+		if rowsAffected == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
+}
+
 func (d *Database) QuerySourceData(ctx context.Context, sourceName string) (*DataCursor, error) {
 	rows, err := d.db.QueryContext(ctx, fmt.Sprintf(`SELECT
 	path,

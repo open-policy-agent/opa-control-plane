@@ -63,6 +63,8 @@ type StacksGetResponseV1 struct {
 
 type StacksPutResponseV1 struct{}
 
+type StacksDeleteResponseV1 struct{}
+
 type ErrorV1 struct {
 	Code    string  `json:"code"`
 	Message string  `json:"message"`

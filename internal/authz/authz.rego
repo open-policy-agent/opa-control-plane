@@ -51,9 +51,15 @@ allow if {
 	input.permission in [
 		"bundles.delete",
 		"secrets.delete",
-		"stacks.delete",
-		"tokens.delete",
 	]
+}
+
+allow if {
+	data.resource_permissions.name == input.name
+	data.resource_permissions.resource == input.resource
+	data.resource_permissions.principal_id == input.principal
+	data.resource_permissions.role == "stack_owner"
+	input.permission == "stacks.delete"
 }
 
 allow if {
