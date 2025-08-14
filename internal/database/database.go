@@ -684,13 +684,11 @@ func (d *Database) DeleteBundle(ctx context.Context, principal string, bundleNam
 			Resource:   "bundles",
 			Name:       bundleName,
 		}, nil)
-		fmt.Printf("Deleting bundle %q with expression: %s\n", bundleName, expr.SQL())
 		if err != nil {
 			return err
 		}
 
 		res, err := tx.Exec(fmt.Sprintf(`DELETE FROM bundles WHERE name = %s AND (`+expr.SQL()+")", d.arg(0)), bundleName)
-		fmt.Printf("Delete result: %v, error: %v\n", &res, &err)
 		if err != nil {
 			return err
 		}
