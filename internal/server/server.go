@@ -46,6 +46,7 @@ func (s *Server) Init() *Server {
 	api.Handle("/bundles", http.HandlerFunc(s.v1BundlesList)).Methods(http.MethodGet)
 	api.Handle("/bundles/{bundle:.+}", http.HandlerFunc(s.v1BundlesPut)).Methods(http.MethodPut)
 	api.Handle("/bundles/{bundle:.+}", http.HandlerFunc(s.v1BundlesGet)).Methods(http.MethodGet)
+	api.Handle("/bundles/{bundle:.+}", http.HandlerFunc(s.v1BundlesDelete)).Methods(http.MethodDelete)
 	api.Handle("/stacks", http.HandlerFunc(s.v1StacksList)).Methods(http.MethodGet)
 	api.Handle("/stacks/{stack:.+}", http.HandlerFunc(s.v1StacksPut)).Methods(http.MethodPut)
 	api.Handle("/stacks/{stack:.+}", http.HandlerFunc(s.v1StacksGet)).Methods(http.MethodGet)
