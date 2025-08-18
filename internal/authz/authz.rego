@@ -27,6 +27,7 @@ allow if {
 		"bundles.create",
 		"sources.create",
 		"secrets.create",
+		"bundles.delete",
 	]
 }
 
@@ -41,19 +42,6 @@ allow if {
 	data.resource_permissions.resource == input.resource
 	data.resource_permissions.principal_id == input.principal
 	data.resource_permissions.role == "owner"
-}
-
-allow if {
-	data.resource_permissions.name == input.name
-	data.resource_permissions.resource == input.resource
-	data.resource_permissions.principal_id == input.principal
-	data.resource_permissions.role == "owner"
-	input.permission in [
-		"bundles.delete",
-		"secrets.delete",
-		"stacks.delete",
-		"tokens.delete",
-	]
 }
 
 allow if {
