@@ -33,7 +33,7 @@ test_viewer_cannot_create_bundles if {
 		with input.permission as "bundles.create"
 }
 
-test_viewer_cannot_delete_bundles if {
+test_viewer_cannot_delet_bundles if {
 	not data.authz.allow with input.principal as "testuser"
 		with data.principals.id as "testuser"
 		with data.principals.role as "viewer"
@@ -57,14 +57,8 @@ test_owner_can_create_bundles_sources_and_secrets if {
 
 test_owner_can_delete_bundles if {
 	data.authz.allow with input.principal as "testuser"
-		with input.name as "testbundle"
-		with input.resource as "bundles"
 		with data.principals.id as "testuser"
 		with data.principals.role as "owner"
-		with data.resource_permissions.name as "testbundle"
-		with data.resource_permissions.resource as "bundles"
-		with data.resource_permissions.role as "owner"
-		with data.resource_permissions.principal_id as "testuser"
 		with input.permission as "bundles.delete"
 }
 
