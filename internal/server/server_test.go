@@ -189,9 +189,6 @@ func TestServerBundleOwners(t *testing.T) {
 	ts.Request("PUT", "/v1/bundles/testbundle", "{}", ownerKey2).ExpectStatus(403)
 	ts.Request("GET", "/v1/bundles/testbundle", "", ownerKey2).ExpectStatus(404)
 	ts.Request("PUT", "/v1/bundles/testbundle", "{}", ownerKey).ExpectStatus(200)
-	ts.Request("DELETE", "/v1/bundles/testbundle", "", ownerKey2).ExpectStatus(404)
-	ts.Request("DELETE", "/v1/bundles/testbundle", "", ownerKey).ExpectStatus(200)
-	ts.Request("GET", "/v1/bundles/testbundle", "", ownerKey).ExpectStatus(404)
 }
 
 func TestServerSourceOwners(t *testing.T) {

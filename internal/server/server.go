@@ -152,24 +152,6 @@ func (s *Server) v1BundlesGet(w http.ResponseWriter, r *http.Request) {
 	JSONOK(w, resp, pretty(r))
 }
 
-func (s *Server) v1BundlesDelete(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	vars := mux.Vars(r)
-
-	name, err := url.PathUnescape(vars["bundle"])
-	if err != nil {
-		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
-		return
-	}
-
-	if err := s.db.DeleteBundle(ctx, s.auth(r), name); err != nil {
-		errorAuto(w, err)
-		return
-	}
-
-	JSONOK(w, types.BundlesDeleteResponseV1{}, pretty(r))
-}
-
 func (s *Server) v1SourcesList(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
