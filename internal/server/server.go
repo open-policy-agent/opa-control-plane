@@ -50,7 +50,6 @@ func (s *Server) Init() *Server {
 	api.Handle("/stacks", http.HandlerFunc(s.v1StacksList)).Methods(http.MethodGet)
 	api.Handle("/stacks/{stack:.+}", http.HandlerFunc(s.v1StacksPut)).Methods(http.MethodPut)
 	api.Handle("/stacks/{stack:.+}", http.HandlerFunc(s.v1StacksGet)).Methods(http.MethodGet)
-	api.Handle("/stacks/{stack:.+}", http.HandlerFunc(s.v1StacksDelete)).Methods(http.MethodDelete)
 	api.Use(authenticationMiddleware(s.db))
 
 	return s
@@ -379,25 +378,6 @@ func (s *Server) v1StacksPut(w http.ResponseWriter, r *http.Request) {
 
 	resp := types.StacksPutResponseV1{}
 	JSONOK(w, resp, pretty(r))
-}
-
-func (s *Server) v1StacksDelete(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	vars := mux.Vars(r)
-
-	name, err := url.PathUnescape(vars["stack"])
-	if err != nil {
-		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
-		return
-	}
-
-	err = s.db.DeleteStack(ctx, s.auth(r), name)
-	if err != nil {
-		errorAuto(w, err)
-		return
-	}
-
-	JSONOK(w, types.StacksDeleteResponseV1{}, pretty(r))
 }
 
 func (s *Server) auth(r *http.Request) string {

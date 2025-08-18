@@ -286,9 +286,6 @@ func TestServerStackOwners(t *testing.T) {
 	ts.Request("PUT", "/v1/stacks/teststack", `{}`, ownerKey2).ExpectStatus(403)
 	ts.Request("GET", "/v1/stacks/teststack", "", ownerKey2).ExpectStatus(404)
 	ts.Request("PUT", "/v1/stacks/teststack", `{}`, ownerKey).ExpectStatus(200)
-	ts.Request("DELETE", "/v1/stacks/teststack", "", ownerKey2).ExpectStatus(404)
-	ts.Request("DELETE", "/v1/stacks/teststack", "", ownerKey).ExpectStatus(200)
-	ts.Request("GET", "/v1/stacks/teststack", "", ownerKey).ExpectStatus(404)
 }
 
 func TestServerSourcePagination(t *testing.T) {

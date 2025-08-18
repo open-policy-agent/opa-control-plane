@@ -75,31 +75,11 @@ test_owner_cannot_create_stacks if {
 		with input.permission as "stacks.create"
 }
 
-test_owner_cannot_delete_stacks if {
-	not data.authz.allow with input.principal as "testuser"
-		with data.principals.id as "testuser"
-		with data.principals.role as "owner"
-		with input.permission as "stacks.delete"
-}
-
 test_stack_owner_can_create_stacks if {
 	data.authz.allow with input.principal as "testuser"
 		with data.principals.id as "testuser"
 		with data.principals.role as "stack_owner"
 		with input.permission as "stacks.create"
-}
-
-test_stack_owner_can_delete_stacks if {
-	data.authz.allow with input.principal as "testuser"
-		with input.name as "teststack"
-		with input.resource as "stacks"
-		with data.principals.id as "testuser"
-		with data.principals.role as "stack_owner"
-		with data.resource_permissions.name as "teststack"
-		with data.resource_permissions.resource as "stacks"
-		with data.resource_permissions.role as "stack_owner"
-		with data.resource_permissions.principal_id as "testuser"
-		with input.permission as "stacks.delete"
 }
 
 test_stack_owner_cannot_create_bundles if {
