@@ -3,6 +3,7 @@ package authz
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -66,7 +67,9 @@ func TestPartial(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			rows, err := db.Query("SELECT * FROM sources WHERE " + result.SQL())
+			cond, args := result.SQL(func(int) string { return "?" }, nil)
+			fmt.Println("cond:", cond, "args:", args)
+			rows, err := db.Query("SELECT * FROM sources WHERE "+cond, args...)
 			if err != nil {
 				t.Fatal(err)
 			}

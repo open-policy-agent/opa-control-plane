@@ -344,11 +344,13 @@ func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, 
 			return nil, false, err
 		}
 
+		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
+
 		rows, err := tx.Query(fmt.Sprintf(`SELECT
 	data
 FROM
 	sources_data
-WHERE source_name = %s AND path = %s AND (`+expr.SQL()+")", d.arg(0), d.arg(1)), sourceName, path)
+WHERE source_name = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
 		if err != nil {
 			return nil, false, err
 		}
@@ -378,7 +380,7 @@ func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, 
 			return err
 		}
 
-		allowed := authz.Check(ctx, tx, authz.Access{
+		allowed := authz.Check(ctx, tx, d.arg, authz.Access{
 			Principal:  principal,
 			Permission: "sources.data.write",
 			Resource:   "sources",
@@ -413,7 +415,9 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 			return err
 		}
 
-		_, err = tx.Exec(fmt.Sprintf(`DELETE FROM sources_data WHERE source_name = %s AND path = %s AND (`+expr.SQL()+")", d.arg(0), d.arg(1)), sourceName, path)
+		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
+
+		_, err = tx.Exec(fmt.Sprintf(`DELETE FROM sources_data WHERE source_name = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
 		return err
 	})
 }
@@ -491,6 +495,8 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 			return nil, "", err
 		}
 
+		conditions, args := expr.SQL(d.arg, nil)
+
 		query := `SELECT
 		bundles.id,
         bundles.name AS bundle_name,
@@ -517,9 +523,7 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
     LEFT JOIN
         secrets ON bundles_secrets.secret_name = secrets.name
 	LEFT JOIN
-		bundles_requirements ON bundles.name = bundles_requirements.bundle_name ` +
-			`WHERE (` + expr.SQL() + ")"
-		var args []any
+		bundles_requirements ON bundles.name = bundles_requirements.bundle_name WHERE (` + conditions + ")"
 
 		if opts.name != "" {
 			query += fmt.Sprintf(" AND (bundles.name = %s)", d.arg(len(args)))
@@ -691,6 +695,8 @@ func (d *Database) ListSources(ctx context.Context, principal string, opts ListO
 			return nil, "", err
 		}
 
+		conditions, args := expr.SQL(d.arg, nil)
+
 		query := `SELECT
 	sources.id,
 	sources.name AS source_name,
@@ -714,9 +720,7 @@ LEFT JOIN
 	secrets ON sources_secrets.secret_name = secrets.name
 LEFT JOIN
 	sources_requirements ON sources.name = sources_requirements.source_name
-WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type IS NULL) AND (` + expr.SQL() + ")"
-
-		var args []any
+WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type IS NULL) AND (` + conditions + ")"
 
 		if opts.name != "" {
 			query += fmt.Sprintf(" AND (sources.name = %s)", d.arg(len(args)))
@@ -893,6 +897,7 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 			return nil, "", err
 		}
 
+		conditions, args := expr.SQL(d.arg, nil)
 		query := `SELECT
         stacks.id,
         stacks.name AS stack_name,
@@ -904,9 +909,7 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
         stacks
     LEFT JOIN
         stacks_requirements ON stacks.name = stacks_requirements.stack_name
-    WHERE (` + expr.SQL() + ")"
-
-		var args []any
+    WHERE (` + conditions + ")"
 
 		if opts.name != "" {
 			query += fmt.Sprintf(" AND (stacks.name = %s)", d.arg(len(args)))
@@ -1285,7 +1288,7 @@ func (d *Database) prepareUpsert(ctx context.Context, tx *sql.Tx, principal, res
 		return err
 	}
 
-	if !authz.Check(ctx, tx, a) {
+	if !authz.Check(ctx, tx, d.arg, a) {
 		return ErrNotAuthorized
 	}
 

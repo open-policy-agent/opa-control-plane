@@ -75,8 +75,10 @@ func (x sqlWhere) Or(other Expr) sqlWhere {
 
 func (x sqlWhere) Tables() []sqlTableRef { return x.expr.Tables() }
 
+type ArgFn func(int) string
+
 type Expr interface {
-	SQL() string
+	SQL(ArgFn, []any) (string, []any)
 	Tables() []sqlTableRef
 }
 
@@ -129,7 +131,7 @@ type sqlTableRef struct {
 
 type sqlOperand interface {
 	Tables() []sqlTableRef
-	SQL() string
+	SQL(ArgFn, []any) (string, []any)
 }
 
 type ColumnRef struct {
@@ -149,27 +151,53 @@ type sqlInt struct {
 	Value int
 }
 
-func (x sqlSelect) SQL() string {
+func (x sqlSelect) SQL(fn ArgFn, args []any) (string, []any) {
 	tables := make([]string, len(x.From))
 	for i := range tables {
-		tables[i] = x.From[i].SQL()
+		tables[i], args = x.From[i].SQL(fn, args)
 	}
 	selects := make([]string, len(x.Select))
 	for i := range selects {
-		selects[i] = x.Select[i].SQL()
+		selects[i], args = x.Select[i].SQL(fn, args)
 	}
-	return "SELECT " + strings.Join(selects, ", ") + " FROM " + strings.Join(tables, ", ") + " WHERE " + x.Where.expr.SQL()
+	conditions, args := x.Where.expr.SQL(fn, args)
+	return "SELECT " + strings.Join(selects, ", ") + " FROM " + strings.Join(tables, ", ") + " WHERE " + conditions, args
 }
 
-func (x sqlExprExists) SQL() string    { return "EXISTS (" + x.Query.SQL() + ")" }
-func (x sqlExprAnd) SQL() string       { return x.LHS.SQL() + " AND " + x.RHS.SQL() }
-func (x sqlExprOr) SQL() string        { return x.LHS.SQL() + " OR " + x.RHS.SQL() }
-func (x sqlExprEq) SQL() string        { return x.LHS.SQL() + "=" + x.RHS.SQL() }
-func (x sqlExprIsNotNull) SQL() string { return x.Column.SQL() + " IS NOT NULL" }
-func (x sqlTableRef) SQL() string      { return x.Table }
-func (x ColumnRef) SQL() string        { return x.Table + "." + x.Column }
-func (x sqlInt) SQL() string           { return strconv.Itoa(x.Value) }
-func (x sqlString) SQL() string        { return "'" + x.Value + "'" }
+func (x sqlExprExists) SQL(fn ArgFn, args []any) (string, []any) {
+	conditions, args := x.Query.SQL(fn, args)
+	return "EXISTS (" + conditions + ")", args
+}
+
+func (x sqlExprAnd) SQL(fn ArgFn, args []any) (string, []any) {
+	lhs, args := x.LHS.SQL(fn, args)
+	rhs, args := x.RHS.SQL(fn, args)
+	return lhs + " AND " + rhs, args
+}
+
+func (x sqlExprOr) SQL(fn ArgFn, args []any) (string, []any) {
+	lhs, args := x.LHS.SQL(fn, args)
+	rhs, args := x.RHS.SQL(fn, args)
+	return lhs + " OR " + rhs, args
+}
+
+func (x sqlExprEq) SQL(fn ArgFn, args []any) (string, []any) {
+	lhs, args := x.LHS.SQL(fn, args)
+	rhs, args := x.RHS.SQL(fn, args)
+	return lhs + "=" + rhs, args
+}
+
+func (x sqlExprIsNotNull) SQL(fn ArgFn, args []any) (string, []any) {
+	cond, args := x.Column.SQL(fn, args)
+	return cond + " IS NOT NULL", args
+}
+func (x sqlTableRef) SQL(fn ArgFn, args []any) (string, []any) { return x.Table, args }
+func (x ColumnRef) SQL(fn ArgFn, args []any) (string, []any)   { return x.Table + "." + x.Column, args }
+func (x sqlInt) SQL(fn ArgFn, args []any) (string, []any)      { return strconv.Itoa(x.Value), args }
+
+func (x sqlString) SQL(fn ArgFn, args []any) (string, []any) {
+	return fn(len(args)), append(args, x.Value)
+}
 
 func (sqlString) Tables() []sqlTableRef { return nil }
 func (sqlInt) Tables() []sqlTableRef    { return nil }
@@ -181,7 +209,7 @@ type Access struct {
 	Name       string `json:"name,omitempty"`
 }
 
-func Check(ctx context.Context, tx *sql.Tx, access Access) bool {
+func Check(ctx context.Context, tx *sql.Tx, fn ArgFn, access Access) bool {
 
 	expr, err := Partial(ctx, access, nil)
 	if err != nil {
@@ -189,8 +217,8 @@ func Check(ctx context.Context, tx *sql.Tx, access Access) bool {
 	}
 
 	var x any
-
-	return tx.QueryRowContext(ctx, `SELECT 1 WHERE `+expr.SQL()).Scan(&x) == nil
+	cond, args := expr.SQL(fn, nil)
+	return tx.QueryRowContext(ctx, `SELECT 1 WHERE `+cond, args...).Scan(&x) == nil
 }
 
 func Partial(ctx context.Context, access Access, extraColumnMappings map[string]ColumnRef) (Expr, error) {
