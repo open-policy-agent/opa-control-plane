@@ -216,7 +216,8 @@ func (d *Database) InitDB(ctx context.Context) error {
 				}
 
 				mysqldriver.RegisterTLSConfig("custom", &tls.Config{
-					RootCAs: rootCertPool,
+					RootCAs:    rootCertPool,
+					MinVersion: tls.VersionTLS12,
 				})
 				tlsConfigName = "custom"
 			}
