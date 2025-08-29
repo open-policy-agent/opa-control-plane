@@ -85,7 +85,7 @@ In your working directory run the `build` command:
 You could set up a simple server to serve up the bundle, but for now we can just use OPA to watch the bundle.  Run this in your working directory:
 
 ```shell
-opa run -s -w ./bundles/hello-world/bundle.tar.gz
+opa run -s -b -w ./bundles/hello-world/bundle.tar.gz
 ```
 
 ## 5. Test the policy
