@@ -26,7 +26,7 @@ operational aspects.
 
 ## Complete manifest
 
-The complete manifest can be found [here](k8s-manifests.yaml).
+The complete manifest can be found [here](https://github.com/open-policy-agent/opa-control-plane/blob/main/docs/k8s-manifests.yaml).
 
 The rest of this section will just highlight portions of the full manifests to explain the concepts.
 
@@ -45,7 +45,7 @@ database:
 
 ## OCP Server
 
-The OCP server is fairly straightforward to setup, there is a docker [image](#docker-image) provided and you can configure it with one or more configuration files.  In this case we will use multiple configuration files in a configmap to do the configuration.  One important piece of configuration is the token setup for accessing the OCP API.  Details of this configuration can be found in the [Authorization and permissions](permissions.md) section, we will do a basic setup adds an admin and viewer API token:
+The OCP server is fairly straightforward to setup, there is a docker [image](#docker-image) provided and you can configure it with one or more configuration files.  In this case we will use multiple configuration files in a configmap to do the configuration.  One important piece of configuration is the token setup for accessing the OCP API.  Details of this configuration can be found in the [Authentication and permissions](./authentication.md) section, we will do a basic setup adds an admin and viewer API token:
 
 ```yaml
 tokens:
