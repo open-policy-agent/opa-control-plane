@@ -17,7 +17,7 @@ receive the policies and data they need to make decisions. OCP provides:
   label selectors. Global policies can override other policies based on custom
   conflict resolution logic written in Rego.
 
-# Learn More
+## Learn More
 
 * [Deploy as a service](./docs/guide-deploy-as-a-service.md) - Run OCP as a standalone service in Kubernetes
 * [Concepts](./docs/concepts.md) - Learn how OCP works
@@ -25,7 +25,7 @@ receive the policies and data they need to make decisions. OCP provides:
 * [API Reference](./docs/api-reference.md) - Learn about the OCP REST API
 * [Authentication](./docs/authentication.md) - Learn how to secure the server API
 
-# Kick the tires
+## Kick the tires
 
 Follow this section to get a quick example running on your laptop. By following
 these instructions, you will be able to:
@@ -38,11 +38,11 @@ these instructions, you will be able to:
 
 This example is designed for rapid iteration and learning, making it ideal for new users who want to understand OCP's fundamental concepts and operational flow in a controlled, personal setting. We'll focus on simplicity and clarity, ensuring that each step is easy to follow and the outcomes are immediately visible.
 
-## 1. Install binary
+### 1. Install binary
 
 Install the opactl tool using one of the install methods listed below.
 
-## 2. Define a bundle
+### 2. Define a bundle
 
 The bundle is defined by a configuration file normally in the `config.d` directory.  More details can be found in the [Concepts](#concepts) section, but for now lets use this configuration.  In your working directory add the following to `./config.d/hello.yaml`
 
@@ -74,13 +74,13 @@ allow if {
 }
 ```
 
-## 3. Build the bundle
+### 3. Build the bundle
 
 In your working directory run the `build` command:
 
 `opactl build`
 
-## 4. Configure OPA to use the bundle
+### 4. Configure OPA to use the bundle
 
 You could set up a simple server to serve up the bundle, but for now we can just use OPA to watch the bundle.  Run this in your working directory:
 
@@ -88,7 +88,7 @@ You could set up a simple server to serve up the bundle, but for now we can just
 opa run -s -w ./bundles/hello-world/bundle.tar.gz
 ```
 
-## 5. Test the policy
+### 5. Test the policy
 
 You should now be able to test the policy running in OPA.  Using the following curl:
 
@@ -99,13 +99,13 @@ curl localhost:8181/v1/data/rules/allow -d \
 
 You can also try changing the policy in `./files/sources/hello-world/rules/rules.rego`.  After you make the change, rerun the build command from above to see the changes reflected in OPA.
 
-# Installation
+## Installation
 
-## Download the OCP Binary
+### Download the OCP Binary
 
 The OCP binary can be downloaded directly. After downloading, make the binary executable and verify it works by running the version command.
 
-### macOS \- Apple silicon (ARM)
+#### macOS \- Apple silicon (ARM)
 
 ```shell
 curl -L -o opactl https://openpolicyagent.org/downloads/latest/opactl_darwin_arm64_static
@@ -113,7 +113,7 @@ chmod +x opactl
 ./opactl version
 ```
 
-### macOS \- Intel-based
+#### macOS \- Intel-based
 
 ```shell
 curl -L -o opactl https://openpolicyagent.org/downloads/latest/opactl_darwin_amd64
@@ -121,7 +121,7 @@ chmod +x opactl
 ./opactl version
 ```
 
-### Linux/Unix \- amd64
+#### Linux/Unix \- amd64
 
 ```shell
 curl -L -o opactl https://openpolicyagent.org/downloads/latest/opactl_linux_amd64
@@ -129,7 +129,7 @@ chmod +x opactl
 ./opactl version
 ```
 
-### Linux/Unix \- arm64
+#### Linux/Unix \- arm64
 
 ```shell
 curl -L -o opactl https://openpolicyagent.org/downloads/latest/opactl_linux_arm64_static
@@ -137,21 +137,21 @@ chmod +x opactl
 ./opactl version
 ```
 
-### Windows \- via Powershell
+#### Windows \- via Powershell
 
 ```shell
 Invoke-WebRequest -Uri "https://openpolicyagent.org/downloads/latest/opactl_windows_amd64.exe" -OutFile "opactl.exe"
 .\opactl.exe version
 ```
 
-### Windows \- via Curl
+#### Windows \- via Curl
 
 ```shell
 curl -L -o opactl.exe https://openpolicyagent.org/downloads/latest/opactl_windows_amd64.exe
 .\opactl.exe version
 ```
 
-### Docker image {#docker-image}
+#### Docker image {#docker-image}
 
 OCP Docker images are available on Docker Hub.
 
@@ -159,7 +159,7 @@ OCP Docker images are available on Docker Hub.
 openpolicyagent/opactl
 ```
 
-## Adding opactl to PATH (Optional)
+### Adding opactl to PATH (Optional)
 
 For easier usage, you can move the binary to a directory in your PATH:
 
@@ -182,7 +182,7 @@ move opactl.exe C:\Windows\System32\
 
 After adding to PATH, you can run `opactl version` from anywhere.
 
-# Build from source
+## Build from source
 
 To build the OCP binary locally run the following command from the root folder.
 You will need to have a recent version of Go installed.

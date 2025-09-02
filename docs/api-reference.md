@@ -26,7 +26,7 @@ Authorization: Bearer admin-api-key-change-me
 
 ## Health Check Endpoint
 
-### GET /health
+### `GET /health`
 
 **Description**: Health check endpoint to verify server readiness
 
@@ -49,7 +49,7 @@ Authorization: Bearer admin-api-key-change-me
 
 Bundles are collections of policies and data that can be distributed to OPA instances.
 
-### GET /v1/bundles
+### `GET /v1/bundles`
 
 **Description**: List all bundles with pagination support
 
@@ -95,7 +95,7 @@ Bundles are collections of policies and data that can be distributed to OPA inst
 }
 ```
 
-### GET /v1/bundles/{bundle}
+### `GET /v1/bundles/{bundle}`
 
 **Description**: Get a specific bundle by name
 
@@ -135,7 +135,7 @@ Bundles are collections of policies and data that can be distributed to OPA inst
 }
 ```
 
-### PUT /v1/bundles/{bundle}
+### `PUT /v1/bundles/{bundle}`
 
 **Description**: Create or update a bundle
 
@@ -191,7 +191,7 @@ Bundles are collections of policies and data that can be distributed to OPA inst
 
 Sources define where policies and data come from (Git repositories, local files, HTTP endpoints, etc.).
 
-### GET /v1/sources
+### `GET /v1/sources`
 
 **Description**: List all sources with pagination support
 
@@ -240,7 +240,7 @@ Sources define where policies and data come from (Git repositories, local files,
 }
 ```
 
-### GET /v1/sources/{source}
+### `GET /v1/sources/{source}`
 
 **Description**: Get a specific source by name
 
@@ -263,7 +263,7 @@ Sources define where policies and data come from (Git repositories, local files,
 }
 ```
 
-### PUT /v1/sources/{source}
+### `PUT /v1/sources/{source}`
 
 **Description**: Create or update a source
 
@@ -332,7 +332,7 @@ Sources define where policies and data come from (Git repositories, local files,
 
 Manage runtime data that gets injected into policy bundles.
 
-### GET /v1/sources/{source}/data/{path}
+### `GET /v1/sources/{source}/data/{path}`
 
 **Description**: Retrieve data from a source at a specific path
 
@@ -363,7 +363,7 @@ Manage runtime data that gets injected into policy bundles.
 }
 ```
 
-### POST|PUT /v1/sources/{source}/data/{path}
+### `POST|PUT /v1/sources/{source}/data/{path}`
 
 **Description**: Upload data to a source at a specific path
 
@@ -397,7 +397,7 @@ Manage runtime data that gets injected into policy bundles.
 {}
 ```
 
-### DELETE /v1/sources/{source}/data/{path}
+### `DELETE /v1/sources/{source}/data/{path}`
 
 **Description**: Delete data from a source at a specific path
 
@@ -418,7 +418,7 @@ Manage runtime data that gets injected into policy bundles.
 
 Stacks define how bundles are distributed to different environments or services based on selectors.
 
-### GET /v1/stacks
+### `GET /v1/stacks`
 
 **Description**: List all stacks with pagination support
 
@@ -451,7 +451,7 @@ Stacks define how bundles are distributed to different environments or services 
 }
 ```
 
-### GET /v1/stacks/{stack}
+### `GET /v1/stacks/{stack}`
 
 **Description**: Get a specific stack by name
 
@@ -480,7 +480,7 @@ Stacks define how bundles are distributed to different environments or services 
 }
 ```
 
-### PUT /v1/stacks/{stack}
+### `PUT /v1/stacks/{stack}`
 
 **Description**: Create or update a stack
 
