@@ -1,40 +1,41 @@
 # OPA Control Plane
 
-
 OPA Control Plane (OCP) simplifies how you manage policies for your OPA
 deployments. It provides a centralized management system to control how OPAs
 receive the policies and data they need to make decisions. OCP provides:
 
-* **Git-based Policy Management.** Build bundles based on Rego from multiple Git
+- **Git-based Policy Management.** Build bundles based on Rego from multiple Git
   repositories and implement environment promotion strategies natively with Git.
-* **External Datasources.** Fetch and bundle external data required by your
+- **External Datasources.** Fetch and bundle external data required by your
   policies build-time using HTTP push and pull datasources.
-* **Highly-Available & Scalable Bundle Serving.** Distribute bundles to cloud
+- **Highly-Available & Scalable Bundle Serving.** Distribute bundles to cloud
   object storage like AWS S3, Google Cloud Storage, or Azure Blob Storage and
   ensure your OPAs can quickly and reliably serve policy decisions.
-* **Global and hierarchical policies.** Enforce organization-wide rules by
+- **Global and hierarchical policies.** Enforce organization-wide rules by
   defining global policies that get injected into bundles at build-time based on
   label selectors. Global policies can override other policies based on custom
   conflict resolution logic written in Rego.
 
 ## Learn More
 
-* [Deploy as a service](./docs/guide-deploy-as-a-service.md) - Run OCP as a standalone service in Kubernetes
-* [Concepts](./docs/concepts.md) - Learn how OCP works
-* [Configuration](./docs/configuration.md) - Learn how to configure the server
-* [API Reference](./docs/api-reference.md) - Learn about the OCP REST API
-* [Authentication](./docs/authentication.md) - Learn how to secure the server API
+- [Deploy as a service](http://openpolicyagent.org/docs/ocp/guide-deploy-as-a-service) - Run OCP as a standalone service in Kubernetes
+- [Concepts](http://openpolicyagent.org/docs/ocp/concepts) - Learn how OCP works
+- [Configuration](http://openpolicyagent.org/docs/ocp/configuration) - Learn how to configure the server
+- [API Reference](http://openpolicyagent.org/docs/ocp/api-reference) - Learn about the OCP REST API
+- [Authentication](http://openpolicyagent.org/docs/ocp/authentication) - Learn how to secure the server API
+- [OCP on GitHub](http://github.com/open-policy-agent/opa-control-plane) -
+  explore OCP the code, contribute and file issues.
 
 ## Kick the tires
 
 Follow this section to get a quick example running on your laptop. By following
 these instructions, you will be able to:
 
-* Install OCP on your local machine.
-* Define a basic bundle with a test policy.
-* Use OCP to build the bundle
-* Configure OPA to use the OCP build bundle
-* Test the policy's enforcement and observe its effects.
+- Install OCP on your local machine.
+- Define a basic bundle with a test policy.
+- Use OCP to build the bundle
+- Configure OPA to use the OCP build bundle
+- Test the policy's enforcement and observe its effects.
 
 This example is designed for rapid iteration and learning, making it ideal for new users who want to understand OCP's fundamental concepts and operational flow in a controlled, personal setting. We'll focus on simplicity and clarity, ensuring that each step is easy to follow and the outcomes are immediately visible.
 
@@ -44,7 +45,7 @@ Install the opactl tool using one of the [installation methods listed below](#in
 
 ### 2. Define a bundle
 
-The bundle is defined by a configuration file normally in the `config.d` directory.  More details can be found in the [Concepts](#concepts) section, but for now lets use this configuration.  In your working directory add the following to `./config.d/hello.yaml`
+The bundle is defined by a configuration file normally in the `config.d` directory. More details can be found in the [Concepts](#concepts) section, but for now lets use this configuration. In your working directory add the following to `./config.d/hello.yaml`
 
 ```yaml
 bundles:
@@ -53,15 +54,15 @@ bundles:
       filesystem:
         path: bundles/hello-world/bundle.tar.gz
     requirements:
-      - source: hello-world
+    - source: hello-world
 sources:
   hello-world:
     directory: files/sources/hello-world
     paths:
-      - rules/rules.rego
+    - rules/rules.rego
 ```
 
-We also will want to define a simple policy for this bundle.  Add the following to `./files/sources/hello-world/rules/rules.rego`
+We also will want to define a simple policy for this bundle. Add the following to `./files/sources/hello-world/rules/rules.rego`
 
 ```rego
 package rules
@@ -84,7 +85,7 @@ In your working directory run the `build` command:
 
 ### 4. Configure OPA to use the bundle
 
-You could set up a simple server to serve up the bundle, but for now we can just use OPA to watch the bundle.  Run this in your working directory:
+You could set up a simple server to serve up the bundle, but for now we can just use OPA to watch the bundle. Run this in your working directory:
 
 ```shell
 opa run -s -b -w ./bundles/hello-world/bundle.tar.gz
@@ -92,14 +93,14 @@ opa run -s -b -w ./bundles/hello-world/bundle.tar.gz
 
 ### 5. Test the policy
 
-You should now be able to test the policy running in OPA.  Using the following curl:
+You should now be able to test the policy running in OPA. Using the following curl:
 
 ```shell
 curl localhost:8181/v1/data/rules/allow -d \
 '{"input":{"user":"alice"}}'
 ```
 
-You can also try changing the policy in `./files/sources/hello-world/rules/rules.rego`.  After you make the change, rerun the build command from above to see the changes reflected in OPA.
+You can also try changing the policy in `./files/sources/hello-world/rules/rules.rego`. After you make the change, rerun the build command from above to see the changes reflected in OPA.
 
 ## Installation
 
@@ -166,6 +167,7 @@ openpolicyagent/opactl
 For easier usage, you can move the binary to a directory in your PATH:
 
 **macOS/Linux:**
+
 ```shell
 # Move to /usr/local/bin (requires sudo)
 sudo mv opactl /usr/local/bin/
@@ -177,6 +179,7 @@ export PATH="$HOME/bin:$PATH"  # Add to ~/.bashrc or ~/.zshrc for persistence
 ```
 
 **Windows:**
+
 ```shell
 # Move to a directory in your PATH or add current directory to PATH
 move opactl.exe C:\Windows\System32\
@@ -196,6 +199,7 @@ make build
 The binary will be created in the form `opactl_<OS>_<ARCH>` (e.g., `opactl_darwin_amd64`, `opactl_linux_amd64`).
 
 **Verify the build:**
+
 ```shell
 # Example for macOS/Linux (adjust filename for your platform)
 chmod +x ./opactl_darwin_amd64
