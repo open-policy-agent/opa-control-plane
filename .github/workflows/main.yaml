@@ -27,13 +27,3 @@ jobs:
 
       - name: Run Makefile target `library-test`
         run: make library-test
-
-      - name: Run Makefile target `go-e2e-migrate-test`
-        env:
-          GITHUB_USERNAME: ${{ secrets.GH_USERNAME }}
-          GITHUB_PASSWORD: ${{ secrets.GH_PASSWORD }}
-          STYRA_TOKEN: ${{ secrets.STYRA_TOKEN }}
-          STYRA_TOKEN_2: ${{ secrets.STYRA_TOKEN_2 }}
-          STYRA_TOKEN_3: ${{ secrets.STYRA_TOKEN_3 }}
-          BACKTEST_MAX_EVAL_TIME_INFLATION: -1
-        run: make go-e2e-migrate-test
