@@ -158,7 +158,7 @@ func (s *Synchronizer) auth(ctx context.Context) (transport.AuthMethod, error) {
 			return nil, err
 		}
 
-		return &http.TokenAuth{Token: token}, nil
+		return &http.BasicAuth{Username: "x-access-token", Password: token}, nil
 
 	case config.SecretSSHKey:
 		return newSSHAuth(value.Key, value.Passphrase, value.Fingerprints)
