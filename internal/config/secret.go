@@ -217,43 +217,45 @@ func (s *Secret) Typed(ctx context.Context) (interface{}, error) {
 }
 
 type SecretAWS struct {
-	AccessKeyID     string `json:"access_key_id" yaml:"access_key_id"`
-	SecretAccessKey string `json:"secret_access_key" yaml:"secret_access_key"`
-	SessionToken    string `json:"session_token" yaml:"session_token"`
+        AccessKeyID     string `json:"access_key_id" yaml:"access_key_id" mapstructure:"access_key_id"`
+        SecretAccessKey string `json:"secret_access_key" yaml:"secret_access_key" mapstructure:"secret_access_key"`
+        SessionToken    string `json:"session_token" yaml:"session_token" mapstructure:"session_token"`
 }
 
 type SecretGCP struct {
-	APIKey      string `json:"api_key" yaml:"api_key"`
-	Credentials string `json:"credentials" yaml:"credentials"` // Credentials file as JSON.
+        APIKey      string `json:"api_key" yaml:"api_key" mapstructure:"api_key"`
+        Credentials string `json:"credentials" yaml:"credentials" mapstructure:"credentials"` // Credentials file as JSON.
 }
 
 type SecretAzure struct {
-	AccountName string `json:"account_name" yaml:"account_name"`
-	AccountKey  string `json:"account_key" yaml:"account_key"`
+        AccountName string `json:"account_name" yaml:"account_name" mapstructure:"account_name"`
+        AccountKey  string `json:"account_key" yaml:"account_key" mapstructure:"account_key"`
 }
 
 type SecretGitHubApp struct {
-	IntegrationID  int64  `json:"integration_id" yaml:"integration_id"`
-	InstallationID int64  `json:"installation_id" yaml:"installation_id"`
-	PrivateKey     string `json:"private_key" yaml:"private_key"` // Private key as PEM.
+        IntegrationID  int64  `json:"integration_id" yaml:"integration_id" mapstructure:"integration_id"`
+        InstallationID int64  `json:"installation_id" yaml:"installation_id" mapstructure:"installation_id"`
+        PrivateKey     string `json:"private_key" yaml:"private_key" mapstructure:"private_key"` // Private key as PEM.
 }
 
 type SecretSSHKey struct {
-	Key          string   `json:"key" yaml:"key"`                                       // Private key as PEM.
-	Passphrase   string   `json:"passphrase,omitempty" yaml:"passphrase,omitempty"`     // Optional passphrase for the private key.
-	Fingerprints []string `json:"fingerprints,omitempty" yaml:"fingerprints,omitempty"` // Optional SSH key fingerprints.
+        Key          string   `json:"key" yaml:"key" mapstructure:"key"`                                                          // Private key as PEM.
+        Passphrase   string   `json:"passphrase,omitempty" yaml:"passphrase,omitempty" mapstructure:"passphrase,omitempty"`       // Optional passphrase for the private key.
+        Fingerprints []string `json:"fingerprints,omitempty" yaml:"fingerprints,omitempty" mapstructure:"fingerprints,omitempty"` // Optional SSH key fingerprints.
 }
 
 type SecretBasicAuth struct {
-	Username string   `json:"username" yaml:"username"`
-	Password string   `json:"password" yaml:"password"`
-	Headers  []string `json:"headers,omitempty" yaml:"headers,omitempty"` // Optional additional headers for HTTP requests.
+        Username string   `json:"username" yaml:"username" mapstructure:"username"`
+        Password string   `json:"password" yaml:"password" mapstructure:"password"`
+        Headers  []string `json:"headers,omitempty" yaml:"headers,omitempty" mapstructure:"headers,omitempty"` // Optional additional headers for HTTP requests.
 }
 
 type SecretTokenAuth struct {
-	Token string `json:"token" yaml:"token"` // Bearer token for HTTP authentication.
+        Token string `json:"token" yaml:"token" mapstructure:"token"` // Bearer token for HTTP authentication.
 }
 
 type SecretPassword struct {
-	Password string `json:"password" yaml:"password"` // Password for authentication.
+        Password string `json:"password" yaml:"password" mapstructure:"password"` // Password for authentication.
 }
+
+
