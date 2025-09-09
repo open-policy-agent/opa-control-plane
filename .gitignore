@@ -1,6 +1,11 @@
+# development environment
 .DS_Store
-*~
 .vscode
+.idea
+*~
+*.swp
+
+# runtime artifacts
 config.yaml
 config.d
 bundles/

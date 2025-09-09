@@ -40,7 +40,7 @@ This example is designed for rapid iteration and learning, making it ideal for n
 
 ## 1. Install binary
 
-Install the opactl tool using one of the install methods listed below.
+Install the opactl tool using one of the [installation methods listed below](#installation).
 
 ## 2. Define a bundle
 
@@ -69,9 +69,11 @@ package rules
 import rego.v1
 
 default allow := false
+
 allow if {
-  input.user == "alice"
+	input.user == "alice"
 }
+
 ```
 
 ## 3. Build the bundle
