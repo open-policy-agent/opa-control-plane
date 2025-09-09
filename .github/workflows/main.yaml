@@ -27,3 +27,6 @@ jobs:
 
       - name: Run Makefile target `library-test`
         run: make library-test
+
+      - name: Run Golang Style and Lint Check
+        run: make check

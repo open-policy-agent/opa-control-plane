@@ -12,6 +12,10 @@ BIN := opactl_$(GOOS)_$(GOARCH)
 
 LDFLAGS := ""
 
+GOLANGCI_LINT_VERSION := v2.4.0
+
+DOCKER_RUNNING ?= $(shell docker ps >/dev/null 2>&1 && echo 1 || echo 0)
+
 # Get current git SHA and add -dirty if there are uncommitted changes
 VCS := $(shell git rev-parse --short HEAD)$(shell test -n "$(shell git status --porcelain)" && echo -dirty)
 GOVERSION := $(shell awk '/^go /{print $$2; exit}' go.mod)
@@ -61,3 +65,11 @@ authz-test:
 .PHONY: clean
 clean:
 	rm -f opactl_*_*
+
+.PHONY: check
+check:
+ifeq ($(DOCKER_RUNNING), 1)
+	docker run --rm -v $(shell pwd):/app:ro,Z -w /app golangci/golangci-lint:${GOLANGCI_LINT_VERSION} golangci-lint run -v
+else
+	@echo "Docker not installed or running. Skipping golangci run."
+endif
