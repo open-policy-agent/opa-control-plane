@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/olekukonko/tablewriter"
-	"github.com/open-policy-agent/opa/ast"
+	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
@@ -413,7 +413,7 @@ var baseLibFiles = func() map[string]map[string]string {
 	result := make(map[string]map[string]string)
 	for _, bi := range baseLibraries {
 		result[bi.Name] = make(map[string]string)
-		fs.WalkDir(libraries.FS, *bi.Builtin, func(file string, fi fs.DirEntry, err error) error {
+		_ = fs.WalkDir(libraries.FS, *bi.Builtin, func(file string, fi fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -791,7 +791,7 @@ func Run(params Options) error {
 	case "":
 		// noop
 	default:
-		return fmt.Errorf("unsupported object storage type")
+		return errors.New("unsupported object storage type")
 	}
 
 	if params.Output != nil {
@@ -1960,7 +1960,7 @@ func getRequirementsForPolicies(policies []*das.V1Policy, index *libraryPackageI
 			}
 		}
 	}
-	var rs []config.Requirement
+	rs := make([]config.Requirement, 0, len(librarySet))
 	for id := range librarySet {
 		rs = append(rs, config.Requirement{Source: &id})
 	}
@@ -2113,7 +2113,6 @@ func fetchDASState(silent bool, c *das.Client, opts dasFetchOptions) (*dasState,
 	}
 
 	var systemIds []string
-	var systems []*das.V1System
 
 	if opts.SystemId == "" {
 		log.Info("Fetching v1/systems")
@@ -2146,6 +2145,7 @@ func fetchDASState(silent bool, c *das.Client, opts dasFetchOptions) (*dasState,
 
 	bar.AddMax(len(systemIds))
 
+	systems := make([]*das.V1System, 0, len(systemIds))
 	for _, id := range systemIds {
 		log.Info("Fetching v1/systems/" + id)
 		resp, err := c.JSON("v1/systems/"+id, das.Params{
@@ -2315,7 +2315,7 @@ func fetchSystemPolicies(bar *progress.Bar, c *das.Client, state *dasState) erro
 	}
 	close(ch)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			for s := range ch {
@@ -2348,7 +2348,7 @@ func fetchStackPolicies(bar *progress.Bar, c *das.Client, state *dasState) error
 	}
 	close(ch)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			for s := range ch {
@@ -2381,7 +2381,7 @@ func fetchLibraryPolicies(bar *progress.Bar, c *das.Client, state *dasState) err
 	}
 	close(ch)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			for l := range ch {

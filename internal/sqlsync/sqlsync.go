@@ -50,6 +50,6 @@ func (s *SQLDataSynchronizer) Execute(ctx context.Context) error {
 	return nil
 }
 
-func (s *SQLDataSynchronizer) Close(ctx context.Context) {
+func (*SQLDataSynchronizer) Close(_ context.Context) {
 	// No resources to close.
 }

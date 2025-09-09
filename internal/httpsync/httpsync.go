@@ -56,7 +56,7 @@ func (s *HttpDataSynchronizer) Execute(ctx context.Context) error {
 	return err
 }
 
-func (s *HttpDataSynchronizer) Close(ctx context.Context) {
+func (*HttpDataSynchronizer) Close(_ context.Context) {
 	// No resources to close for HTTP synchronizer
 }
 

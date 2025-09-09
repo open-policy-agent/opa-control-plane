@@ -212,13 +212,15 @@ func (d *Database) InitDB(ctx context.Context) error {
 				}
 
 				if ok := rootCertPool.AppendCertsFromPEM(pem); !ok {
-					return fmt.Errorf("failed to process X.509 root certificate PEM file")
+					return errors.New("failed to process X.509 root certificate PEM file")
 				}
 
-				mysqldriver.RegisterTLSConfig("custom", &tls.Config{
+				if err := mysqldriver.RegisterTLSConfig("custom", &tls.Config{
 					RootCAs:    rootCertPool,
 					MinVersion: tls.VersionTLS12,
-				})
+				}); err != nil {
+					return err
+				}
 				tlsConfigName = "custom"
 			}
 
@@ -388,7 +390,7 @@ func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, 
 			Name:       sourceName,
 		})
 		if !allowed {
-			return fmt.Errorf("unauthorized")
+			return errors.New("unauthorized")
 		}
 
 		bs, err := json.Marshal(data)
@@ -537,7 +539,7 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 		}
 		query += " ORDER BY bundles.id"
 		if opts.Limit > 0 {
-			query += fmt.Sprintf(" LIMIT %s", d.arg(len(args)))
+			query += " LIMIT " + d.arg(len(args))
 			args = append(args, opts.Limit)
 		}
 
@@ -734,7 +736,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 		}
 		query += " ORDER BY sources.id"
 		if opts.Limit > 0 {
-			query += fmt.Sprintf(" LIMIT %s", d.arg(len(args)))
+			query += " LIMIT " + d.arg(len(args))
 			args = append(args, opts.Limit)
 		}
 
@@ -923,7 +925,7 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 		}
 		query += " ORDER BY stacks.id"
 		if opts.Limit > 0 {
-			query += fmt.Sprintf(" LIMIT %s", d.arg(len(args)))
+			query += " LIMIT " + d.arg(len(args))
 			args = append(args, opts.Limit)
 		}
 
@@ -1000,6 +1002,7 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 }
 
 func (d *Database) QuerySourceData(ctx context.Context, sourceName string) (*DataCursor, error) {
+	// nolint:perfsprint
 	rows, err := d.db.QueryContext(ctx, fmt.Sprintf(`SELECT
 	path,
 	data
@@ -1363,48 +1366,52 @@ func (d *Database) arg(i int) string {
 
 func (d *Database) args(n int) []string {
 	args := make([]string, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		args[i] = d.arg(i)
 	}
 
 	return args
 }
 
-func tx1(ctx context.Context, db *Database, f func(tx *sql.Tx) error) error {
+func tx1(ctx context.Context, db *Database, f func(tx *sql.Tx) error) (err error) {
 	tx, err := db.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	defer tx.Rollback()
+	defer func(tx *sql.Tx) {
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			err = errors.Join(err, rollbackErr)
+		}
+	}(tx)
 
-	if err := f(tx); err != nil {
+	if err = f(tx); err != nil {
 		return err
 	}
 
 	return tx.Commit()
 }
 
-func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(tx *sql.Tx) (T, U, error)) (T, U, error) {
+func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(tx *sql.Tx) (T, U, error)) (t T, u U, err error) {
 	tx, err := db.db.BeginTx(ctx, nil)
 	if err != nil {
-		var t T
-		var u U
 		return t, u, err
 	}
 
-	defer tx.Rollback()
+	defer func(tx *sql.Tx) {
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			err = errors.Join(err, rollbackErr)
+		}
+	}(tx)
 
 	result, result2, err := f(tx)
 	if err != nil {
-		var t T
-		var u U
 		return t, u, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		var t T
-		var u U
+	if err = tx.Commit(); err != nil {
 		return t, u, err
 	}
 

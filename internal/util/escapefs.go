@@ -106,7 +106,7 @@ type openDir struct {
 	d fs.ReadDirFile
 }
 
-func (d *openDir) Close() error { return nil }
+func (*openDir) Close() error { return nil }
 func (d *openDir) Stat() (fs.FileInfo, error) {
 	return unescapeInfo(d.f), nil
 }

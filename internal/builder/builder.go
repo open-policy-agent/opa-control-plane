@@ -12,10 +12,10 @@ import (
 	"strings"
 
 	"github.com/gobwas/glob"
-	"github.com/open-policy-agent/opa/ast"
-	"github.com/open-policy-agent/opa/bundle"
-	"github.com/open-policy-agent/opa/compile"
-	"github.com/open-policy-agent/opa/rego"
+	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/open-policy-agent/opa/v1/bundle"
+	"github.com/open-policy-agent/opa/v1/compile"
+	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/util"
 	"github.com/yalue/merged_fs"
@@ -174,7 +174,7 @@ func (b *Builder) Build(ctx context.Context) error {
 	processed := map[string]struct{}{}
 	rootMap := map[string]*Source{}
 
-	var excluded []glob.Glob
+	excluded := make([]glob.Glob, 0, len(b.excluded))
 	for _, e := range b.excluded {
 		g, err := glob.Compile(e)
 		if err != nil {
@@ -217,7 +217,7 @@ func (b *Builder) Build(ctx context.Context) error {
 		}
 	}
 
-	var fses []fs.FS
+	fses := make([]fs.FS, 0, len(toBuild))
 	for _, srcDir := range toBuild {
 		fs, err := util.NewFilterFS(os.DirFS(srcDir.Path), srcDir.IncludedFiles, srcDir.ExcludedFiles)
 		if err != nil {
@@ -255,7 +255,7 @@ func (b *Builder) Build(ctx context.Context) error {
 }
 
 func walkFilesRecursive(excludes []glob.Glob, dir Dir, suffixes []string, fn func(path string, fi os.FileInfo) error) error {
-	var includes []glob.Glob
+	includes := make([]glob.Glob, 0, len(dir.IncludedFiles))
 	for _, i := range dir.IncludedFiles {
 		g, err := glob.Compile(i)
 		if err != nil {

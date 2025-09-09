@@ -79,7 +79,7 @@ func (s *GitSSHServer) handleSSH(sess ssh.Session) {
 
 	if len(cmd) == 0 {
 		fmt.Fprintf(sess.Stderr(), "ERR: no command\n")
-		sess.Exit(1)
+		_ = sess.Exit(1)
 		return
 	}
 
@@ -87,15 +87,15 @@ func (s *GitSSHServer) handleSSH(sess ssh.Session) {
 	case "git-upload-pack":
 		if err := serveUploadPack(sess.Context(), sess, s.dir, cmd); err != nil {
 			fmt.Fprintf(sess.Stderr(), "ERR: %v\n", err)
-			sess.Exit(128)
+			_ = sess.Exit(128)
 			return
 		}
 
-		sess.Exit(1)
+		_ = sess.Exit(1)
 
 	default:
 		fmt.Fprintf(sess.Stderr(), "ERR: unknown command: %v\n", cmd)
-		sess.Exit(1)
+		_ = sess.Exit(1)
 	}
 }
 

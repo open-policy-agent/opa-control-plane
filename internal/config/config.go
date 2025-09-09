@@ -16,6 +16,7 @@ import (
 	"sort"
 
 	"github.com/gobwas/glob"
+	"github.com/pkg/errors"
 	"github.com/swaggest/jsonschema-go"
 	"gopkg.in/yaml.v3"
 )
@@ -94,7 +95,7 @@ func (r *Root) Unmarshal() error {
 	return r.unmarshal(r)
 }
 
-func (r *Root) unmarshal(raw *Root) error {
+func (*Root) unmarshal(raw *Root) error {
 	for name, token := range raw.Tokens {
 		token.Name = name
 	}
@@ -199,7 +200,7 @@ func (r *Root) SortedStacks() iter.Seq2[int, *Stack] {
 }
 
 func iterator[V any](m map[string]V, name func(v V) string) func(yield func(int, V) bool) {
-	var names []string
+	names := make([]string, 0, len(m))
 	for _, v := range m {
 		names = append(names, name(v))
 	}
@@ -492,7 +493,7 @@ func MustNewSelector(s map[string]StringSet) Selector {
 	return ss
 }
 
-func (s *Selector) PrepareJSONSchema(schema *jsonschema.Schema) error {
+func (*Selector) PrepareJSONSchema(schema *jsonschema.Schema) error {
 	str := jsonschema.String.ToSchemaOrBool()
 
 	arr := jsonschema.Array.ToSchemaOrBool()
@@ -631,7 +632,7 @@ func (a StringSet) Add(value string) StringSet {
 		return a
 	}
 
-	return StringSet(slices.Insert(a, i, value))
+	return slices.Insert(a, i, value)
 }
 
 // Git defines the Git synchronization configuration used by OPA Control Plane Sources.
@@ -662,7 +663,7 @@ type SecretRef struct {
 	value *Secret
 }
 
-func (s *SecretRef) PrepareJSONSchema(schema *jsonschema.Schema) error {
+func (*SecretRef) PrepareJSONSchema(schema *jsonschema.Schema) error {
 	schema.Type = nil
 	schema.AddType(jsonschema.String)
 	return nil
@@ -851,15 +852,15 @@ func (a *AmazonS3) validate() error {
 	}
 
 	if a.Bucket == "" {
-		return fmt.Errorf("amazon s3 bucket is required")
+		return errors.New("amazon s3 bucket is required")
 	}
 
 	if a.Key == "" {
-		return fmt.Errorf("amazon s3 key is required")
+		return errors.New("amazon s3 key is required")
 	}
 
 	if a.Region == "" {
-		return fmt.Errorf("amazon s3 region is required")
+		return errors.New("amazon s3 region is required")
 	}
 
 	return nil
@@ -877,15 +878,15 @@ func (g *GCPCloudStorage) validate() error {
 	}
 
 	if g.Project == "" {
-		return fmt.Errorf("gcp cloud storage project is required")
+		return errors.New("gcp cloud storage project is required")
 	}
 
 	if g.Bucket == "" {
-		return fmt.Errorf("gcp cloud storage bucket is required")
+		return errors.New("gcp cloud storage bucket is required")
 	}
 
 	if g.Object == "" {
-		return fmt.Errorf("gcp cloud storage object is required")
+		return errors.New("gcp cloud storage object is required")
 	}
 
 	return nil
@@ -903,15 +904,15 @@ func (a *AzureBlobStorage) validate() error {
 	}
 
 	if a.AccountURL == "" {
-		return fmt.Errorf("azure blob storage account URL is required")
+		return errors.New("azure blob storage account URL is required")
 	}
 
 	if a.Container == "" {
-		return fmt.Errorf("azure blob storage container is required")
+		return errors.New("azure blob storage container is required")
 	}
 
 	if a.Path == "" {
-		return fmt.Errorf("azure blob storage path is required")
+		return errors.New("azure blob storage path is required")
 	}
 
 	return nil
@@ -929,7 +930,7 @@ func (f *FileSystemStorage) validate() error {
 	}
 
 	if f.Path == "" {
-		return fmt.Errorf("filesystem storage path is required")
+		return errors.New("filesystem storage path is required")
 	}
 
 	return nil

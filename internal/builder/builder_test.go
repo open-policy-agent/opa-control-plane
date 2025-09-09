@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/open-policy-agent/opa/ast"
-	"github.com/open-policy-agent/opa/bundle"
+	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/open-policy-agent/opa/v1/bundle"
+	"github.com/pkg/errors"
 
 	"github.com/styrainc/opa-control-plane/internal/builder"
 	"github.com/styrainc/opa-control-plane/internal/config"
@@ -134,7 +135,7 @@ func TestBuilder(t *testing.T) {
 					},
 				},
 			},
-			expError: fmt.Errorf("requirement \"lib2\" contains conflicting package x\n- package x from \"system\""),
+			expError: errors.New("requirement \"lib2\" contains conflicting package x\n- package x from \"system\""),
 		},
 		{
 			note: "package conflict: prefix",
@@ -167,7 +168,7 @@ func TestBuilder(t *testing.T) {
 					},
 				},
 			},
-			expError: fmt.Errorf("requirement \"lib2\" contains conflicting package x.y.z\n- package x from \"system\""),
+			expError: errors.New("requirement \"lib2\" contains conflicting package x.y.z\n- package x from \"system\""),
 		},
 		{
 			note: "package conflict: prefix (reverse)",
@@ -200,7 +201,7 @@ func TestBuilder(t *testing.T) {
 					},
 				},
 			},
-			expError: fmt.Errorf("requirement \"lib2\" contains conflicting package x\n- package x.y from \"system\""),
+			expError: errors.New("requirement \"lib2\" contains conflicting package x\n- package x.y from \"system\""),
 		},
 		{
 			note: "package conflict: rego and json",
@@ -220,7 +221,7 @@ func TestBuilder(t *testing.T) {
 					},
 				},
 			},
-			expError: fmt.Errorf("requirement \"lib1\" contains conflicting package x.y.z\n- package x.y from \"system\""),
+			expError: errors.New("requirement \"lib1\" contains conflicting package x.y.z\n- package x.y from \"system\""),
 		},
 		{
 			note: "missing source",
@@ -240,7 +241,7 @@ func TestBuilder(t *testing.T) {
 					},
 				},
 			},
-			expError: fmt.Errorf("missing source \"libX\""),
+			expError: errors.New("missing source \"libX\""),
 		},
 		{
 			note: "shared dependency",

@@ -38,6 +38,6 @@ func (s *BuiltinSynchronizer) Execute(ctx context.Context) error {
 	})
 }
 
-func (s *BuiltinSynchronizer) Close(ctx context.Context) {
+func (*BuiltinSynchronizer) Close(_ context.Context) {
 	// No resources to close.
 }

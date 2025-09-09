@@ -17,7 +17,7 @@ func BenchmarkPaginationFinalPageLatency(b *testing.B) {
 	const limit = 50
 
 	for _, n := range sizes {
-		b.Run(fmt.Sprint(n), func(b *testing.B) {
+		b.Run(fmt.Sprint(n), func(b *testing.B) { //nolint:perfsprint
 
 			ctx := context.Background()
 			var db database.Database
@@ -33,6 +33,7 @@ func BenchmarkPaginationFinalPageLatency(b *testing.B) {
 			}
 
 			for i := range n {
+				// nolint:perfsprint
 				if err := db.UpsertSource(ctx, "admin", &config.Source{Name: "source" + fmt.Sprint(i)}); err != nil {
 					b.Fatal(err)
 				}
@@ -43,7 +44,7 @@ func BenchmarkPaginationFinalPageLatency(b *testing.B) {
 
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				result, next, err := db.ListSources(ctx, "admin", database.ListOptions{Limit: limit, Cursor: cursor})
 				if err != nil {
 					b.Fatal(err)

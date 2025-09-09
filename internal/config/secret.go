@@ -65,7 +65,7 @@ func (s *Secret) Ref() *SecretRef {
 	return &SecretRef{Name: s.Name, value: s}
 }
 
-func (s *Secret) PrepareJSONSchema(schema *jsonschema.Schema) error {
+func (*Secret) PrepareJSONSchema(schema *jsonschema.Schema) error {
 	schema.Type = nil
 	schema.AddType(jsonschema.Object)
 	return nil

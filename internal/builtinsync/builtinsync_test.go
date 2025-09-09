@@ -22,13 +22,15 @@ func TestBuiltinSync(t *testing.T) {
 			t.Fatal(err)
 		}
 		var paths []string
-		filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
 			paths = append(paths, strings.TrimPrefix(path, dir))
 			return nil
-		})
+		}); err != nil {
+			t.Fatal(err)
+		}
 		// root directory is included so expect "" in addition to fixtures
 		exp := []string{"", "/test", "/test/test.rego"}
 		if !reflect.DeepEqual(paths, exp) {

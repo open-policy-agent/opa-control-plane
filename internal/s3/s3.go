@@ -123,11 +123,15 @@ func New(ctx context.Context, c config.ObjectStorage) (ObjectStorage, error) {
 
 			if auth.APIKey != "" {
 				client, err = storage.NewClient(ctx, option.WithAPIKey(auth.APIKey))
+				if err != nil {
+					return nil, err
+				}
 			} else if auth.Credentials != "" {
 				client, err = storage.NewClient(ctx, option.WithCredentialsJSON([]byte(auth.Credentials)))
+				if err != nil {
+					return nil, err
+				}
 			}
-
-			return nil, err
 		}
 
 		return &GCPCloudStorage{project: c.GCPCloudStorage.Project, bucket: c.GCPCloudStorage.Bucket, object: c.GCPCloudStorage.Object, client: client}, nil
@@ -279,8 +283,8 @@ func (s *GCPCloudStorage) Upload(ctx context.Context, body io.ReadSeeker) error 
 	return w.Close()
 }
 
-func (s *GCPCloudStorage) Download(ctx context.Context) (io.Reader, error) {
-	return nil, fmt.Errorf("not implemented")
+func (*GCPCloudStorage) Download(_ context.Context) (io.Reader, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker) error {
@@ -288,8 +292,8 @@ func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker) error
 	return err
 }
 
-func (s *AzureBlobStorage) Download(ctx context.Context) (io.Reader, error) {
-	return nil, fmt.Errorf("not implemented")
+func (*AzureBlobStorage) Download(_ context.Context) (io.Reader, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (s *FileSystemStorage) Upload(ctx context.Context, body io.ReadSeeker) error {

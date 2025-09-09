@@ -194,7 +194,7 @@ func (c *Client) Get(path string, params ...Params) (*http.Response, error) {
 	// Retries on 503 Service Unavailable
 
 	var resp *http.Response
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		resp, err = c.Client.Do(req)
 		if err != nil {
 			return nil, err

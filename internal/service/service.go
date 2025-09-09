@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -194,7 +195,7 @@ func (s *Service) Ready(_ context.Context) error {
 	if s.ready {
 		return nil
 	}
-	return fmt.Errorf("not ready")
+	return errors.New("not ready")
 }
 
 func (s *Service) initDB(ctx context.Context) error {

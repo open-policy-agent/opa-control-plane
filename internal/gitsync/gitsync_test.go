@@ -181,6 +181,7 @@ func TestGitsyncSSH(t *testing.T) {
 		Bytes: x509.MarshalPKCS1PrivateKey(sshKey),
 	}
 
+	// nolint:staticcheck
 	block, err = x509.EncryptPEMBlock(rand.Reader, block.Type, block.Bytes, []byte(passphrase), x509.PEMCipherAES256)
 	if err != nil {
 		t.Fatalf("expected no error while encrypting PEM block: %v", err)

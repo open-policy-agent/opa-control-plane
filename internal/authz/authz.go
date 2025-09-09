@@ -4,15 +4,16 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"errors"
 	"fmt"
 	"maps"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/open-policy-agent/opa/ast"
-	"github.com/open-policy-agent/opa/rego"
+	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/dependencies"
+	"github.com/open-policy-agent/opa/v1/rego"
 )
 
 const cacheSize = 128
@@ -229,7 +230,7 @@ func Partial(ctx context.Context, access Access, extraColumnMappings map[string]
 
 func partial(ctx context.Context, access Access, extraColumnMappings map[string]ColumnRef) (Expr, error) {
 
-	var extraUnknowns []string
+	extraUnknowns := make([]string, 0, len(extraColumnMappings))
 	for k := range extraColumnMappings {
 		extraUnknowns = append(extraUnknowns, k)
 	}
@@ -245,7 +246,7 @@ func partial(ctx context.Context, access Access, extraColumnMappings map[string]
 	}
 
 	if len(pqs.Support) > 0 {
-		return nil, fmt.Errorf("unsupported authorization result (support modules found)")
+		return nil, errors.New("unsupported authorization result (support modules found)")
 	}
 
 	cm := columnMapper(defaultColumnMappings)
@@ -278,10 +279,10 @@ func partial(ctx context.Context, access Access, extraColumnMappings map[string]
 				} else if e, ok := cm.trySqlExprIsNotNull(expr.Operand(1), expr.Operand(0)); ok {
 					exists.Query.Where = exists.Query.Where.And(e)
 				} else {
-					return nil, fmt.Errorf("XXX: translation error: neq operands")
+					return nil, errors.New("XXX: translation error: neq operands")
 				}
 			default:
-				return nil, fmt.Errorf("XXX: translation error: expr operator")
+				return nil, errors.New("XXX: translation error: expr operator")
 			}
 		}
 

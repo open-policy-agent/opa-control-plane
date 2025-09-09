@@ -46,14 +46,27 @@ func TestPartial(t *testing.T) {
 
 	defer db.Close()
 
-	db.Exec("CREATE TABLE sources (name TEXT)")
-	db.Exec("CREATE TABLE principals (id TEXT, role TEXT)")
-	db.Exec("CREATE TABLE resource_permissions (name TEXT, resource TEXT, principal_id TEXT, role TEXT, permission TEXT)")
-
-	db.Exec("INSERT INTO sources (name) VALUES ('source')")
-	db.Exec("INSERT INTO principals (id, role) VALUES ('alice', 'administrator')")
-	db.Exec("INSERT INTO principals (id, role) VALUES ('bob', 'viewer')")
-	db.Exec("INSERT INTO resource_permissions (name, resource, principal_id, role, permission) VALUES ('source', 'sources', 'bob', 'viewer', 'sources.viewer')")
+	if _, err := db.Exec("CREATE TABLE sources (name TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE principals (id TEXT, role TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("CREATE TABLE resource_permissions (name TEXT, resource TEXT, principal_id TEXT, role TEXT, permission TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO sources (name) VALUES ('source')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO principals (id, role) VALUES ('alice', 'administrator')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO principals (id, role) VALUES ('bob', 'viewer')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("INSERT INTO resource_permissions (name, resource, principal_id, role, permission) VALUES ('source', 'sources', 'bob', 'viewer', 'sources.viewer')"); err != nil {
+		t.Fatal(err)
+	}
 
 	testCases := []struct {
 		name                string

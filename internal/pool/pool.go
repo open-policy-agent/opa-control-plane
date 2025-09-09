@@ -27,7 +27,7 @@ type task struct {
 func New(workers int) *Pool {
 	var pool Pool
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go pool.work()
 	}
 
@@ -93,7 +93,7 @@ func (p *Pool) dequeue() *task {
 			p.mu.Unlock()
 
 			select {
-			case <-time.After(t.deadline.Sub(time.Now())):
+			case <-time.After(time.Until(t.deadline)):
 			case <-wait:
 			}
 

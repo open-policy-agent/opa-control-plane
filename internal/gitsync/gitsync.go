@@ -129,7 +129,7 @@ func (s *Synchronizer) execute(ctx context.Context) error {
 	return w.Checkout(checkoutOpts)
 }
 
-func (s *Synchronizer) Close(ctx context.Context) {
+func (*Synchronizer) Close(_ context.Context) {
 	// No resources to close.
 }
 
@@ -272,7 +272,7 @@ func (a *basicAuth) String() string {
 	return fmt.Sprintf("%s - %s:%s [%s]", a.Name(), a.Username, masked, strings.Join(a.Headers, ", "))
 }
 
-func (a *basicAuth) Name() string {
+func (*basicAuth) Name() string {
 	return "http-basic-auth-extra"
 }
 

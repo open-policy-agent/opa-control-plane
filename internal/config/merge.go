@@ -16,7 +16,7 @@ func Merge(configFiles []string, conflictError bool) ([]byte, error) {
 
 	var paths []string
 	for _, f := range configFiles {
-		filepath.Walk(f, func(path string, fi fs.FileInfo, err error) error {
+		if err := filepath.Walk(f, func(path string, fi fs.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
@@ -25,10 +25,12 @@ func Merge(configFiles []string, conflictError bool) ([]byte, error) {
 			}
 			paths = append(paths, path)
 			return nil
-		})
+		}); err != nil {
+			return nil, err
+		}
 	}
 
-	var docs []map[string]interface{}
+	docs := make([]map[string]interface{}, 0, len(paths))
 	for _, f := range paths {
 		bs, err := os.ReadFile(f)
 		if err != nil {

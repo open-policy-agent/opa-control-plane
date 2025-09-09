@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -21,10 +20,10 @@ import (
 
 	"github.com/akedrou/textdiff"
 	"github.com/olekukonko/tablewriter"
-	"github.com/open-policy-agent/opa/ast"
-	"github.com/open-policy-agent/opa/bundle"
-	"github.com/open-policy-agent/opa/sdk"
+	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/open-policy-agent/opa/v1/bundle"
 	v1 "github.com/open-policy-agent/opa/v1/logging"
+	"github.com/open-policy-agent/opa/v1/sdk"
 	"github.com/spf13/cobra"
 	"github.com/styrainc/opa-control-plane/cmd"
 	"github.com/styrainc/opa-control-plane/cmd/internal/das"
@@ -171,7 +170,7 @@ func Run(opts Options) error {
 	}
 
 	if url == "" {
-		return fmt.Errorf("please provide Styra URL with -u/--url")
+		return errors.New("please provide Styra URL with -u/--url")
 	}
 
 	styra := &das.Client{
@@ -280,7 +279,7 @@ func backtestBundle(ctx context.Context, opts Options, styra *das.Client, b *con
 
 	params := das.Params{
 		Query: map[string]string{
-			"limit":  fmt.Sprintf("%d", opts.NumDecisions),
+			"limit":  strconv.Itoa(opts.NumDecisions),
 			"system": b.Labels["system-id"],
 		},
 	}
@@ -315,7 +314,7 @@ func backtestBundle(ctx context.Context, opts Options, styra *das.Client, b *con
 		return err
 	}
 
-	bs, err := ioutil.ReadAll(r)
+	bs, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
@@ -342,7 +341,7 @@ func backtestBundle(ctx context.Context, opts Options, styra *das.Client, b *con
 			return
 		}
 
-		if _, err := w.Write([]byte(content)); err != nil {
+		if _, err := w.Write(content); err != nil {
 			http.Error(w, "failed to write response", http.StatusInternalServerError)
 		}
 	}))
@@ -418,7 +417,7 @@ func backtestBundle(ctx context.Context, opts Options, styra *das.Client, b *con
 		log.Infof("Evaluating decision %q for system %q", d.DecisionId, b.Name)
 
 		var result *interface{}
-		var start time.Time = time.Now()
+		var start = time.Now()
 
 		r, err := opa.Decision(ctx, options)
 		if err != nil && !sdk.IsUndefinedErr(err) {
@@ -605,14 +604,14 @@ func (l *logger) Warn(fmt string, a ...any) {
 	l.Logger.Warnf(fmt, a...)
 }
 
-func (l *logger) GetLevel() v1.Level {
+func (*logger) GetLevel() v1.Level {
 	return v1.Debug
 }
 
-func (l *logger) SetLevel(level v1.Level) {
+func (*logger) SetLevel(_ v1.Level) {
 	// no-op
 }
 
-func (l *logger) WithFields(fields map[string]any) v1.Logger {
+func (l *logger) WithFields(_ map[string]any) v1.Logger {
 	return l
 }

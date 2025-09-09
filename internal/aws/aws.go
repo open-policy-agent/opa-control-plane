@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -45,7 +46,7 @@ func (s *SecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Credentia
 			}, nil
 		}
 
-		return aws.Credentials{}, fmt.Errorf("missing access_key_id or secret_access_key in credentials")
+		return aws.Credentials{}, errors.New("missing access_key_id or secret_access_key in credentials")
 	}
 
 	return aws.Credentials{}, fmt.Errorf("unsupported authentication type: %T", value)

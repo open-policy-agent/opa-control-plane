@@ -105,7 +105,7 @@ func TestRequirementsWithOverrides(t *testing.T) {
 	svc := oneshot(t, bs, tempDir)
 	_ = svc.Report()
 
-	foo, err := os.ReadFile(filepath.Join(tempDir, "data/8d72363cb5de6ec0608d85a601a02e4c/sources/test_src/repo/foo.rego"))
+	foo, err := os.ReadFile(filepath.Join(tempDir, filepath.Join("data", "8d72363cb5de6ec0608d85a601a02e4c", "sources", "test_src", "repo", "foo.rego")))
 	if err != nil {
 		t.Fatal(err)
 	}

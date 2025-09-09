@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/open-policy-agent/opa/ast"
+	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/styrainc/opa-control-plane/internal/builder"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/logging"
@@ -14,11 +14,10 @@ import (
 )
 
 var (
-	errorDelay   = 30 * time.Second
-	successDelay = 1 * time.Minute
+	errorDelay = 30 * time.Second
 )
 
-// Each BundleWorker is responsible for constructing a bundle from the source
+// BundleWorker is responsible for constructing a bundle from the source
 // dependencies and uploading it to an object storage service. It uses a git
 // synchronizer to pull the latest changes from the source repositories,
 // constructs a bundle using the builder package, and uploads the resulting

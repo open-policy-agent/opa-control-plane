@@ -21,8 +21,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
-	"github.com/open-policy-agent/opa/ast"
-	"github.com/open-policy-agent/opa/bundle"
+	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/open-policy-agent/opa/v1/bundle"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/logging"
 	"github.com/styrainc/opa-control-plane/internal/service"
@@ -55,9 +55,9 @@ type ExpectedBundle struct {
 func TestService(t *testing.T) {
 
 	// Set mock AWS credentials to avoid IMDS errors.
-	os.Setenv("AWS_ACCESS_KEY_ID", "mock-access-key")
-	os.Setenv("AWS_SECRET_ACCESS_KEY", "mock-secret-key")
-	os.Setenv("AWS_REGION", "us-east-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "mock-access-key")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "mock-secret-key")
+	t.Setenv("AWS_REGION", "us-east-1")
 
 	for _, test := range loadTestCases(t).Cases {
 		t.Run(test.Note, func(t *testing.T) {
@@ -269,7 +269,7 @@ func loadTestCases(t *testing.T) TestCases {
 
 func testS3Service(t *testing.T, bucket string) (*s3mem.Backend, *httptest.Server) {
 	mock := s3mem.New()
-	mock.CreateBucket(bucket)
+	_ = mock.CreateBucket(bucket)
 	ts := httptest.NewServer(gofakes3.New(mock).Server())
 	t.Cleanup(ts.Close)
 	return mock, ts

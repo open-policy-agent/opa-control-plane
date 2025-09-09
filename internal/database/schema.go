@@ -135,7 +135,7 @@ type sqlBlob struct{}
 type sqlTimestamp struct{}
 type sqlVarChar struct{}
 
-func (c sqlInteger) SQL(kind int) string {
+func (sqlInteger) SQL(kind int) string {
 	switch kind {
 	case sqlite:
 		return "INTEGER"
@@ -148,11 +148,11 @@ func (c sqlInteger) SQL(kind int) string {
 	panic("unknown kind")
 }
 
-func (c sqlText) SQL(kind int) string {
+func (sqlText) SQL(_ int) string {
 	return "TEXT"
 }
 
-func (c sqlBlob) SQL(kind int) string {
+func (sqlBlob) SQL(kind int) string {
 	switch kind {
 	case sqlite:
 		return "BLOB"
@@ -165,11 +165,11 @@ func (c sqlBlob) SQL(kind int) string {
 	panic("unknown kind")
 }
 
-func (c sqlTimestamp) SQL(kind int) string {
+func (sqlTimestamp) SQL(_ int) string {
 	return "TIMESTAMP"
 }
 
-func (c sqlVarChar) SQL(kind int) string {
+func (sqlVarChar) SQL(kind int) string {
 	switch kind {
 	case sqlite:
 		return "TEXT"

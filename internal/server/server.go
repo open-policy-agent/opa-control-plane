@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -119,7 +119,7 @@ func (s *Server) v1BundlesPut(w http.ResponseWriter, r *http.Request) {
 	if b.Name == "" {
 		b.Name = name
 	} else if b.Name != name {
-		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, fmt.Errorf("bundle name must match path"))
+		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, errors.New("bundle name must match path"))
 		return
 	}
 
@@ -186,7 +186,7 @@ func (s *Server) v1SourcesPut(w http.ResponseWriter, r *http.Request) {
 	if src.Name == "" {
 		src.Name = name
 	} else if src.Name != name {
-		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, fmt.Errorf("source name must match path"))
+		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, errors.New("source name must match path"))
 		return
 	}
 
@@ -348,7 +348,7 @@ func (s *Server) v1StacksPut(w http.ResponseWriter, r *http.Request) {
 	if stack.Name == "" {
 		stack.Name = name
 	} else if stack.Name != name {
-		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, fmt.Errorf("stack name must match path"))
+		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, errors.New("stack name must match path"))
 		return
 	}
 
@@ -361,7 +361,7 @@ func (s *Server) v1StacksPut(w http.ResponseWriter, r *http.Request) {
 	JSONOK(w, resp, pretty(r))
 }
 
-func (s *Server) auth(r *http.Request) string {
+func (*Server) auth(r *http.Request) string {
 	p := r.Context().Value(principalKey{})
 	if p == nil {
 		// NOTE(tsandall): this should never be reached because the
@@ -375,7 +375,7 @@ func (s *Server) auth(r *http.Request) string {
 
 const pageLimitMax = 100
 
-func (s *Server) listOptions(r *http.Request) database.ListOptions {
+func (*Server) listOptions(r *http.Request) database.ListOptions {
 	var opts database.ListOptions
 	q := r.URL.Query()
 	limit := q.Get("limit")
@@ -442,7 +442,7 @@ func getBoolParam(url *url.URL, name string, ifEmpty bool) bool {
 	}
 
 	for _, x := range p {
-		if strings.ToLower(x) == "true" {
+		if strings.EqualFold(x, "true") {
 			return true
 		}
 	}
@@ -485,12 +485,12 @@ type principalKey struct{}
 func extractBearerToken(r *http.Request) (string, error) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		return "", fmt.Errorf("authorization header is missing")
+		return "", errors.New("authorization header is missing")
 	}
 
 	parts := strings.SplitN(authHeader, " ", 2)
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-		return "", fmt.Errorf("invalid authorization header format")
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
+		return "", errors.New("invalid authorization header format")
 	}
 
 	return parts[1], nil

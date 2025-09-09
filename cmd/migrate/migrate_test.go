@@ -3,12 +3,12 @@ package migrate
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"testing"
 
-	"github.com/open-policy-agent/opa/ast"
+	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/styrainc/opa-control-plane/cmd/internal/das"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/libraries"
@@ -45,7 +45,7 @@ func TestLibraryPackageIndex(t *testing.T) {
 		{"libraries/doesnotexist", map[string]struct{}{}},
 		{"libraries/foo/doesnotexist", map[string]struct{}{}},
 	} {
-		t.Run(fmt.Sprint(i), func(t *testing.T) {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			result := index.Lookup(tc.path)
 			if !reflect.DeepEqual(result, tc.exp) {
 				t.Fatal("path:", tc.path, "got:", result, "want:", tc.exp)
@@ -150,21 +150,21 @@ func TestPruneConfig(t *testing.T) {
 	expSrcs := []string{"libUNUSED1", "libUNUSED2", "libUNUSED3"}
 	expSecrets := []string{"sec6", "sec7"}
 
-	var gotStacks []string
+	gotStacks := make([]string, 0, len(stacks))
 	for _, s := range stacks {
 		gotStacks = append(gotStacks, s.Name)
 	}
 
 	sort.Strings(gotStacks)
 
-	var gotSrcs []string
+	gotSrcs := make([]string, 0, len(sources))
 	for _, s := range sources {
 		gotSrcs = append(gotSrcs, s.Name)
 	}
 
 	sort.Strings(gotSrcs)
 
-	var gotSecrets []string
+	gotSecrets := make([]string, 0, len(secrets))
 	for _, s := range secrets {
 		gotSecrets = append(gotSecrets, s.Name)
 	}

@@ -1,6 +1,8 @@
 package database
 
-import "fmt"
+import (
+	"errors"
+)
 
-var ErrNotFound = fmt.Errorf("not found")
-var ErrNotAuthorized = fmt.Errorf("not authorized")
+var ErrNotFound = errors.New("not found")
+var ErrNotAuthorized = errors.New("not authorized")

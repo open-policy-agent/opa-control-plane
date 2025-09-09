@@ -2,7 +2,7 @@ package database
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"testing"
 )
 
@@ -27,8 +27,8 @@ func TestCascadingDeletesForPrincipalsAndResourcePermissions(t *testing.T) {
 		t.Fatal("expected count to be zero")
 	}
 
-	for i := 0; i < 100; i++ { // arbitrary number of perms
-		if _, err := db.db.ExecContext(ctx, "INSERT INTO resource_permissions (name, resource, principal_id, role) VALUES (?, ?, ?, ?)", "xyz"+fmt.Sprint(i), "bundles", "test", "owner"); err != nil {
+	for i := range 100 { // arbitrary number of perms
+		if _, err := db.db.ExecContext(ctx, "INSERT INTO resource_permissions (name, resource, principal_id, role) VALUES (?, ?, ?, ?)", "xyz"+strconv.Itoa(i), "bundles", "test", "owner"); err != nil {
 			t.Fatal(err)
 		}
 	}

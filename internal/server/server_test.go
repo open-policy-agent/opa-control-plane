@@ -3,7 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"net/http/httptest"
 	"strconv"
@@ -351,7 +351,7 @@ func TestServerHealthEndpoint(t *testing.T) {
 	ts := initTestServer(t, nil)
 	defer ts.Close()
 
-	notReady := func(_ context.Context) error { return fmt.Errorf("not ready") }
+	notReady := func(_ context.Context) error { return errors.New("not ready") }
 	ready := func(_ context.Context) error { return nil }
 
 	ts.srv.readyFn = notReady

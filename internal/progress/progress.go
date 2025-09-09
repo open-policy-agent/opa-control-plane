@@ -25,14 +25,14 @@ func (b *Bar) Add(n int) {
 	if b == nil {
 		return
 	}
-	b.pb.Add(n)
+	_ = b.pb.Add(n)
 }
 
 func (b *Bar) Finish() {
 	if b == nil {
 		return
 	}
-	b.pb.Finish()
+	_ = b.pb.Finish()
 }
 
 func New(invisible bool, max int, desc string) *Bar {
