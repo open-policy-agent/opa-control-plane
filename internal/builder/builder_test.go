@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/open-policy-agent/opa/v1/ast"
-	"github.com/open-policy-agent/opa/v1/bundle"
+	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
+	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
 	"github.com/pkg/errors"
 
 	"github.com/styrainc/opa-control-plane/internal/builder"

@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/open-policy-agent/opa/v1/ast"
-	"github.com/open-policy-agent/opa/v1/dependencies"
-	"github.com/open-policy-agent/opa/v1/rego"
+	"github.com/open-policy-agent/opa/ast"          // nolint:staticcheck
+	"github.com/open-policy-agent/opa/dependencies" // nolint:staticcheck
+	"github.com/open-policy-agent/opa/rego"         // nolint:staticcheck
 )
 
 const cacheSize = 128

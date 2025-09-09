@@ -12,10 +12,10 @@ import (
 	"strings"
 
 	"github.com/gobwas/glob"
-	"github.com/open-policy-agent/opa/v1/ast"
-	"github.com/open-policy-agent/opa/v1/bundle"
-	"github.com/open-policy-agent/opa/v1/compile"
-	"github.com/open-policy-agent/opa/v1/rego"
+	"github.com/open-policy-agent/opa/ast"     // nolint:staticcheck
+	"github.com/open-policy-agent/opa/bundle"  // nolint:staticcheck
+	"github.com/open-policy-agent/opa/compile" // nolint:staticcheck
+	"github.com/open-policy-agent/opa/rego"    // nolint:staticcheck
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/util"
 	"github.com/yalue/merged_fs"

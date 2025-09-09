@@ -21,8 +21,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
-	"github.com/open-policy-agent/opa/v1/ast"
-	"github.com/open-policy-agent/opa/v1/bundle"
+	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
+	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/logging"
 	"github.com/styrainc/opa-control-plane/internal/service"

@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/open-policy-agent/opa/ast" // nolint:staticcheck
 	"github.com/styrainc/opa-control-plane/internal/builder"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/logging"

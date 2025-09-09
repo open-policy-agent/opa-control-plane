@@ -1373,45 +1373,45 @@ func (d *Database) args(n int) []string {
 	return args
 }
 
-func tx1(ctx context.Context, db *Database, f func(tx *sql.Tx) error) (err error) {
+func tx1(ctx context.Context, db *Database, f func(tx *sql.Tx) error) error {
 	tx, err := db.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
 	defer func(tx *sql.Tx) {
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			err = errors.Join(err, rollbackErr)
-		}
+		_ = tx.Rollback()
 	}(tx)
 
-	if err = f(tx); err != nil {
+	if err := f(tx); err != nil {
 		return err
 	}
 
 	return tx.Commit()
 }
 
-func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(tx *sql.Tx) (T, U, error)) (t T, u U, err error) {
+func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(tx *sql.Tx) (T, U, error)) (T, U, error) {
 	tx, err := db.db.BeginTx(ctx, nil)
 	if err != nil {
+		var t T
+		var u U
 		return t, u, err
 	}
 
 	defer func(tx *sql.Tx) {
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			err = errors.Join(err, rollbackErr)
-		}
+		_ = tx.Rollback()
 	}(tx)
 
 	result, result2, err := f(tx)
 	if err != nil {
+		var t T
+		var u U
 		return t, u, err
 	}
 
 	if err = tx.Commit(); err != nil {
+		var t T
+		var u U
 		return t, u, err
 	}
 

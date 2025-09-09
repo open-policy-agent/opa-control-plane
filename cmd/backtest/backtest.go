@@ -20,10 +20,10 @@ import (
 
 	"github.com/akedrou/textdiff"
 	"github.com/olekukonko/tablewriter"
-	"github.com/open-policy-agent/opa/v1/ast"
-	"github.com/open-policy-agent/opa/v1/bundle"
+	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
+	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
+	"github.com/open-policy-agent/opa/sdk"    // nolint:staticcheck
 	v1 "github.com/open-policy-agent/opa/v1/logging"
-	"github.com/open-policy-agent/opa/v1/sdk"
 	"github.com/spf13/cobra"
 	"github.com/styrainc/opa-control-plane/cmd"
 	"github.com/styrainc/opa-control-plane/cmd/internal/das"

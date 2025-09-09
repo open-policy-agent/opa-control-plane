@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/olekukonko/tablewriter"
-	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/open-policy-agent/opa/ast" // nolint:staticcheck
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
