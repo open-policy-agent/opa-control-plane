@@ -11,6 +11,7 @@ import (
 	"net"
 	gohttp "net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -24,7 +25,10 @@ import (
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"golang.org/x/crypto/ssh"
+	"gopkg.in/yaml.v3"
 )
+
+const configFile = "ocp.yaml"
 
 func init() {
 	// For Azure DevOps compatibility. More details: https://github.com/go-git/go-git/issues/64
@@ -70,6 +74,21 @@ func (s *Synchronizer) execute(ctx context.Context) error {
 		referenceName = plumbing.ReferenceName(*s.config.Reference)
 	}
 
+	// A configuration change may necessitate wiping an earlier clone: in particular, re-cloning
+	// is the easiest option if the repository URL has changed. For simplicity, follow the same
+	// logic with any config change.
+
+	if data, err := os.ReadFile(filepath.Join(s.path, ".git", configFile)); err == nil {
+		var config config.Git
+		if err := yaml.Unmarshal(data, &config); err != nil || !config.Equal(&s.config) {
+			if err := os.RemoveAll(s.path); err != nil {
+				return err
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
 	if _, err := os.Stat(s.path); os.IsNotExist(err) {
 		repository, err = git.PlainClone(s.path, false, &git.CloneOptions{
 			URL:               s.config.Repo,
@@ -82,6 +101,16 @@ func (s *Synchronizer) execute(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+
+		data, err := yaml.Marshal(s.config)
+		if err != nil {
+			return err
+		}
+
+		if err := os.WriteFile(filepath.Join(s.path, ".git", configFile), data, 0644); err != nil {
+			return err
+		}
+
 	} else {
 		repository, err = git.PlainOpen(s.path)
 		if err != nil {
