@@ -1178,12 +1178,17 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 			}
 		}
 
+		requirements := []string
 		for _, r := range source.Requirements {
 			if r.Source != nil {
 				if err := d.upsert(ctx, tx, "sources_requirements", []string{"source_name", "requirement_name", "gitcommit"}, []string{"source_name", "requirement_name"}, source.Name, r.Source, r.Git.Commit); err != nil {
 					return err
 				}
 			}
+			requirements = append(requirements, *r.Name)
+		}
+		if source.Requirements != nil {
+			d.deleteNotIn(ctx, tx, "sources_requirements", "source_name", source.Name, "requirement_name", requirements)
 		}
 
 		return nil
@@ -1351,6 +1356,19 @@ func (d *Database) upsert(ctx context.Context, tx *sql.Tx, table string, columns
 	}
 
 	_, err := tx.ExecContext(ctx, query, values...)
+	return err
+}
+
+func (d *Database) deleteNotIn(ctx context.Context, tx *sql.Tx, table, keyColumn string, keyValue any, column string, values []string) error {
+	var query string
+	if len(values) == 0 {
+		query = fmt.Sprintf("DELETE FROM %s WHERE %s = %s", table, keyColumn, d.arg(0))
+		_, err := tx.ExecContext(ctx, query, keyValue)
+		return err
+	}
+
+	query = fmt.Sprintf("DELETE FROM %s WHERE %s = %s AND %s NOT IN (%s)", table, keyColumn, d.arg(0), column, strings.Join(d.args(len(values)), ", "))
+	_, err := tx.ExecContext(ctx, query, keyValue, values...)
 	return err
 }
 
