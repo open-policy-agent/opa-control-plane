@@ -286,13 +286,6 @@ func TestDatabase(t *testing.T) {
 				// bootstrap operations:
 				newTestCase("load config").LoadConfig(root),
 
-				// bundle operations:
-				newTestCase("list bundles").ListBundles([]*config.Bundle{
-					root.Bundles["system1"], root.Bundles["system2"], root.Bundles["system3"],
-					root.Bundles["system4"], root.Bundles["system5"],
-				}),
-				newTestCase("get bundle system1").GetBundle("system1", root.Bundles["system1"]),
-
 				// source operations:
 				newTestCase("list sources").ListSources([]*config.Source{root.Sources["system1"], root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"]}),
 				newTestCase("get source system1").GetSource("system1", root.Sources["system1"]),
@@ -311,6 +304,44 @@ func TestDatabase(t *testing.T) {
 					"foo": []byte(`{"key":"value2"}`),
 				}),
 				newTestCase("source/delete data").SourcesDeleteData("system1", "foo").SourcesGetData("system1", "foo", nil),
+
+				// bundle operations:
+				newTestCase("list bundles").ListBundles([]*config.Bundle{
+					root.Bundles["system1"], root.Bundles["system2"], root.Bundles["system3"],
+					root.Bundles["system4"], root.Bundles["system5"],
+				}),
+				newTestCase("get bundle system1").GetBundle("system1", root.Bundles["system1"]),
+				newTestCase("put bundle requirements").BundlesPutRequirements("system6", config.Requirements{
+					config.Requirement{Source: newString("system1")},
+					config.Requirement{Source: newString("system2")},
+				}).GetBundle("system6", &config.Bundle{
+					Name: "system6",
+					Requirements: config.Requirements{
+						config.Requirement{Source: newString("system1")},
+						config.Requirement{Source: newString("system2")},
+					},
+				}),
+				newTestCase("put bundle requirements overrides").BundlesPutRequirements("system6", config.Requirements{
+					config.Requirement{Source: newString("system1")},
+					config.Requirement{Source: newString("system3")},
+				}).GetBundle("system6", &config.Bundle{
+					Name: "system6",
+					Requirements: config.Requirements{
+						config.Requirement{Source: newString("system1")},
+						config.Requirement{Source: newString("system3")},
+					},
+				}),
+				newTestCase("put bundle ignores nil requirements").BundlesPutRequirements("system6", nil).GetBundle("system6", &config.Bundle{
+					Name: "system6",
+					Requirements: config.Requirements{
+						config.Requirement{Source: newString("system1")},
+						config.Requirement{Source: newString("system3")},
+					},
+				}),
+				newTestCase("put bundle deletes requirements").BundlesPutRequirements("system6", config.Requirements{}).GetBundle("system6", &config.Bundle{
+					Name:         "system6",
+					Requirements: config.Requirements{},
+				}),
 			}
 
 			for _, test := range tests {
@@ -444,6 +475,18 @@ func (tc *testCase) ListBundles(expected []*config.Bundle) *testCase {
 
 	})
 
+	return tc
+}
+
+func (tc *testCase) BundlesPutRequirements(id string, requirements config.Requirements) *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		if err := db.UpsertBundle(ctx, "admin", &config.Bundle{
+			Name:         id,
+			Requirements: requirements,
+		}); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
 	return tc
 }
 
