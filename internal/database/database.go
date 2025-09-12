@@ -1115,6 +1115,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 			}
 		}
 
+		sources := []string{}
 		for _, req := range bundle.Requirements {
 			if req.Source != nil {
 				// TODO: add support for mounts on requirements; currently that is only used internally for stacks.
@@ -1122,6 +1123,12 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 					bundle.Name, req.Source, req.Git.Commit); err != nil {
 					return err
 				}
+				sources = append(sources, *req.Source)
+			}
+		}
+		if bundle.Requirements != nil {
+			if err := d.deleteNotIn(ctx, tx, "bundles_requirements", "bundle_name", bundle.Name, "source_name", sources); err != nil {
+				return err
 			}
 		}
 
@@ -1354,6 +1361,29 @@ func (d *Database) upsert(ctx context.Context, tx *sql.Tx, table string, columns
 	}
 
 	_, err := tx.ExecContext(ctx, query, values...)
+	return err
+}
+
+func (d *Database) deleteNotIn(ctx context.Context, tx *sql.Tx, table, keyColumn string, keyValue any, column string, values []string) error {
+	var query string
+	if len(values) == 0 {
+		query = fmt.Sprintf("DELETE FROM %s WHERE %s = %s", table, keyColumn, d.arg(0))
+		_, err := tx.ExecContext(ctx, query, keyValue)
+		return err
+	}
+
+	placeholders := make([]string, len(values))
+	for i := range values {
+		placeholders[i] = d.arg(i + 1)
+	}
+	query = fmt.Sprintf("DELETE FROM %s WHERE %s = %s AND %s NOT IN (%s)", table, keyColumn, d.arg(0), column, strings.Join(placeholders, ", "))
+
+	args := make([]interface{}, 0, 1+len(values))
+	args = append(args, keyValue)
+	for _, v := range values {
+		args = append(args, v)
+	}
+	_, err := tx.ExecContext(ctx, query, args...)
 	return err
 }
 
