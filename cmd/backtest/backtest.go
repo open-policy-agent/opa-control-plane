@@ -65,11 +65,10 @@ func init() {
 	backtest := &cobra.Command{
 		Use:   "backtest",
 		Short: "Run backtest on OPA Control Plane bundles against decisions from Styra",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(*cobra.Command, []string) {
 			opts.Output = os.Stdout
 			if err := Run(opts); err != nil {
-				fmt.Fprintln(os.Stderr, "unexpected error:", err)
-				os.Exit(1)
+				log.Fatal("unexpected error:", err)
 			}
 		},
 	}
@@ -140,10 +139,11 @@ type DecisionDiff struct {
 
 func Run(opts Options) error {
 	ctx := context.Background()
-
-	if opts.Noninteractive {
-		log = logging.NewLogger(opts.Logging)
+	lc := opts.Logging
+	if !opts.Noninteractive {
+		lc.Level = logging.LevelError
 	}
+	log = logging.NewLogger(lc)
 
 	bs, err := config.Merge(opts.ConfigFile, opts.MergeConflictFail)
 	if err != nil {

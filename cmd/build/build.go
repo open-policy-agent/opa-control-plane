@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"maps"
 	"os"
@@ -38,12 +37,13 @@ func init() {
 		Use:   "build",
 		Short: "Build and distribute configured bundles",
 		Run: func(cmd *cobra.Command, args []string) {
-			ctx := context.Background()
-
-			var log *logging.Logger
-			if params.noninteractive {
-				log = logging.NewLogger(params.logging)
+			ctx := cmd.Context()
+			lc := params.logging
+			if !params.noninteractive {
+				// interactive sessions get a nice report, so we suppress error logs
+				lc.Level = logging.LevelError
 			}
+			log := logging.NewLogger(lc)
 
 			if params.resetPersistence {
 				if err := os.RemoveAll(params.persistenceDir); err != nil {

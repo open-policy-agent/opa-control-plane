@@ -541,7 +541,7 @@ func init() {
 	migrate := &cobra.Command{
 		Use:   "migrate",
 		Short: "Migrate configuration and policies from Styra",
-		PreRun: func(cmd *cobra.Command, args []string) {
+		PreRun: func(cmd *cobra.Command, _ []string) {
 			if !cmd.Flags().Changed("prune") && params.SystemId != "" {
 				params.Prune = true
 			}
@@ -554,8 +554,7 @@ func init() {
 				params.Output = os.Stdout
 			}
 			if err := Run(params); err != nil {
-				fmt.Fprintln(os.Stderr, "unexpected error:", err)
-				os.Exit(1)
+				log.Fatal("unexpected error:", err)
 			}
 		},
 	}
@@ -659,9 +658,11 @@ func Run(params Options) error {
 		nf.AssignSafeName(lib.Name)
 	}
 
-	if params.Noninteractive {
-		log = logging.NewLogger(params.Logging)
+	lc := params.Logging
+	if !params.Noninteractive {
+		lc.Level = logging.LevelError
 	}
+	log = logging.NewLogger(lc)
 
 	if params.URL == "" {
 		return errors.New("please set Styra DAS URL with -u flag (e.g., https://example.styra.com)")

@@ -156,7 +156,7 @@ func (l *Logger) Fatalf(format string, args ...any) {
 }
 
 func VarP(cmd *cobra.Command, config *Config) {
-	var logLevels = map[Level][]string{
+	logLevels := map[Level][]string{
 		LevelDebug: {"debug"},
 		LevelInfo:  {"info"},
 		LevelWarn:  {"warn"},
