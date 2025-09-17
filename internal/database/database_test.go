@@ -2,128 +2,30 @@ package database_test
 
 import (
 	"context"
-	"log"
-	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/database"
 	"github.com/styrainc/opa-control-plane/internal/service"
+	"github.com/styrainc/opa-control-plane/internal/test/dbs"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/mysql"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
 func TestDatabase(t *testing.T) {
-	ctx := context.Background()
 
-	type Setup struct {
-		Setup    func(ctx context.Context, t *testing.T) testcontainers.Container
-		Database func(ctx context.Context, ctr testcontainers.Container) *config.Root
-	}
+	ctx := t.Context()
 
-	configs := map[string]Setup{
-		"sqlite-memory-only": {
-			Database: func(ctx context.Context, ctr testcontainers.Container) *config.Root {
-				return &config.Root{
-					Database: &config.Database{
-						SQL: &config.SQLDatabase{
-							Driver: "sqlite3",
-							DSN:    database.SQLiteMemoryOnlyDSN,
-						},
-					},
-				}
-			},
-		},
-		"sqlite-persistence": {
-			Database: func(context.Context, testcontainers.Container) *config.Root {
-				return &config.Root{
-					Database: &config.Database{
-						SQL: &config.SQLDatabase{
-							Driver: "sqlite3",
-							DSN:    filepath.Join(t.TempDir(), "test.db"),
-						},
-					},
-				}
-			},
-		},
-		"postgres": {
-			Setup: func(ctx context.Context, t *testing.T) testcontainers.Container {
-				ctr, err := postgres.Run(
-					ctx,
-					"postgres:16-alpine",
-					postgres.WithDatabase("db"),
-					postgres.WithUsername("user"),
-					postgres.WithPassword("password"),
-					postgres.BasicWaitStrategies(),
-					postgres.WithSQLDriver("pgx"),
-				)
-				if err != nil {
-					t.Fatal("failed to start postgres container:", err)
-				}
-				return ctr
-			},
-			Database: func(ctx context.Context, container testcontainers.Container) *config.Root {
-				dsn, err := container.(*postgres.PostgresContainer).ConnectionString(ctx)
-				if err != nil {
-					t.Fatalf("failed to get postgres connection string: %v", err)
-				}
-
-				return &config.Root{
-					Database: &config.Database{
-						SQL: &config.SQLDatabase{
-							Driver: "postgres",
-							DSN:    dsn,
-						},
-					},
-				}
-			},
-		},
-		"mysql": {
-			Setup: func(ctx context.Context, t *testing.T) testcontainers.Container {
-				ctr, err := mysql.Run(ctx,
-					"mysql:8.0",
-					mysql.WithDatabase("db"),
-					mysql.WithUsername("user"),
-					mysql.WithPassword("password"),
-				)
-				if err != nil {
-					t.Fatal("failed to start mysql container:", err)
-				}
-				return ctr
-			},
-			Database: func(ctx context.Context, container testcontainers.Container) *config.Root {
-				dsn, err := container.(*mysql.MySQLContainer).ConnectionString(ctx)
-				if err != nil {
-					t.Fatalf("failed to get mysql connection string: %v", err)
-				}
-
-				return &config.Root{
-					Database: &config.Database{
-						SQL: &config.SQLDatabase{
-							Driver: "mysql",
-							DSN:    dsn,
-						},
-					},
-				}
-			},
-		},
-	}
-
-	for databaseType, databaseConfig := range configs {
-		func() {
+	for databaseType, databaseConfig := range dbs.Configs(t) {
+		t.Run(databaseType, func(t *testing.T) {
+			t.Parallel()
 			var ctr testcontainers.Container
 			if databaseConfig.Setup != nil {
-				ctr = databaseConfig.Setup(ctx, t)
-				defer func() {
-					if err := testcontainers.TerminateContainer(ctr); err != nil {
-						log.Printf("failed to terminate container: %s", err)
-					}
-				}()
+				ctr = databaseConfig.Setup(t)
+				t.Cleanup(databaseConfig.Cleanup(t, ctr))
 			}
 
-			db := service.New().WithConfig(databaseConfig.Database(ctx, ctr)).Database()
+			db := service.New().WithConfig(databaseConfig.Database(t, ctr)).Database()
 			err := db.InitDB(ctx)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
@@ -135,12 +37,8 @@ func TestDatabase(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			data1 := map[string]interface{}{
-				"key": "value1",
-			}
-			data2 := map[string]interface{}{
-				"key": "value2",
-			}
+			data1 := map[string]any{"key": "value1"}
+			data2 := map[string]any{"key": "value2"}
 
 			root := config.Root{
 				Bundles: map[string]*config.Bundle{
@@ -265,7 +163,7 @@ func TestDatabase(t *testing.T) {
 				Secrets: map[string]*config.Secret{
 					"secret1": {
 						Name: "secret1",
-						Value: map[string]interface{}{
+						Value: map[string]any{
 							"type":     "password",
 							"password": "value",
 						},
@@ -345,13 +243,13 @@ func TestDatabase(t *testing.T) {
 			}
 
 			for _, test := range tests {
-				t.Run(databaseType+"/"+test.note, func(t *testing.T) {
+				t.Run(test.note, func(t *testing.T) {
 					for _, op := range test.operations {
 						op(ctx, t, db)
 					}
 				})
 			}
-		}()
+		})
 	}
 }
 
@@ -367,7 +265,7 @@ func newTestCase(note string) *testCase {
 	}
 }
 
-func (tc *testCase) SourcesGetData(srcID, dataID string, expected interface{}) *testCase {
+func (tc *testCase) SourcesGetData(srcID, dataID string, expected any) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
 		data, found, err := db.SourcesDataGet(ctx, srcID, dataID, "admin")
 		if err != nil {
@@ -414,7 +312,7 @@ func (tc *testCase) SourcesQueryData(srcID string, expected map[string][]byte) *
 	return tc
 }
 
-func (tc *testCase) SourcesPutData(srcID, dataID string, data interface{}) *testCase {
+func (tc *testCase) SourcesPutData(srcID, dataID string, data any) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
 		if err := db.SourcesDataPut(ctx, srcID, dataID, data, "admin"); err != nil {
 			t.Fatalf("expected no error, got %v", err)
