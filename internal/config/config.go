@@ -118,7 +118,7 @@ func (*Root) unmarshal(raw *Root) error {
 	}
 
 	for name, src := range raw.Sources {
-		src.Name = name
+		src.Name = &name
 		if src.Git.Credentials != nil {
 			src.Git.Credentials.value = raw.Secrets[src.Git.Credentials.Name]
 		}
@@ -144,7 +144,7 @@ func (r *Root) SortedSecrets() iter.Seq2[int, *Secret] {
 }
 
 func (r *Root) SortedSources() iter.Seq2[int, *Source] {
-	return iterator(r.Sources, func(s *Source) string { return s.Name })
+	return iterator(r.Sources, func(s *Source) string { return *s.Name })
 }
 
 // Returns sources from the configuration ordered by requirements. Cycles are
@@ -173,13 +173,14 @@ type topologicalSortSources struct {
 }
 
 func (s *topologicalSortSources) Visit(src *Source) error {
-	if _, ok := s.inprogress[src.Name]; ok {
-		return fmt.Errorf("cycle found on source %q", src.Name)
+	name := *src.Name
+	if _, ok := s.inprogress[name]; ok {
+		return fmt.Errorf("cycle found on source %q", name)
 	}
-	if _, ok := s.done[src.Name]; ok {
+	if _, ok := s.done[name]; ok {
 		return nil
 	}
-	s.inprogress[src.Name] = struct{}{}
+	s.inprogress[name] = struct{}{}
 	for _, r := range src.Requirements {
 		if r.Source != nil {
 			if other, ok := s.sources[*r.Source]; ok {
@@ -189,8 +190,8 @@ func (s *topologicalSortSources) Visit(src *Source) error {
 			}
 		}
 	}
-	s.done[src.Name] = struct{}{}
-	delete(s.inprogress, src.Name)
+	s.done[name] = struct{}{}
+	delete(s.inprogress, name)
 	s.sorted = append(s.sorted, src)
 	return nil
 }
@@ -382,7 +383,7 @@ func (s *Bundle) Equal(other *Bundle) bool {
 
 // Source defines the configuration for a OPA Control Plane Source.
 type Source struct {
-	Name          string       `json:"-" yaml:"-"`
+	Name          *string      `json:"name,omitempty" yaml:"-"`
 	Builtin       *string      `json:"builtin,omitempty" yaml:"builtin,omitempty"`
 	Git           Git          `json:"git,omitempty" yaml:"git,omitempty"`
 	Datasources   Datasources  `json:"datasources,omitempty" yaml:"datasources,omitempty"`
@@ -394,7 +395,7 @@ type Source struct {
 
 func (s *Source) Equal(other *Source) bool {
 	return fastEqual(s, other, func() bool {
-		return s.Name == other.Name &&
+		return stringPtrEqual(s.Name, other.Name) &&
 			stringPtrEqual(s.Builtin, other.Builtin) &&
 			s.Git.Equal(&other.Git) &&
 			s.Datasources.Equal(other.Datasources) &&
@@ -404,7 +405,7 @@ func (s *Source) Equal(other *Source) bool {
 }
 
 func (s *Source) Requirement() Requirement {
-	return Requirement{Source: &s.Name}
+	return Requirement{Source: s.Name}
 }
 
 func (s *Source) Files() (map[string]string, error) {
@@ -414,7 +415,7 @@ func (s *Source) Files() (map[string]string, error) {
 	for _, path := range s.Paths {
 		data, err := os.ReadFile(filepath.Join(s.Directory, path))
 		if err != nil {
-			return nil, fmt.Errorf("failed to read file %q for source %q: %w", path, s.Name, err)
+			return nil, fmt.Errorf("failed to read file %q for source %q: %w", path, *s.Name, err)
 		}
 
 		m[path] = string(data)
@@ -454,7 +455,7 @@ func (s *Source) SetDirectory(directory string) {
 type Sources []*Source
 
 func (a Sources) Equal(b Sources) bool {
-	return setEqual(a, b, func(s *Source) string { return s.Name }, func(a, b *Source) bool { return a.Equal(b) })
+	return setEqual(a, b, func(s *Source) string { return *s.Name }, func(a, b *Source) bool { return a.Equal(b) })
 }
 
 // Stack defines the configuration for a OPA Control Plane Stack.

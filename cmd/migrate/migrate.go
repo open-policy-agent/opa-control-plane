@@ -71,9 +71,13 @@ var stackTypeMapping = map[string]string{
 	"template.entitlements:1.0": "template.entitlements:1.0-stack",
 }
 
+func s(t string) *string {
+	return &t
+}
+
 var systemTypeLibraries = []*config.Source{
 	{
-		Name: "template.envoy:2.1",
+		Name: s("template.envoy:2.1"),
 		Requirements: []config.Requirement{
 			{Source: strptr("template.envoy:2.1-entrypoint-application")},
 			{Source: strptr("template.envoy:2.1-entrypoint-main")},
@@ -83,7 +87,7 @@ var systemTypeLibraries = []*config.Source{
 		},
 	},
 	{
-		Name: "template.envoy:2.0",
+		Name: s("template.envoy:2.0"),
 		Requirements: []config.Requirement{
 			{Source: strptr("template.envoy:2.0-entrypoint-application")},
 			{Source: strptr("template.envoy:2.0-entrypoint-main")},
@@ -93,7 +97,7 @@ var systemTypeLibraries = []*config.Source{
 		},
 	},
 	{
-		Name: "envoy:v1",
+		Name: s("envoy:v1"),
 		Requirements: []config.Requirement{
 			{Source: strptr("envoy:v1-entrypoint-application")},
 			{Source: strptr("envoy:v1-entrypoint-egress")},
@@ -106,7 +110,7 @@ var systemTypeLibraries = []*config.Source{
 		},
 	},
 	{
-		Name: "template.istio:1.0",
+		Name: s("template.istio:1.0"),
 		Requirements: []config.Requirement{
 			{Source: strptr("template.envoy:2.0-entrypoint-application")},
 			{Source: strptr("template.envoy:2.0-entrypoint-main")},
@@ -116,7 +120,7 @@ var systemTypeLibraries = []*config.Source{
 		},
 	},
 	{
-		Name: "template.kuma:1.0",
+		Name: s("template.kuma:1.0"),
 		Requirements: []config.Requirement{
 			{Source: strptr("template.envoy:2.0-entrypoint-application")},
 			{Source: strptr("template.envoy:2.0-entrypoint-main")},
@@ -126,14 +130,14 @@ var systemTypeLibraries = []*config.Source{
 		},
 	},
 	{
-		Name: "template.kong-gateway:1.0",
+		Name: s("template.kong-gateway:1.0"),
 		Requirements: []config.Requirement{
 			{Source: strptr("template.kong-gateway:1.0-entrypoint-main")},
 			{Source: strptr("template.kong-gateway:1.0-conflicts")},
 		},
 	},
 	{
-		Name: "kubernetes:v2",
+		Name: s("kubernetes:v2"),
 		Requirements: []config.Requirement{
 			{Source: strptr("kubernetes:v2-entrypoint-validating")},
 			{Source: strptr("kubernetes:v2-entrypoint-mutating")},
@@ -143,7 +147,7 @@ var systemTypeLibraries = []*config.Source{
 		},
 	},
 	{
-		Name: "kubernetes:v1",
+		Name: s("kubernetes:v1"),
 		Requirements: []config.Requirement{
 			{Source: strptr("kubernetes:v1-entrypoint-main")},
 			{Source: strptr("kubernetes:v2-entrypoint-log")}, // kubernetes v1 and v2 share the same log policy
@@ -151,7 +155,7 @@ var systemTypeLibraries = []*config.Source{
 		},
 	},
 	{
-		Name: "template.terraform:2.0",
+		Name: s("template.terraform:2.0"),
 		Requirements: []config.Requirement{
 			{Source: strptr("template.terraform:2.0-entrypoint-main")},
 			{Source: strptr("template.terraform:2.0-conflicts")},
@@ -159,7 +163,7 @@ var systemTypeLibraries = []*config.Source{
 		},
 	},
 	{
-		Name: "template.entitlements:1.0",
+		Name: s("template.entitlements:1.0"),
 		Requirements: []config.Requirement{
 			{Source: strptr("template.entitlements:1.0-entrypoint-main")},
 			{Source: strptr("template.entitlements:1.0-object")},
@@ -173,64 +177,64 @@ var systemTypeLibraries = []*config.Source{
 
 var stackTypeLibraries = []*config.Source{
 	{
-		Name: "template.envoy:2.1-stack",
+		Name: s("template.envoy:2.1-stack"),
 		Requirements: []config.Requirement{
 			{Source: strptr("match-v1")},
 		},
 	},
 	{
-		Name: "template.envoy:2.0-stack",
+		Name: s("template.envoy:2.0-stack"),
 		Requirements: []config.Requirement{
 			{Source: strptr("match-v1")},
 		},
 	},
 	{
-		Name: "envoy:v1-stack",
+		Name: s("envoy:v1-stack"),
 		Requirements: []config.Requirement{
 			{Source: strptr("match-v1")},
 		},
 	},
 	{
-		Name: "template.istio:1.0-stack",
+		Name: s("template.istio:1.0-stack"),
 		Requirements: []config.Requirement{
 			{Source: strptr("match-v1")},
 		},
 	},
 	{
-		Name: "template.kuma:1.0-stack",
+		Name: s("template.kuma:1.0-stack"),
 		Requirements: []config.Requirement{
 			{Source: strptr("match-v1")},
 		},
 	},
 	{
-		Name: "template.kong-gateway:1.0-stack",
+		Name: s("template.kong-gateway:1.0-stack"),
 		Requirements: []config.Requirement{
 			{Source: strptr("match-v1")},
 		},
 	},
 	{
-		Name: "kubernetes:v2-stack",
+		Name: s("kubernetes:v2-stack"),
 		Requirements: []config.Requirement{
 			{Source: strptr("kubernetes:v2-library")},
 			{Source: strptr("match-v1")},
 		},
 	},
 	{
-		Name: "kubernetes:v1-stack",
+		Name: s("kubernetes:v1-stack"),
 		Requirements: []config.Requirement{
 			{Source: strptr("kubernetes:v2-library")}, // kubernetes v1 and v2 share the same library
 			{Source: strptr("match-v1")},
 		},
 	},
 	{
-		Name: "template.terraform:2.0-stack",
+		Name: s("template.terraform:2.0-stack"),
 		Requirements: []config.Requirement{
 			{Source: strptr("template.terraform:2.0-library")},
 			{Source: strptr("match-v1")},
 		},
 	},
 	{
-		Name: "template.entitlements:1.0-stack",
+		Name: s("template.entitlements:1.0-stack"),
 		Requirements: []config.Requirement{
 			{Source: strptr("template.entitlements:1.0-library")},
 			{Source: strptr("match-v1")},
@@ -241,7 +245,7 @@ var stackTypeLibraries = []*config.Source{
 func getSystemTypeLib(t string) *config.Source {
 	name := systemTypeMapping[t]
 	for _, l := range systemTypeLibraries {
-		if l.Name == name {
+		if *l.Name == name {
 			return l
 		}
 	}
@@ -251,7 +255,7 @@ func getSystemTypeLib(t string) *config.Source {
 func getStackTypeLib(t string) *config.Source {
 	name := stackTypeMapping[t]
 	for _, l := range stackTypeLibraries {
-		if l.Name == name {
+		if *l.Name == name {
 			return l
 		}
 	}
@@ -260,151 +264,151 @@ func getStackTypeLib(t string) *config.Source {
 
 var baseLibraries = []*config.Source{
 	{
-		Name:    "template.envoy:2.1-entrypoint-application",
+		Name:    s("template.envoy:2.1-entrypoint-application"),
 		Builtin: strptr("envoy-v2.1/application"),
 	},
 	{
-		Name:    "template.envoy:2.1-entrypoint-main",
+		Name:    s("template.envoy:2.1-entrypoint-main"),
 		Builtin: strptr("envoy-v2.1/main"),
 	},
 	{
-		Name:    "template.envoy:2.1-entrypoint-authz",
+		Name:    s("template.envoy:2.1-entrypoint-authz"),
 		Builtin: strptr("envoy-v2.1/authz"),
 	},
 	{
-		Name:    "template.envoy:2.1-entrypoint-log",
+		Name:    s("template.envoy:2.1-entrypoint-log"),
 		Builtin: strptr("envoy-v2.1/log"),
 	},
 	{
-		Name:    "template.envoy:2.1-conflicts",
+		Name:    s("template.envoy:2.1-conflicts"),
 		Builtin: strptr("envoy-v2.1/conflicts"),
 	},
 	{
-		Name:    "template.envoy:2.0-entrypoint-application",
+		Name:    s("template.envoy:2.0-entrypoint-application"),
 		Builtin: strptr("envoy-v2.0/application"),
 	},
 	{
-		Name:    "template.envoy:2.0-entrypoint-main",
+		Name:    s("template.envoy:2.0-entrypoint-main"),
 		Builtin: strptr("envoy-v2.0/main"),
 	},
 	{
-		Name:    "template.envoy:2.0-entrypoint-authz",
+		Name:    s("template.envoy:2.0-entrypoint-authz"),
 		Builtin: strptr("envoy-v2.0/authz"),
 	},
 	{
-		Name:    "template.envoy:2.0-entrypoint-log",
+		Name:    s("template.envoy:2.0-entrypoint-log"),
 		Builtin: strptr("envoy-v2.0/log"),
 	},
 	{
-		Name:    "template.envoy:2.0-conflicts",
+		Name:    s("template.envoy:2.0-conflicts"),
 		Builtin: strptr("envoy-v2.0/conflicts"),
 	},
 	{
-		Name:    "envoy:v1-entrypoint-application",
+		Name:    s("envoy:v1-entrypoint-application"),
 		Builtin: strptr("envoy-v1/application"),
 	},
 	{
-		Name:    "envoy:v1-entrypoint-egress",
+		Name:    s("envoy:v1-entrypoint-egress"),
 		Builtin: strptr("envoy-v1/egress"),
 	},
 	{
-		Name:    "envoy:v1-entrypoint-ingress",
+		Name:    s("envoy:v1-entrypoint-ingress"),
 		Builtin: strptr("envoy-v1/ingress"),
 	},
 	{
-		Name:    "envoy:v1-entrypoint-resolver",
+		Name:    s("envoy:v1-entrypoint-resolver"),
 		Builtin: strptr("envoy-v1/resolver"),
 	},
 	{
-		Name:    "envoy:v1-entrypoint-inject",
+		Name:    s("envoy:v1-entrypoint-inject"),
 		Builtin: strptr("envoy-v1/inject"),
 	},
 	{
-		Name:    "envoy:v1-entrypoint-log",
+		Name:    s("envoy:v1-entrypoint-log"),
 		Builtin: strptr("envoy-v1/log"),
 	},
 	{
-		Name:    "envoy:v1-conflicts",
+		Name:    s("envoy:v1-conflicts"),
 		Builtin: strptr("envoy-v1/conflicts"),
 	},
 	{
-		Name:    "envoy:v1-injection",
+		Name:    s("envoy:v1-injection"),
 		Builtin: strptr("envoy-v1/injection"),
 	},
 	{
-		Name:    "template.kong-gateway:1.0-entrypoint-main",
+		Name:    s("template.kong-gateway:1.0-entrypoint-main"),
 		Builtin: strptr("kong-gateway-v1/main"),
 	},
 	{
-		Name:    "template.kong-gateway:1.0-conflicts",
+		Name:    s("template.kong-gateway:1.0-conflicts"),
 		Builtin: strptr("kong-gateway-v1/conflicts"),
 	},
 	{
-		Name:    "kubernetes:v2-entrypoint-validating",
+		Name:    s("kubernetes:v2-entrypoint-validating"),
 		Builtin: strptr("kubernetes-v2/validating"),
 	},
 	{
-		Name:    "kubernetes:v2-entrypoint-mutating",
+		Name:    s("kubernetes:v2-entrypoint-mutating"),
 		Builtin: strptr("kubernetes-v2/mutating"),
 	},
 	{
-		Name:    "kubernetes:v2-entrypoint-log",
+		Name:    s("kubernetes:v2-entrypoint-log"),
 		Builtin: strptr("kubernetes-v2/log"),
 	},
 	{
-		Name:    "kubernetes:v2-conflicts",
+		Name:    s("kubernetes:v2-conflicts"),
 		Builtin: strptr("kubernetes-v2/conflicts"),
 	},
 	{
-		Name:    "kubernetes:v2-library",
+		Name:    s("kubernetes:v2-library"),
 		Builtin: strptr("kubernetes-v2/library"),
 	},
 	{
-		Name:    "kubernetes:v1-entrypoint-main",
+		Name:    s("kubernetes:v1-entrypoint-main"),
 		Builtin: strptr("kubernetes-v1/main"),
 	},
 	{
-		Name:    "kubernetes:v1-conflicts",
+		Name:    s("kubernetes:v1-conflicts"),
 		Builtin: strptr("kubernetes-v1/conflicts"),
 	},
 	{
-		Name:    "template.terraform:2.0-entrypoint-main",
+		Name:    s("template.terraform:2.0-entrypoint-main"),
 		Builtin: strptr("terraform-v2.0/main"),
 	},
 	{
-		Name:    "template.terraform:2.0-conflicts",
+		Name:    s("template.terraform:2.0-conflicts"),
 		Builtin: strptr("terraform-v2.0/conflicts"),
 	},
 	{
-		Name:    "template.terraform:2.0-library",
+		Name:    s("template.terraform:2.0-library"),
 		Builtin: strptr("terraform-v2.0/library"),
 	},
 	{
-		Name:    "template.entitlements:1.0-completions",
+		Name:    s("template.entitlements:1.0-completions"),
 		Builtin: strptr("entitlements-v1/completions"),
 	},
 	{
-		Name:    "template.entitlements:1.0-transform",
+		Name:    s("template.entitlements:1.0-transform"),
 		Builtin: strptr("entitlements-v1/transform"),
 	},
 	{
-		Name:    "template.entitlements:1.0-object",
+		Name:    s("template.entitlements:1.0-object"),
 		Builtin: strptr("entitlements-v1/object"),
 	},
 	{
-		Name:    "template.entitlements:1.0-library",
+		Name:    s("template.entitlements:1.0-library"),
 		Builtin: strptr("entitlements-v1/library"),
 	},
 	{
-		Name:    "template.entitlements:1.0-conflicts",
+		Name:    s("template.entitlements:1.0-conflicts"),
 		Builtin: strptr("entitlements-v1/conflicts"),
 	},
 	{
-		Name:    "template.entitlements:1.0-entrypoint-main",
+		Name:    s("template.entitlements:1.0-entrypoint-main"),
 		Builtin: strptr("entitlements-v1/main"),
 	},
 	{
-		Name:    "match-v1",
+		Name:    s("match-v1"),
 		Builtin: strptr("match-v1"),
 	},
 }
@@ -412,7 +416,8 @@ var baseLibraries = []*config.Source{
 var baseLibFiles = func() map[string]map[string]string {
 	result := make(map[string]map[string]string)
 	for _, bi := range baseLibraries {
-		result[bi.Name] = make(map[string]string)
+		name := *bi.Name
+		result[name] = make(map[string]string)
 		_ = fs.WalkDir(libraries.FS, *bi.Builtin, func(file string, fi fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -425,7 +430,7 @@ var baseLibFiles = func() map[string]map[string]string {
 				return err
 			}
 			path := strings.TrimPrefix(file, *bi.Builtin)
-			result[bi.Name][path] = string(bs)
+			result[name][path] = string(bs)
 			return nil
 		})
 	}
@@ -434,7 +439,7 @@ var baseLibFiles = func() map[string]map[string]string {
 
 func getBaseLib(r config.Requirement) *config.Source {
 	for _, l := range baseLibraries {
-		if l.Name == *r.Source {
+		if *l.Name == *r.Source {
 			return l
 		}
 	}
@@ -471,12 +476,12 @@ var baseLibPackageIndex = func() map[string]*libraryPackageIndex {
 				if err != nil {
 					return err
 				}
-				index, ok := result[lib.Name]
+				index, ok := result[*lib.Name]
 				if !ok {
 					index = newLibraryPackageIndex()
-					result[lib.Name] = index
+					result[*lib.Name] = index
 				}
-				index.Add(ptr, bi.Name)
+				index.Add(ptr, *bi.Name)
 				return nil
 			})
 			if err != nil {
@@ -495,17 +500,17 @@ var baseLibPackageIndex = func() map[string]*libraryPackageIndex {
 
 func isTypeLibrary(t string) bool {
 	for _, src := range systemTypeLibraries {
-		if src.Name == t {
+		if *src.Name == t {
 			return true
 		}
 	}
 	for _, src := range stackTypeLibraries {
-		if src.Name == t {
+		if *src.Name == t {
 			return true
 		}
 	}
 	for _, src := range baseLibraries {
-		if src.Name == t {
+		if *src.Name == t {
 			return true
 		}
 	}
@@ -656,7 +661,7 @@ func Run(params Options) error {
 
 	// Register default names that may conflict with tenant assigned names.
 	for _, lib := range systemTypeLibraries {
-		nf.AssignSafeName(lib.Name)
+		nf.AssignSafeName(*lib.Name)
 	}
 
 	if params.Noninteractive {
@@ -724,10 +729,10 @@ func Run(params Options) error {
 		}
 
 		for path, content := range srcFiles {
-			files[filepath.Join(append([]string{"sources", src.Name}, filepath.SplitList(path)...)...)] = content
+			files[filepath.Join(append([]string{"sources", *src.Name}, filepath.SplitList(path)...)...)] = content
 
 			if !params.EmbedFiles && params.FilesPath != "" {
-				src.SetDirectory(filepath.Join(params.FilesPath, "sources", src.Name))
+				src.SetDirectory(filepath.Join(params.FilesPath, "sources", *src.Name))
 				src.SetPath(path)
 			}
 		}
@@ -894,7 +899,7 @@ func Run(params Options) error {
 				if _, ok := sourceFileNames[name]; ok {
 					var msgs []string
 					pruned := slices.ContainsFunc(removedSources, func(x *config.Source) bool {
-						return x.Name == name
+						return *x.Name == name
 					})
 					if pruned {
 						msgs = append(msgs, "Library is not used by any systems, stacks, or other libraries")
@@ -951,18 +956,18 @@ func migrateLibraries(params Options, state *dasState, c *das.Client, nf *nameFa
 			return nil, err
 		}
 
-		output.Sources[sc.Name] = sc
+		output.Sources[*sc.Name] = sc
 		for _, s := range secrets {
 			output.Secrets[s.Name] = s
 			hasSecrets[id] = struct{}{}
 		}
 
 		for _, ds := range library.Datasources {
-			index.Add(ds.Id, sc.Name)
+			index.Add(ds.Id, *sc.Name)
 		}
 
 		for _, p := range state.LibraryPolicies[id] {
-			index.Add(p.Package, sc.Name)
+			index.Add(p.Package, *sc.Name)
 		}
 
 		bar.Add(1)
@@ -973,17 +978,17 @@ func migrateLibraries(params Options, state *dasState, c *das.Client, nf *nameFa
 
 	for _, bi := range systemTypeLibraries {
 		cpy := *bi
-		output.Sources[bi.Name] = &cpy
+		output.Sources[*bi.Name] = &cpy
 	}
 
 	for _, bi := range stackTypeLibraries {
 		cpy := *bi
-		output.Sources[bi.Name] = &cpy
+		output.Sources[*bi.Name] = &cpy
 	}
 
 	for _, bi := range baseLibraries {
 		cpy := *bi
-		output.Sources[bi.Name] = &cpy
+		output.Sources[*bi.Name] = &cpy
 	}
 
 	return index, nil
@@ -998,7 +1003,7 @@ func migrateSystems(params Options, state *dasState, c *das.Client, nf *nameFact
 		if err != nil {
 			systemErrors[system.Id] = err
 		} else {
-			output.Sources[src.Name] = src
+			output.Sources[*src.Name] = src
 			output.Bundles[b.Name] = b
 			for _, s := range secrets {
 				output.Secrets[s.Name] = s
@@ -1024,7 +1029,7 @@ func migrateStacks(params Options, state *dasState, c *das.Client, nf *nameFacto
 		}
 
 		output.Stacks[sc.Name] = sc
-		output.Sources[src.Name] = src
+		output.Sources[*src.Name] = src
 
 		for _, s := range secrets {
 			output.Secrets[s.Name] = s
@@ -1149,7 +1154,7 @@ func splitConfig(outputDir string, output config.Root) (map[string][]byte, map[s
 		}
 
 		if len(files) > 0 {
-			cpy := &config.Source{Name: name}
+			cpy := &config.Source{Name: &name}
 			cpy.SetEmbeddedFiles(files)
 			testFiles[name] = cpy
 			original.SetEmbeddedFiles(nil)
@@ -1200,7 +1205,8 @@ func migrateV1Library(nf *nameFactory, client *das.Client, state *dasState, v1 *
 
 func mapV1LibraryToSourceAndSecretConfig(nf *nameFactory, client *das.Client, v1 *das.V1Library, datasources bool) (*config.Source, []*config.Secret, error) {
 
-	src := &config.Source{Name: nf.AssignSafeName(v1.Id)}
+	n := nf.AssignSafeName(v1.Id)
+	src := &config.Source{Name: &n}
 	var secrets []*config.Secret
 
 	_, origin := getLibraryGitOrigin(v1)
@@ -1455,8 +1461,8 @@ func mapV1SystemToBundleSourceAndSecretConfig(nf *nameFactory, _ *das.Client, v1
 	var src config.Source
 
 	bundle.Name = v1.SanitizedName()
-	src.Name = nf.AssignSafeName(v1.SanitizedName())
-	bundle.Requirements = append(bundle.Requirements, config.Requirement{Source: strptr(src.Name)})
+	src.Name = strptr(nf.AssignSafeName(v1.SanitizedName()))
+	bundle.Requirements = append(bundle.Requirements, config.Requirement{Source: src.Name})
 
 	var secret *config.Secret
 	if v1.SourceControl != nil {
@@ -1480,7 +1486,7 @@ func migrateV1Policies(typeLib *config.Source, nsPrefix string, policies []*das.
 				// If type lib provided file is Git backed then add it to the
 				// exclude list automatically. We assume the user has taken
 				// ownership of it.
-				baseLibs := baseLibPackageIndex[typeLib.Name].Lookup(pkg)
+				baseLibs := baseLibPackageIndex[*typeLib.Name].Lookup(pkg)
 				for name := range baseLibs {
 					excludeLibs[name] = struct{}{}
 				}
@@ -1498,7 +1504,7 @@ func migrateV1Policies(typeLib *config.Source, nsPrefix string, policies []*das.
 				// If the type lib provided file is non-Git backed then check if the
 				// file content is the same. If not, add it to the exclude list because
 				// the user has changed it.
-				baseLibs := baseLibPackageIndex[typeLib.Name].Lookup(pkg)
+				baseLibs := baseLibPackageIndex[*typeLib.Name].Lookup(pkg)
 				libFiles := make(map[string]string)
 				for name := range baseLibs {
 					for path, str := range baseLibFiles[name] {
@@ -1563,7 +1569,7 @@ func migrateV1Stack(nf *nameFactory, c *das.Client, state *dasState, v1 *das.V1S
 		return nil, nil, nil, err
 	}
 
-	stack.Requirements = append(stack.Requirements, config.Requirement{Source: &src.Name})
+	stack.Requirements = append(stack.Requirements, config.Requirement{Source: src.Name})
 
 	gitRoots, err := getStackGitRoots(c, state.FeatureFlags.SBOM, v1)
 	if err != nil {
@@ -1605,7 +1611,7 @@ func migrateV1Stack(nf *nameFactory, c *das.Client, state *dasState, v1 *das.V1S
 
 func mapV1StackToSourceAndSecretConfig(nf *nameFactory, client *das.Client, v1 *das.V1Stack, migrateDSContent bool) (*config.Source, []*config.Secret, error) {
 
-	src := &config.Source{Name: nf.AssignSafeName(v1.SanitizedName())}
+	src := &config.Source{Name: strptr(nf.AssignSafeName(v1.SanitizedName()))}
 	var secrets []*config.Secret
 
 	if len(v1.Datasources) > 0 {
@@ -2012,21 +2018,21 @@ func pruneConfig(root *config.Root, doPrune bool) ([]*config.Stack, []*config.So
 	for _, src := range root.Sources {
 		for _, r := range src.Requirements {
 			if r.Source != nil {
-				g[*r.Source] = append(g[*r.Source], node{name: src.Name, lib: true})
+				g[*r.Source] = append(g[*r.Source], node{name: *src.Name, lib: true})
 			}
 		}
 	}
 
 	for _, src := range root.Sources {
 		var found bool
-		g.DFS(src.Name, func(n node) {
+		g.DFS(*src.Name, func(n node) {
 			if !n.lib {
 				found = true
 			}
 		})
 		if !found {
 			if doPrune {
-				delete(root.Sources, src.Name)
+				delete(root.Sources, *src.Name)
 			}
 			removedSources = append(removedSources, src)
 		}

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/gorilla/mux"
 	"github.com/testcontainers/testcontainers-go"
 
@@ -51,7 +52,7 @@ func TestServerSourcesData(t *testing.T) {
 				body       string
 				apikey     string
 				statusCode int
-				result     string
+				result     any
 			}{
 				{
 					name:       "Create source",
@@ -60,7 +61,7 @@ func TestServerSourcesData(t *testing.T) {
 					body:       `{}`,
 					apikey:     adminKey,
 					statusCode: 200,
-					result:     "{}\n",
+					result:     map[string]any{},
 				},
 				{
 					name:       "GET",
@@ -69,7 +70,7 @@ func TestServerSourcesData(t *testing.T) {
 					body:       "",
 					apikey:     adminKey,
 					statusCode: 200,
-					result:     "{}\n",
+					result:     map[string]any{},
 				},
 				{
 					name:       "PUT",
@@ -78,7 +79,7 @@ func TestServerSourcesData(t *testing.T) {
 					body:       `{"key": "value"}`,
 					apikey:     adminKey,
 					statusCode: 200,
-					result:     "{}\n",
+					result:     map[string]any{},
 				},
 				{
 					name:       "GET after PUT",
@@ -87,8 +88,18 @@ func TestServerSourcesData(t *testing.T) {
 					body:       "",
 					apikey:     adminKey,
 					statusCode: 200,
-					result: `{"result":{"key":"value"}}
-`,
+					result:     map[string]any{"result": map[string]any{"key": "value"}},
+				},
+				{
+					name:       "GET all sources after PUT",
+					method:     "GET",
+					path:       "/v1/sources",
+					body:       "",
+					apikey:     adminKey,
+					statusCode: 200,
+					result: map[string]any{"result": []any{
+						map[string]any{"git": map[string]any{"repo": ""}, "name": "system1"},
+					}},
 				},
 				{
 					name:       "POST",
@@ -97,7 +108,7 @@ func TestServerSourcesData(t *testing.T) {
 					body:       `{"key": "value2"}`,
 					apikey:     adminKey,
 					statusCode: 200,
-					result:     "{}\n",
+					result:     map[string]any{},
 				},
 				{
 					name:       "GET after POST",
@@ -106,8 +117,7 @@ func TestServerSourcesData(t *testing.T) {
 					body:       "",
 					apikey:     adminKey,
 					statusCode: 200,
-					result: `{"result":{"key":"value2"}}
-`,
+					result:     map[string]any{"result": map[string]any{"key": "value2"}},
 				},
 				{
 					name:       "DELETE",
@@ -116,7 +126,7 @@ func TestServerSourcesData(t *testing.T) {
 					body:       "",
 					apikey:     adminKey,
 					statusCode: 200,
-					result:     "{}\n",
+					result:     map[string]any{},
 				},
 				{
 					name:       "GET after DELETE",
@@ -125,16 +135,16 @@ func TestServerSourcesData(t *testing.T) {
 					body:       "",
 					apikey:     adminKey,
 					statusCode: 200,
-					result:     "{}\n",
+					result:     map[string]any{},
 				},
 			}
-
 			for _, test := range tests {
 				t.Run(test.name, func(t *testing.T) {
 					tr := ts.Request(test.method, test.path, test.body, test.apikey).ExpectStatus(test.statusCode)
 
-					if tr.Body().String() != test.result {
-						t.Fatalf("expected body %q, got %q", test.result, tr.Body().String())
+					exp, act := test.result, tr.BodyDecoded()
+					if diff := cmp.Diff(exp, act); diff != "" {
+						t.Fatal("unexpected body (-want, +got)", diff)
 					}
 				})
 			}
@@ -252,26 +262,44 @@ func TestServerSourceOwners(t *testing.T) {
 
 			ts.Request("PUT", "/v1/sources/testsrc", `{"datasources": [{"name": "ds"}]}`, ownerKey).ExpectStatus(200)
 
-			var ownerList types.SourcesListResponseV1
-			ts.Request("GET", "/v1/sources", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
-			if len(ownerList.Result) != 1 {
-				t.Fatal("expected exactly one source")
+			{
+				var ownerList types.SourcesListResponseV1
+				ts.Request("GET", "/v1/sources", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
+				if len(ownerList.Result) != 1 {
+					t.Fatal("expected exactly one source")
+				}
+				name := "testsrc"
+				exp := &config.Source{
+					Name: &name,
+					Datasources: []config.Datasource{
+						{Name: "ds"},
+					},
+				}
+				if !ownerList.Result[0].Equal(exp) {
+					t.Fatalf("unexpected response, expected %v, got %v", exp, ownerList.Result[0])
+				}
 			}
 
-			var src types.SourcesGetResponseV1
-			ts.Request("GET", "/v1/sources/testsrc", "", ownerKey).ExpectStatus(200).ExpectBody(&src)
-			if !src.Result.Equal(&config.Source{
-				Datasources: []config.Datasource{
-					{Name: "ds"},
-				},
-			}) {
-				t.Fatal("expected source to be populated")
+			{
+				var src types.SourcesGetResponseV1
+				ts.Request("GET", "/v1/sources/testsrc", "", ownerKey).ExpectStatus(200).ExpectBody(&src)
+				exp := &config.Source{
+					Datasources: []config.Datasource{
+						{Name: "ds"},
+					},
+				}
+				act := src.Result
+				if diff := cmp.Diff(exp, act); diff != "" {
+					t.Fatal("unexpected source (-want,+got)", diff)
+				}
 			}
 
-			var ownerList2 types.SourcesListResponseV1
-			ts.Request("GET", "/v1/sources", "", ownerKey2).ExpectStatus(200).ExpectBody(&ownerList2)
-			if len(ownerList2.Result) != 0 {
-				t.Fatal("did not expect to see source")
+			{
+				var ownerList2 types.SourcesListResponseV1
+				ts.Request("GET", "/v1/sources", "", ownerKey2).ExpectStatus(200).ExpectBody(&ownerList2)
+				if len(ownerList2.Result) != 0 {
+					t.Fatal("did not expect to see source")
+				}
 			}
 
 			ts.Request("PUT", "/v1/sources/testsrc", "{}", ownerKey2).ExpectStatus(403)
@@ -484,6 +512,14 @@ func (tr *testResponse) Body() *bytes.Buffer {
 	return tr.w.Body
 }
 
+func (tr *testResponse) BodyDecoded() any {
+	var v any
+	if err := newJSONDecoder(tr.w.Body).Decode(&v); err != nil {
+		panic(err)
+	}
+	return v
+}
+
 func (tr *testResponse) ExpectStatus(code int) *testResponse {
 	tr.ts.t.Helper()
 	if tr.w.Code != code {
@@ -493,7 +529,8 @@ func (tr *testResponse) ExpectStatus(code int) *testResponse {
 	return tr
 }
 
-func (tr *testResponse) ExpectBody(x interface{}) *testResponse {
+func (tr *testResponse) ExpectBody(x any) *testResponse {
+
 	tr.ts.t.Helper()
 	if err := newJSONDecoder(tr.w.Body).Decode(x); err != nil {
 		tr.ts.t.Log("body:", tr.w.Body.String())

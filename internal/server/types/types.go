@@ -21,7 +21,7 @@ type HealthResponse struct {
 }
 
 type SourcesGetDataResponseV1 struct {
-	Result *interface{} `json:"result,omitempty"`
+	Result *any `json:"result,omitempty"`
 }
 
 type SourcesListResponseV1 struct {

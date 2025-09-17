@@ -12,7 +12,8 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/open-policy-agent/opa/server/writer"
+	"github.com/open-policy-agent/opa/v1/server/writer"
+
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/database"
 	"github.com/styrainc/opa-control-plane/internal/server/types"
@@ -183,9 +184,9 @@ func (s *Server) v1SourcesPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if src.Name == "" {
-		src.Name = name
-	} else if src.Name != name {
+	if src.Name == nil {
+		src.Name = &name
+	} else if *src.Name != name {
 		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, errors.New("source name must match path"))
 		return
 	}
@@ -215,6 +216,7 @@ func (s *Server) v1SourcesGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	src.Name = nil // omit name
 	resp := types.SourcesGetResponseV1{Result: src}
 	JSONOK(w, resp, pretty(r))
 }

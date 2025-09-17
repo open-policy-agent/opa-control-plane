@@ -769,7 +769,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			src, exists := srcMap[row.sourceName]
 			if !exists {
 				src = &config.Source{
-					Name:    row.sourceName,
+					Name:    &row.sourceName,
 					Builtin: row.builtin,
 					Git: config.Git{
 						Repo: row.repo,
@@ -861,7 +861,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 
 		sl := slices.Collect(maps.Values(srcMap))
 		sort.Slice(sl, func(i, j int) bool {
-			return idMap[sl[i].Name] < idMap[sl[j].Name]
+			return idMap[*sl[i].Name] < idMap[*sl[j].Name]
 		})
 
 		var nextCursor string
@@ -1138,7 +1138,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 
 func (d *Database) UpsertSource(ctx context.Context, principal string, source *config.Source) error {
 	return tx1(ctx, d, func(tx *sql.Tx) error {
-		if err := d.prepareUpsert(ctx, tx, principal, "sources", source.Name, "sources.create", "sources.manage"); err != nil {
+		if err := d.prepareUpsert(ctx, tx, principal, "sources", *source.Name, "sources.create", "sources.manage"); err != nil {
 			return err
 		}
 
@@ -1378,7 +1378,7 @@ func (d *Database) deleteNotIn(ctx context.Context, tx *sql.Tx, table, keyColumn
 	}
 	query = fmt.Sprintf("DELETE FROM %s WHERE %s = %s AND %s NOT IN (%s)", table, keyColumn, d.arg(0), column, strings.Join(placeholders, ", "))
 
-	args := make([]interface{}, 0, 1+len(values))
+	args := make([]any, 0, 1+len(values))
 	args = append(args, keyValue)
 	for _, v := range values {
 		args = append(args, v)
