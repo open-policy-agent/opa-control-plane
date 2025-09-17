@@ -235,7 +235,7 @@ func TestTopoSortSources(t *testing.T) {
 	}
 
 	for i := range exp {
-		if exp[i] != *sorted[i].Name {
+		if exp[i] != sorted[i].Name {
 			t.Fatalf("expected %v but got %v", exp, sorted)
 		}
 	}

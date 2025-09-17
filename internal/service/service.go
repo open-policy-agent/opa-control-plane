@@ -233,7 +233,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 	sourceDefsByName := make(map[string]*config.Source)
 	for _, src := range sourceDefs {
-		sourceDefsByName[*src.Name] = src
+		sourceDefsByName[src.Name] = src
 	}
 
 	stacks, _, err := s.database.ListStacks(ctx, internalPrincipal, database.ListOptions{})
@@ -309,14 +309,13 @@ func (s *Service) launchWorkers(ctx context.Context) {
 		bundleDir := path.Join(s.persistenceDir, md5sum(b.Name))
 
 		for _, dep := range deps {
-			name := *dep.Name
-			srcDir := path.Join(bundleDir, "sources", name)
+			srcDir := path.Join(bundleDir, "sources", dep.Name)
 
-			src := newSource(name).
+			src := newSource(dep.Name).
 				SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, path.Join(srcDir, "builtin")).
-				SyncSourceSQL(&syncs, name, &s.database, path.Join(srcDir, "database")).
+				SyncSourceSQL(&syncs, dep.Name, &s.database, path.Join(srcDir, "database")).
 				SyncDatasources(&syncs, dep.Datasources, path.Join(srcDir, "datasources")).
-				SyncGit(&syncs, name, dep.Git, path.Join(srcDir, "repo"), overrides[name]).
+				SyncGit(&syncs, dep.Name, dep.Git, path.Join(srcDir, "repo"), overrides[dep.Name]).
 				AddRequirements(dep.Requirements)
 
 			sources = append(sources, &src.Source)

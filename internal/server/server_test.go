@@ -268,9 +268,8 @@ func TestServerSourceOwners(t *testing.T) {
 				if len(ownerList.Result) != 1 {
 					t.Fatal("expected exactly one source")
 				}
-				name := "testsrc"
 				exp := &config.Source{
-					Name: &name,
+					Name: "testsrc",
 					Datasources: []config.Datasource{
 						{Name: "ds"},
 					},
@@ -284,6 +283,7 @@ func TestServerSourceOwners(t *testing.T) {
 				var src types.SourcesGetResponseV1
 				ts.Request("GET", "/v1/sources/testsrc", "", ownerKey).ExpectStatus(200).ExpectBody(&src)
 				exp := &config.Source{
+					Name: "testsrc",
 					Datasources: []config.Datasource{
 						{Name: "ds"},
 					},
