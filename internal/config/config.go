@@ -232,7 +232,7 @@ func (r *Root) Validate() error {
 
 // Bundle defines the configuration for a OPA Control Plane Bundle.
 type Bundle struct {
-	Name          string        `json:"-" yaml:"-"`
+	Name          string        `json:"name" yaml:"-"`
 	Labels        Labels        `json:"labels,omitempty" yaml:"labels,omitempty"`
 	ObjectStorage ObjectStorage `json:"object_storage,omitempty" yaml:"object_storage,omitempty"`
 	Requirements  Requirements  `json:"requirements,omitempty" yaml:"requirements,omitempty"`

@@ -183,16 +183,8 @@ func TestServerBundleOwners(t *testing.T) {
 		}
 	}`, ownerKey).ExpectStatus(200)
 
-			var ownerList types.BundlesListResponseV1
-			ts.Request("GET", "/v1/bundles", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
-			if len(ownerList.Result) != 1 {
-				t.Fatal("expected exactly one bundle")
-			}
-
-			var bundle types.BundlesGetResponseV1
-			ts.Request("GET", "/v1/bundles/testbundle", "", ownerKey).ExpectStatus(200).ExpectBody(&bundle)
-
-			if !bundle.Result.Equal(&config.Bundle{
+			exp := &config.Bundle{
+				Name: "testbundle",
 				ObjectStorage: config.ObjectStorage{
 					AmazonS3: &config.AmazonS3{
 						Region: "us-east-1",
@@ -200,14 +192,35 @@ func TestServerBundleOwners(t *testing.T) {
 						Key:    "test-key",
 					},
 				},
-			}) {
-				t.Fatal("expected bundle to be populated")
 			}
 
-			var ownerList2 types.SourcesListResponseV1
-			ts.Request("GET", "/v1/bundles", "", ownerKey2).ExpectStatus(200).ExpectBody(&ownerList2)
-			if len(ownerList2.Result) != 0 {
-				t.Fatal("did not expect to see source")
+			{
+				var ownerList types.BundlesListResponseV1
+				ts.Request("GET", "/v1/bundles", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
+				if len(ownerList.Result) != 1 {
+					t.Fatal("expected exactly one bundle")
+				}
+				act := ownerList.Result[0]
+				if diff := cmp.Diff(exp, act); diff != "" {
+					t.Fatal("unexpected response (-want,+got)", diff)
+				}
+			}
+
+			{
+				var bundle types.BundlesGetResponseV1
+				ts.Request("GET", "/v1/bundles/testbundle", "", ownerKey).ExpectStatus(200).ExpectBody(&bundle)
+				act := bundle.Result
+				if diff := cmp.Diff(exp, act); diff != "" {
+					t.Fatal("unexpected response (-want,+got)", diff)
+				}
+			}
+
+			{
+				var ownerList2 types.SourcesListResponseV1
+				ts.Request("GET", "/v1/bundles", "", ownerKey2).ExpectStatus(200).ExpectBody(&ownerList2)
+				if len(ownerList2.Result) != 0 {
+					t.Fatal("did not expect to see bundle")
+				}
 			}
 
 			ts.Request("PUT", "/v1/bundles/testbundle", "{}", ownerKey2).ExpectStatus(403)
