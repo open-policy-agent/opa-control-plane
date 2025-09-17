@@ -438,10 +438,8 @@ func (s *Source) SetEmbeddedFiles(files map[string]string) {
 }
 
 func (s *Source) SetPath(path string) {
-	for _, p := range s.Paths {
-		if p == path {
-			return
-		}
+	if slices.Contains(s.Paths, path) {
+		return
 	}
 
 	s.Paths = append(s.Paths, path)
@@ -459,7 +457,7 @@ func (a Sources) Equal(b Sources) bool {
 
 // Stack defines the configuration for a OPA Control Plane Stack.
 type Stack struct {
-	Name            string       `json:"-" yaml:"-"`
+	Name            string       `json:"name" yaml:"-"`
 	Selector        Selector     `json:"selector" yaml:"selector"` // Schema validation overrides Selector to object of string array values.
 	ExcludeSelector *Selector    `json:"exclude_selector,omitempty" yaml:"exclude_selector,omitempty"`
 	Requirements    Requirements `json:"requirements,omitempty" yaml:"requirements,omitempty"`

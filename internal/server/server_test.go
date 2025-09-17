@@ -345,20 +345,42 @@ func TestServerStackOwners(t *testing.T) {
 
 			ts.Request("PUT", "/v1/stacks/teststack", `{}`, ownerKey).ExpectStatus(200)
 
-			var ownerList types.StacksListResponseV1
-			ts.Request("GET", "/v1/stacks", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
-			if len(ownerList.Result) != 1 {
-				t.Fatal("expected exactly one stack")
+			{
+				var ownerList types.StacksListResponseV1
+				ts.Request("GET", "/v1/stacks", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
+				if len(ownerList.Result) != 1 {
+					t.Fatal("expected exactly one stack")
+				}
+				act := ownerList.Result[0]
+				exp := &config.Stack{
+					Name:     "teststack",
+					Selector: config.MustNewSelector(nil),
+				}
+				if diff := cmp.Diff(exp, act); diff != "" {
+					t.Fatal("unexpected stack (-want,+got)", diff)
+				}
 			}
 
-			ts.Request("GET", "/v1/stacks/teststack", "", ownerKey).ExpectStatus(200)
-
-			var ownerList2 types.StacksListResponseV1
-			ts.Request("GET", "/v1/stacks", "", ownerKey2).ExpectStatus(200).ExpectBody(&ownerList2)
-			if len(ownerList2.Result) != 0 {
-				t.Fatal("did not expect to see stack")
+			{
+				var ownerGetOne types.StacksGetResponseV1
+				ts.Request("GET", "/v1/stacks/teststack", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerGetOne)
+				act := ownerGetOne.Result
+				exp := &config.Stack{
+					Name:     "teststack",
+					Selector: config.MustNewSelector(nil),
+				}
+				if diff := cmp.Diff(exp, act); diff != "" {
+					t.Fatal("unexpected stack (-want,+got)", diff)
+				}
 			}
 
+			{
+				var ownerList2 types.StacksListResponseV1
+				ts.Request("GET", "/v1/stacks", "", ownerKey2).ExpectStatus(200).ExpectBody(&ownerList2)
+				if len(ownerList2.Result) != 0 {
+					t.Fatal("did not expect to see stack")
+				}
+			}
 			ts.Request("PUT", "/v1/stacks/teststack", `{}`, ownerKey2).ExpectStatus(403)
 			ts.Request("GET", "/v1/stacks/teststack", "", ownerKey2).ExpectStatus(404)
 			ts.Request("PUT", "/v1/stacks/teststack", `{}`, ownerKey).ExpectStatus(200)
