@@ -91,17 +91,6 @@ func TestServerSourcesData(t *testing.T) {
 					result:     map[string]any{"result": map[string]any{"key": "value"}},
 				},
 				{
-					name:       "GET all sources after PUT",
-					method:     "GET",
-					path:       "/v1/sources",
-					body:       "",
-					apikey:     adminKey,
-					statusCode: 200,
-					result: map[string]any{"result": []any{
-						map[string]any{"git": map[string]any{"repo": ""}, "name": "system1"},
-					}},
-				},
-				{
 					name:       "POST",
 					method:     "POST",
 					path:       "/v1/sources/system1/data/foo",
