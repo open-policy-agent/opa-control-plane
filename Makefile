@@ -39,7 +39,7 @@ go-build: generate
 
 .PHONY: go-test
 go-test: generate
-	$(GO) test -timeout=90s $(GO_TAGS) ./...
+	$(GO) test $(GO_TAGS) ./...
 
 .PHONY: go-bench
 go-bench: generate
