@@ -10,7 +10,6 @@ jobs:
   tests:
     name: Run Tests
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -18,7 +17,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.24 # Adjust the Go version as needed
+          go-version-file: go.mod
 
       - name: Run Makefile target `go-test`
         run: make go-test
@@ -28,6 +27,44 @@ jobs:
 
       - name: Run Makefile target `library-test`
         run: make library-test
+
+  e2e:
+    runs-on: ${{ matrix.run }}
+    strategy:
+      fail-fast: false
+      matrix:
+        run:
+        - windows-latest
+        - ubuntu-latest
+        - macos-latest
+    steps:
+      - name: tweak git config for long file names
+        run: git config --system core.longpaths true
+        if: matrix.run == 'windows-latest'
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: install testscript
+        run: go install github.com/rogpeppe/go-internal/cmd/testscript@latest
+      - name: build
+        run: make build
+      - if: runner.os == 'Windows'
+        name: fix windows exe ending
+        run: find . -name 'opactl_*' -exec mv {} {}.exe \;
+        shell: bash
+      - name: e2e
+        run: |
+          set -euo pipefail
+          matches=(opactl_*)
+          export OPACTL="$(pwd)/${matches[0]}"
+          echo "Using OPACTL: $OPACTL" # Debugging
+          $OPACTL version
+          find e2e -type f -name '*.txtar' -print0 \
+            | xargs -0 -I{} testscript -v -e OPACTL {}
+        shell: bash
 
   deploy-edge:
     name: Push Edge Release

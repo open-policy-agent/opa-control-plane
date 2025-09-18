@@ -408,7 +408,7 @@ func (s *Source) Requirement() Requirement {
 }
 
 func (s *Source) Files() (map[string]string, error) {
-	m := make(map[string]string)
+	m := make(map[string]string, len(s.EmbeddedFiles))
 	maps.Copy(m, s.EmbeddedFiles)
 
 	for _, path := range s.Paths {
