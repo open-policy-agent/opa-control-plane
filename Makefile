@@ -145,12 +145,11 @@ CI_GOLANG_DOCKER_MAKE := $(DOCKER) run \
         -e GOCACHE=/src/.go/cache \
         -e CGO_ENABLED=$(CGO_ENABLED) \
 		-e GOARCH=$(GOARCH) \
-        golang:$(GOVERSION) \
-		make
+        golang:$(GOVERSION)
 
 .PHONY: ci-go-%
 ci-go-%:
-	$(CI_GOLANG_DOCKER_MAKE) "$*"
+	$(CI_GOLANG_DOCKER_MAKE) /bin/bash -c "git config --global --add safe.directory /src && make $*"
 
 .PHONY: clean
 clean:

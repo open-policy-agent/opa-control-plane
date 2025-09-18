@@ -31,6 +31,7 @@ jobs:
 
   deploy-edge:
     name: Push Edge Release
+    if: github.ref == 'refs/heads/main' # only true for pushes to `main`
     runs-on: ubuntu-latest
 
     steps:
