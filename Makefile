@@ -1,7 +1,16 @@
 CGO_ENABLED ?= 0
 GOFLAGS ?= "-buildmode=exe"
 GO := CGO_ENABLED=$(CGO_ENABLED) GOFLAGS="$(GOFLAGS)" go
+
+VERSION := $(shell ./build/get-build-version.sh)
+
 DOCKER := docker
+
+DOCKER_UID ?= 0
+DOCKER_GID ?= 0
+
+REPOSITORY ?= openpolicyagent
+IMAGE := $(REPOSITORY)/opa-control-plane
 
 GOARCH := $(shell go env GOARCH)
 GOOS := $(shell go env GOOS)
@@ -9,6 +18,12 @@ GOOS := $(shell go env GOOS)
 GO_TAGS := -tags=
 
 BIN := opactl_$(GOOS)_$(GOARCH)
+
+ifeq ($(shell tty > /dev/null && echo 1 || echo 0), 1)
+DOCKER_FLAGS := --rm -it
+else
+DOCKER_FLAGS := --rm
+endif
 
 LDFLAGS := ""
 
@@ -20,6 +35,15 @@ DOCKER_RUNNING ?= $(shell docker ps >/dev/null 2>&1 && echo 1 || echo 0)
 VCS := $(shell git rev-parse --short HEAD)$(shell test -n "$(shell git status --porcelain)" && echo -dirty)
 GOVERSION := $(shell awk '/^go /{print $$2; exit}' go.mod)
 
+# Supported platforms to include in image manifest lists
+DOCKER_PLATFORMS := linux/amd64,linux/arm64
+
+######################################################
+#
+# Development targets
+#
+######################################################
+
 .PHONY: all
 all: build test
 
@@ -29,6 +53,10 @@ generate:
 
 .PHONY: build
 build: go-build
+
+.PHONY: build-linux
+build-linux:
+	@$(MAKE) build GOOS=linux CGO_ENABLED=0
 
 .PHONY: test
 test: go-test go-bench library-test authz-test
@@ -49,6 +77,52 @@ go-bench: generate
 go-e2e-migrate-test: generate
 	$(GO) test -tags=migration_e2e ./e2e -v -run '^TestMigration/'
 
+.PHONY: ci-build-linux
+ci-build-linux:
+	$(MAKE) ci-go-build-linux GOARCH=arm64
+	$(MAKE) ci-go-build-linux GOARCH=amd64
+
+.PHONY: docker-login
+docker-login:
+	@echo "Docker Login..."
+	@echo ${DOCKER_PASSWORD} | $(DOCKER) login -u ${DOCKER_USER} --password-stdin
+
+.PHONY: image
+image:
+	@$(MAKE) ci-go-build-linux
+	@$(MAKE) image-quick
+
+.PHONY: image-quick
+image-quick: image-quick-$(GOARCH)
+
+.PHONY: image-quick-%
+image-quick-%:
+	$(DOCKER) build \
+			-t $(IMAGE):$(VERSION) \
+			--build-arg BASE=chainguard/static:latest \
+			--platform=linux/$(GOARCH) \
+			-f Dockerfile \
+			.
+
+.PHONY: push-manifest-list-%
+push-manifest-list-%:
+	$(DOCKER) buildx build \
+		--platform=$(DOCKER_PLATFORMS) \
+		--push \
+		-t $(IMAGE):$* \
+		--build-arg BASE=chainguard/static:latest \
+		-f Dockerfile \
+		.
+
+.PHONY: push-image
+push-image: docker-login push-manifest-list-$(VERSION)
+
+.PHONY: deploy-ci
+deploy-ci: docker-login ci-build-linux push-manifest-list-$(VERSION) push-manifest-list-edge
+
+.PHONY: release-ci
+release-ci: docker-login ci-build-linux push-manifest-list-$(VERSION) push-manifest-list-latest
+
 .PHONY: libary-test
 library-test:
 	make -C libraries/entitlements-v1 test
@@ -61,6 +135,22 @@ library-test:
 .PHONY: authz-test
 authz-test:
 	$(GO) run github.com/open-policy-agent/opa test -b ./internal/authz
+
+
+CI_GOLANG_DOCKER_MAKE := $(DOCKER) run \
+        $(DOCKER_FLAGS) \
+        -u $(DOCKER_UID):$(DOCKER_GID) \
+        -v $(PWD):/src \
+        -w /src \
+        -e GOCACHE=/src/.go/cache \
+        -e CGO_ENABLED=$(CGO_ENABLED) \
+		-e GOARCH=$(GOARCH) \
+        golang:$(GOVERSION) \
+		make
+
+.PHONY: ci-go-%
+ci-go-%:
+	$(CI_GOLANG_DOCKER_MAKE) "$*"
 
 .PHONY: clean
 clean:

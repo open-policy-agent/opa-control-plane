@@ -12,3 +12,4 @@ bundles/
 data
 opactl_*
 files
+.go

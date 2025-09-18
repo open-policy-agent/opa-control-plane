@@ -8,6 +8,7 @@ on:
 
 jobs:
   tests:
+    name: Run Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -27,3 +28,24 @@ jobs:
 
       - name: Run Makefile target `library-test`
         run: make library-test
+
+  deploy-edge:
+    name: Push Edge Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      - name: Build and Push
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_USER }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        # Only run if required secrets are provided
+        if: ${{ env.DOCKER_USER && env.DOCKER_PASSWORD }}
+        run: make deploy-ci
