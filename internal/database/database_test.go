@@ -202,6 +202,37 @@ func TestDatabase(t *testing.T) {
 					"foo": []byte(`{"key":"value2"}`),
 				}),
 				newTestCase("source/delete data").SourcesDeleteData("system1", "foo").SourcesGetData("system1", "foo", nil),
+				newTestCase("source/put requirements").SourcesPutRequirements("system1", config.Requirements{
+					config.Requirement{Source: newString("system2")},
+					config.Requirement{Source: newString("system3")},
+				}).GetSource("system1", &config.Source{
+					Name: "system1",
+					Requirements: config.Requirements{
+						config.Requirement{Source: newString("system2")},
+						config.Requirement{Source: newString("system3")},
+					},
+				}),
+				newTestCase("source/put requirements overrides").SourcesPutRequirements("system1", config.Requirements{
+					config.Requirement{Source: newString("system3")},
+					config.Requirement{Source: newString("system4")},
+				}).GetSource("system1", &config.Source{
+					Name: "system1",
+					Requirements: config.Requirements{
+						config.Requirement{Source: newString("system3")},
+						config.Requirement{Source: newString("system4")},
+					},
+				}),
+				newTestCase("source/put nil requirements").SourcesPutRequirements("system1", nil).GetSource("system1", &config.Source{
+					Name: "system1",
+					Requirements: config.Requirements{
+						config.Requirement{Source: newString("system3")},
+						config.Requirement{Source: newString("system4")},
+					},
+				}),
+				newTestCase("source/put delete requirements").SourcesPutRequirements("system1", config.Requirements{}).GetSource("system1", &config.Source{
+					Name:         "system1",
+					Requirements: config.Requirements{},
+				}),
 
 				// bundle operations:
 				newTestCase("list bundles").ListBundles([]*config.Bundle{
@@ -324,6 +355,18 @@ func (tc *testCase) SourcesPutData(srcID, dataID string, data any) *testCase {
 func (tc *testCase) SourcesDeleteData(srcID, dataID string) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
 		if err := db.SourcesDataDelete(ctx, srcID, dataID, "admin"); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+	return tc
+}
+
+func (tc *testCase) SourcesPutRequirements(id string, requirements config.Requirements) *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		if err := db.UpsertSource(ctx, "admin", &config.Source{
+			Name:         id,
+			Requirements: requirements,
+		}); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})

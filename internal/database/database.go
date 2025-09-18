@@ -1164,6 +1164,8 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 			}
 		}
 
+		// Upsert data sources
+
 		for _, datasource := range source.Datasources {
 			bs, err := json.Marshal(datasource.Config)
 			if err != nil {
@@ -1177,6 +1179,8 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 			}
 		}
 
+		// Upsert files
+
 		files, err := source.Files()
 		if err != nil {
 			return err
@@ -1188,11 +1192,21 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 			}
 		}
 
+		// Upsert requirements
+
+		var sources []string
 		for _, r := range source.Requirements {
 			if r.Source != nil {
 				if err := d.upsert(ctx, tx, "sources_requirements", []string{"source_name", "requirement_name", "gitcommit"}, []string{"source_name", "requirement_name"}, source.Name, r.Source, r.Git.Commit); err != nil {
 					return err
 				}
+				sources = append(sources, *r.Source)
+			}
+		}
+
+		if source.Requirements != nil {
+			if err := d.deleteNotIn(ctx, tx, "sources_requirements", "source_name", source.Name, "requirement_name", sources); err != nil {
+				return err
 			}
 		}
 
