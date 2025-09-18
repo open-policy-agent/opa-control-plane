@@ -8,7 +8,7 @@ import (
 	"github.com/gobwas/glob"
 )
 
-var _ fs.FS = &FilterFS{}
+var _ fs.FS = (*FilterFS)(nil)
 
 type FilterFS struct {
 	fs       fs.FS
@@ -48,7 +48,7 @@ func NewFilterFS(fs fs.FS, include []string, exclude []string) (*FilterFS, error
 }
 
 func (f *FilterFS) Open(name string) (fs.File, error) {
-	sname := filepath.Clean(filepath.ToSlash(name))
+	sname := filepath.ToSlash(filepath.Clean(name))
 
 	if isExcluded(f.excluded, name) {
 		return nil, &fs.PathError{
@@ -58,7 +58,7 @@ func (f *FilterFS) Open(name string) (fs.File, error) {
 		}
 	}
 
-	file, err := f.fs.Open(name)
+	file, err := f.fs.Open(sname)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (f *FilterFS) Open(name string) (fs.File, error) {
 		return &filteredDir{d: dir, path: sname, included: f.included, excluded: f.excluded}, nil
 	}
 
-	if !isIncluded(f.included, name) {
+	if !isIncluded(f.included, sname) {
 		return nil, &fs.PathError{
 			Op:   "open",
 			Path: name,
@@ -86,7 +86,7 @@ func (d *filteredDir) ReadDir(n int) ([]fs.DirEntry, error) {
 
 	var filtered []fs.DirEntry
 	for _, entry := range entries {
-		path := filepath.Join(d.path, entry.Name())
+		path := filepath.ToSlash(filepath.Join(d.path, entry.Name())) // Join calls Clean
 		if !isExcluded(d.excluded, path) {
 			if !entry.IsDir() && !isIncluded(d.included, path) {
 				continue

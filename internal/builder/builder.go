@@ -226,16 +226,16 @@ func (b *Builder) Build(ctx context.Context) error {
 		fses = append(fses, fs)
 	}
 
-	fs, err := util.NewFilterFS(merged_fs.MergeMultiple(fses...), nil, b.excluded)
+	ufs, err := util.NewFilterFS(merged_fs.MergeMultiple(fses...), nil, b.excluded)
 	if err != nil {
 		return err
 	}
 
 	c := compile.New().
-		WithFS(fs).
+		WithFS(ufs).
 		WithPaths(".")
 	if err := c.Build(ctx); err != nil {
-		return err
+		return fmt.Errorf("build: %w", err)
 	}
 
 	result := c.Bundle()
