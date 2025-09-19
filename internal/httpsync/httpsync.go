@@ -56,7 +56,7 @@ func (s *HttpDataSynchronizer) Execute(ctx context.Context) error {
 	return err
 }
 
-func (*HttpDataSynchronizer) Close(_ context.Context) {
+func (*HttpDataSynchronizer) Close(context.Context) {
 	// No resources to close for HTTP synchronizer
 }
 
@@ -81,7 +81,8 @@ func (s *HttpDataSynchronizer) setHeaders(ctx context.Context, req *http.Request
 		req.SetBasicAuth(value.Username, value.Password)
 	case config.SecretTokenAuth:
 		req.Header.Set("Authorization", "Bearer "+value.Token)
+	default:
+		return fmt.Errorf("unsupported authentication type: %T", value)
 	}
-
-	return fmt.Errorf("unsupported authentication type: %T", value)
+	return nil
 }
