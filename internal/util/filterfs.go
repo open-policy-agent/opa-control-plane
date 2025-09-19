@@ -111,14 +111,14 @@ func (d *filteredDir) Read(bs []byte) (int, error) {
 }
 
 func isExcluded(excluded []glob.Glob, name string) bool {
-	name = filepath.Clean(name)
+	name = filepath.ToSlash(filepath.Clean(name))
 	return slices.ContainsFunc(excluded, func(g glob.Glob) bool {
 		return g.Match(name)
 	})
 }
 
 func isIncluded(included []glob.Glob, name string) bool {
-	name = filepath.Clean(name)
+	name = filepath.ToSlash(filepath.Clean(name))
 	return len(included) == 0 || slices.ContainsFunc(included, func(g glob.Glob) bool {
 		return g.Match(name)
 	})
