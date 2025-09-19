@@ -47,8 +47,6 @@ jobs:
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
-      - name: install testscript
-        run: go install github.com/rogpeppe/go-internal/cmd/testscript@latest
       - name: build
         run: make build
       - if: runner.os == 'Windows'
@@ -62,8 +60,7 @@ jobs:
           export OPACTL="$(pwd)/${matches[0]}"
           echo "Using OPACTL: $OPACTL" # Debugging
           $OPACTL version
-          find e2e -type f -name '*.txtar' -print0 \
-            | xargs -0 -I{} testscript -v -e OPACTL {}
+          go test -tags=e2e ./e2e/... -v
         shell: bash
 
   deploy-edge:
