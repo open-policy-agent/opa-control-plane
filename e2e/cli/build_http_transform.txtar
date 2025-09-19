@@ -1,0 +1,64 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/hello-world/bundle.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/hello-world/bundle.tar.gz /data.json
+cmp data.json exp/data.json
+
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: http-with-transform
+    excluded_files:
+    - transform.rego
+sources:
+  http-with-transform:
+    datasources:
+    - type: http
+      name: hello
+      path: headers
+      transform_query: data.transform.rule
+      config:
+        url: http://127.0.0.1:9991/headers
+      credentials: api-token
+    - type: http
+      name: world
+      path: basicauth
+      transform_query: data.transform.rule
+      config:
+        url: http://127.0.0.1:9991/headers
+      credentials: basic-auth
+    directory: aux/
+    paths:
+    - transform.rego
+secrets:
+  api-token:
+    type: token_auth
+    token: open sesame
+  basic-auth:
+    type: basic_auth
+    username: user001
+    password: letmein
+-- aux/transform.rego --
+package transform
+import rego.v1
+rule := [a, b] if {
+  some a, b
+  [_, a, b] = split(input.Authorization[0], " ")
+}
+rule := [u, p] if {
+  [_, enc] = split(input.Authorization[0], " ")
+  [u, p]:= split(base64.decode(enc), ":")
+}
+-- exp/tarball --
+/data.json
+/.manifest
+-- exp/data.json --
+{"basicauth":["user001","letmein"],"headers":["open","sesame"]}

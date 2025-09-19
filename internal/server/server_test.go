@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/gorilla/mux"
+	"github.com/open-policy-agent/opa/v1/util"
 	"github.com/testcontainers/testcontainers-go"
 
 	"github.com/styrainc/opa-control-plane/internal/config"
@@ -307,6 +308,136 @@ func TestServerSourceOwners(t *testing.T) {
 			ts.Request("PUT", "/v1/sources/testsrc", "{}", ownerKey2).ExpectStatus(403)
 			ts.Request("GET", "/v1/sources/testsrc", "", ownerKey2).ExpectStatus(404)
 			ts.Request("PUT", "/v1/sources/testsrc", "{}", ownerKey).ExpectStatus(200)
+		})
+	}
+}
+
+func TestSourcesDatasourcesSecrets(t *testing.T) {
+	ctx := t.Context()
+	for databaseType, databaseConfig := range dbs.Configs(t) {
+		t.Run(databaseType, func(t *testing.T) {
+			t.Parallel()
+			var ctr testcontainers.Container
+			if databaseConfig.Setup != nil {
+				ctr = databaseConfig.Setup(t)
+				t.Cleanup(databaseConfig.Cleanup(t, ctr))
+			}
+
+			db := (&database.Database{}).WithConfig(databaseConfig.Database(t, ctr).Database)
+			db = initTestDB(t, db)
+
+			ts := initTestServer(t, db)
+			defer ts.Close()
+
+			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "internal", Role: "administrator"}); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := db.UpsertSecret(ctx, "internal", &config.Secret{
+				Name:  "creds-for-api",
+				Value: map[string]any{"type": "token_auth", "token": "box"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			const ownerKey = "test-owner-key"
+
+			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+				t.Fatal(err)
+			}
+
+			src := map[string]any{
+				"datasources": []any{
+					map[string]any{
+						"name":            "testds",
+						"path":            "ds",
+						"transform_query": "input",
+						"type":            "http",
+						"config": map[string]any{
+							"url": "https://api.ipa.pai/pia",
+						},
+						"credentials": "creds-for-api",
+					},
+				},
+			}
+			payload := util.MustMarshalJSON(src)
+			ts.Request("PUT", "/v1/sources/testsrc", string(payload), ownerKey).ExpectStatus(200)
+
+			exp := &config.Source{
+				Name: "testsrc",
+				Datasources: []config.Datasource{
+					{
+						Name:           "testds",
+						Path:           "ds",
+						Type:           "http",
+						TransformQuery: "input",
+						Config: map[string]any{
+							"url": "https://api.ipa.pai/pia",
+						},
+						Credentials: &config.SecretRef{Name: "creds-for-api"},
+					},
+				},
+			}
+
+			{ // GET /v1/sources
+				var ownerList types.SourcesListResponseV1
+				ts.Request("GET", "/v1/sources", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
+				if len(ownerList.Result) != 1 {
+					t.Fatal("expected exactly one source")
+				}
+				act := ownerList.Result[0]
+				if diff := cmp.Diff(exp, act); diff != "" {
+					t.Fatal("unexpected response, (-want, +got)", diff)
+				}
+			}
+
+			{ // GET /v1/sources/testsrc
+				var src types.SourcesGetResponseV1
+				ts.Request("GET", "/v1/sources/testsrc", "", ownerKey).ExpectStatus(200).ExpectBody(&src)
+				act := src.Result
+				if diff := cmp.Diff(exp, act); diff != "" {
+					t.Fatal("unexpected source (-want,+got)", diff)
+				}
+			}
+
+			{ // PUT source with datasource w/o credentials (ensure it's optional)
+				src := map[string]any{
+					"datasources": []any{
+						map[string]any{
+							"name": "testds",
+							"path": "ds",
+							"type": "http",
+							"config": map[string]any{
+								"url": "https://api.ipa.pai/pia",
+							},
+						},
+					},
+				}
+				payload := util.MustMarshalJSON(src)
+				ts.Request("PUT", "/v1/sources/testsrc", string(payload), ownerKey).ExpectStatus(200)
+			}
+
+			{ // GET /v1/sources/testsource (ensure the credential ref is gone)
+				var src types.SourcesGetResponseV1
+				ts.Request("GET", "/v1/sources/testsrc", "", ownerKey).ExpectStatus(200).ExpectBody(&src)
+				act := src.Result
+				exp := &config.Source{
+					Name: "testsrc",
+					Datasources: []config.Datasource{
+						{
+							Name: "testds",
+							Path: "ds",
+							Type: "http",
+							Config: map[string]any{
+								"url": "https://api.ipa.pai/pia",
+							},
+						},
+					},
+				}
+				if diff := cmp.Diff(exp, act); diff != "" {
+					t.Fatal("unexpected source (-want,+got)", diff)
+				}
+			}
 		})
 	}
 }

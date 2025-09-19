@@ -826,9 +826,13 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 		sources_datasources.path,
 		sources_datasources.type,
 		sources_datasources.config,
-		sources_datasources.transform_query
+		sources_datasources.transform_query,
+	    sources_datasources.secret_name,
+	    secrets.value AS secret_value
 	FROM
 		sources_datasources
+	LEFT JOIN
+		secrets ON sources_datasources.secret_name = secrets.name
 	`)
 		if err != nil {
 			return nil, "", err
@@ -838,7 +842,8 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 
 		for rows2.Next() {
 			var name, source_name, path, type_, configuration, transformQuery string
-			if err := rows2.Scan(&name, &source_name, &path, &type_, &configuration, &transformQuery); err != nil {
+			var secretName, secretValue sql.NullString
+			if err := rows2.Scan(&name, &source_name, &path, &type_, &configuration, &transformQuery, &secretName, &secretValue); err != nil {
 				return nil, "", err
 			}
 
@@ -851,6 +856,14 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 
 			if err := json.Unmarshal([]byte(configuration), &datasource.Config); err != nil {
 				return nil, "", err
+			}
+
+			if secretName.Valid && secretValue.Valid {
+				s := config.Secret{Name: secretName.String}
+				if err := json.Unmarshal([]byte(secretValue.String), &s.Value); err != nil {
+					return nil, "", err
+				}
+				datasource.Credentials = s.Ref()
 			}
 
 			src, ok := srcMap[source_name]
@@ -1172,9 +1185,13 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 				return err
 			}
 
-			if err := d.upsert(ctx, tx, "sources_datasources", []string{"source_name", "name", "type", "path", "config", "transform_query"},
+			var secret sql.NullString
+			if datasource.Credentials != nil {
+				secret.String, secret.Valid = datasource.Credentials.Name, true
+			}
+			if err := d.upsert(ctx, tx, "sources_datasources", []string{"source_name", "name", "type", "path", "config", "transform_query", "secret_name"},
 				[]string{"source_name", "name"},
-				source.Name, datasource.Name, datasource.Type, datasource.Path, string(bs), datasource.TransformQuery); err != nil {
+				source.Name, datasource.Name, datasource.Type, datasource.Path, string(bs), datasource.TransformQuery, secret); err != nil {
 				return err
 			}
 		}

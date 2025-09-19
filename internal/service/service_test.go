@@ -16,7 +16,7 @@ import (
 
 func TestUnconfiguredSecretHandling(t *testing.T) {
 
-	bs := []byte(fmt.Sprintf(`{
+	bs := fmt.Appendf(nil, `{
 		bundles: {
 			test_bundle: {
 				object_storage: {
@@ -41,7 +41,7 @@ func TestUnconfiguredSecretHandling(t *testing.T) {
 		secrets: {
 			test_creds: {}  # not configured
 		}
-	}`, filepath.Join(t.TempDir(), "bundles")))
+	}`, filepath.Join(t.TempDir(), "bundles"))
 
 	report := oneshot(t, bs, t.TempDir()).Report()
 	status := report.Bundles["test_bundle"]

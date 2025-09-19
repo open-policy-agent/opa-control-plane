@@ -78,13 +78,6 @@ var schema = []sqlTable{
 		PrimaryKey("source_name", "secret_name").
 		ForeignKey("source_name", "sources(name)").
 		ForeignKey("secret_name", "secrets(name)"),
-	createSQLTable("sources_secrets").
-		VarCharNonNullColumn("source_name").
-		VarCharNonNullColumn("secret_name").
-		TextNonNullColumn("ref_type").
-		PrimaryKey("source_name", "secret_name").
-		ForeignKey("source_name", "sources(name)").
-		ForeignKey("secret_name", "secrets(name)"),
 	createSQLTable("sources_data").
 		VarCharNonNullColumn("source_name").
 		VarCharNonNullColumn("path").
@@ -94,11 +87,13 @@ var schema = []sqlTable{
 	createSQLTable("sources_datasources").
 		VarCharNonNullColumn("name").
 		VarCharNonNullColumn("source_name").
+		VarCharColumn("secret_name").
 		TextNonNullColumn("type").
 		TextNonNullColumn("path").
 		TextNonNullColumn("config").
 		TextNonNullColumn("transform_query").
 		PrimaryKey("source_name", "name").
+		ForeignKey("secret_name", "secrets(name)").
 		ForeignKey("source_name", "sources(name)"),
 	createSQLTable("principals").
 		VarCharPrimaryKeyColumn("id").
@@ -250,6 +245,11 @@ func (t sqlTable) TextNonNullUniqueColumn(name string) sqlTable {
 
 func (t sqlTable) VarCharNonNullUniqueColumn(name string) sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlVarChar{}, NotNull: true, Unique: true})
+	return t
+}
+
+func (t sqlTable) VarCharColumn(name string) sqlTable {
+	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlVarChar{}})
 	return t
 }
 
