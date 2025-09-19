@@ -11,9 +11,7 @@ import (
 	"github.com/styrainc/opa-control-plane/cmd"
 )
 
-var (
-	version = "0.0.0-dev"
-)
+var Version = "0.1.0-dev"
 
 func init() {
 	version := &cobra.Command{
@@ -58,7 +56,7 @@ func generateCmdOutput(out io.Writer) {
 		binVcs += "-dirty"
 	}
 
-	fmt.Fprintln(out, "Version: "+version)
+	fmt.Fprintln(out, "Version: "+Version)
 	fmt.Fprintln(out, "Build Commit: "+binVcs)
 	fmt.Fprintln(out, "Build Timestamp: "+binTimestamp)
 	fmt.Fprintln(out, "Build Hostname: "+hostname)
