@@ -104,99 +104,31 @@ You can also try changing the policy in `./files/sources/hello-world/rules/rules
 
 ## Installation
 
-### Download the OCP Binary
+### Running with Docker
 
-The OCP binary can be downloaded directly. After downloading, make the binary executable and verify it works by running the version command.
+If you start OCP outside of Docker without any arguments, it prints a list of available commands. By default, the official
+OCP Docker image executes the `run` command. Some of the arguments for OCP's `run` command are:
 
-#### macOS \- Apple silicon (ARM)
+- `--addr` to set the listening address (default: `localhost:8282`).
+- `--log-level` to set the log level (default: `"info"`).
 
-```shell
-curl -L -o opactl https://openpolicyagent.org/downloads/latest/opactl_darwin_arm64_static
-chmod +x opactl
-./opactl version
+OCP Docker images are available on Docker Hub for the edge releases (ie. tip of `main` branch). To get more information
+on the other `run` command arguments:
+
+```bash
+docker run openpolicyagent/opa-control-plane:edge run --help
 ```
 
-#### macOS \- Intel-based
+### Build from source
 
-```shell
-curl -L -o opactl https://openpolicyagent.org/downloads/latest/opactl_darwin_amd64
-chmod +x opactl
-./opactl version
-```
-
-#### Linux/Unix \- amd64
-
-```shell
-curl -L -o opactl https://openpolicyagent.org/downloads/latest/opactl_linux_amd64
-chmod +x opactl
-./opactl version
-```
-
-#### Linux/Unix \- arm64
-
-```shell
-curl -L -o opactl https://openpolicyagent.org/downloads/latest/opactl_linux_arm64_static
-chmod +x opactl
-./opactl version
-```
-
-#### Windows \- via Powershell
-
-```shell
-Invoke-WebRequest -Uri "https://openpolicyagent.org/downloads/latest/opactl_windows_amd64.exe" -OutFile "opactl.exe"
-.\opactl.exe version
-```
-
-#### Windows \- via Curl
-
-```shell
-curl -L -o opactl.exe https://openpolicyagent.org/downloads/latest/opactl_windows_amd64.exe
-.\opactl.exe version
-```
-
-#### Docker image {#docker-image}
-
-OCP Docker images are available on Docker Hub.
-
-```shell
-openpolicyagent/opactl
-```
-
-### Adding opactl to PATH (Optional)
-
-For easier usage, you can move the binary to a directory in your PATH:
-
-**macOS/Linux:**
-
-```shell
-# Move to /usr/local/bin (requires sudo)
-sudo mv opactl /usr/local/bin/
-
-# Or move to a user directory (create if it doesn't exist)
-mkdir -p ~/bin
-mv opactl ~/bin/
-export PATH="$HOME/bin:$PATH"  # Add to ~/.bashrc or ~/.zshrc for persistence
-```
-
-**Windows:**
-
-```shell
-# Move to a directory in your PATH or add current directory to PATH
-move opactl.exe C:\Windows\System32\
-```
-
-After adding to PATH, you can run `opactl version` from anywhere.
-
-## Build from source
-
-To build the OCP binary locally run the following command from the root folder.
+To build the OCP binary, locally run the following command from the root folder.
 You will need to have a recent version of Go installed.
 
 ```shell
 make build
 ```
 
-The binary will be created in the form `opactl_<OS>_<ARCH>` (e.g., `opactl_darwin_amd64`, `opactl_linux_amd64`).
+The binary will be created in the form `opactl_<OS>_<ARCH>` (e.g., `opactl_darwin_arm64`, `opactl_linux_amd64`).
 
 **Verify the build:**
 
