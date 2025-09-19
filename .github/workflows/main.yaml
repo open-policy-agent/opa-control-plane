@@ -62,6 +62,8 @@ jobs:
           $OPACTL version
           go test -tags=e2e ./e2e/... -v
         shell: bash
+        env:
+          E2E_CONTRIB_DEPLOY_KEY: ${{ secrets.E2E_CONTRIB_DEPLOY_KEY }}
 
   deploy-edge:
     name: Push Edge Release
