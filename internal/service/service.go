@@ -298,9 +298,9 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			sort.Strings(sorted)
 			var extra string
 			if len(sorted) > 1 {
-				extra = " (along with %d other sources)"
+				extra = fmt.Sprintf(" (along with %d other sources)", len(sorted)-1)
 			}
-			failures[b.Name] = Status{State: BuildStateConfigError, Message: fmt.Sprintf("requirements on %q conflict%v", sorted[0], extra)}
+			failures[b.Name] = Status{State: BuildStateConfigError, Message: fmt.Sprintf("requirements on %q conflict%s", sorted[0], extra)}
 			continue
 		}
 

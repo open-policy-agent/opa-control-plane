@@ -6,6 +6,7 @@
 package cli
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"strings"
@@ -15,10 +16,11 @@ import (
 )
 
 func TestScript(t *testing.T) {
+	opactl := cmp.Or(os.Getenv("OPACTL"), "opactl")
 	testscript.Run(t, testscript.Params{
 		Dir: ".",
 		Setup: func(e *testscript.Env) error {
-			e.Vars = append(e.Vars, "OPACTL="+os.Getenv("OPACTL"))
+			e.Vars = append(e.Vars, "OPACTL="+opactl)
 			for _, kv := range os.Environ() {
 				if strings.HasPrefix(kv, "E2E_") {
 					e.Vars = append(e.Vars, kv)

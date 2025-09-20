@@ -1,0 +1,45 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --non-interactive --log-level debug
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/hello-world/bundle.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/hello-world/bundle.tar.gz /data.json
+cmp data.json exp/data.json
+
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: http-with-transform
+    excluded_files:
+    - transform.rego
+sources:
+  http-with-transform:
+    datasources:
+    - type: http
+      name: hello
+      path: github
+      transform_query: data.transform.rule
+      config:
+        url: https://api.github.com/repos/open-policy-agent/opa/releases/tags/v1.8.0
+      credentials: github-token # NOTE(sr): There's no easy way to tell that this had an effect
+    directory: aux/
+    paths:
+    - transform.rego
+secrets:
+  github-token:
+    type: token_auth
+    token: ${E2E_GITHUB_TOKEN}
+-- aux/transform.rego --
+package transform
+rule.created := input.created_at
+-- exp/tarball --
+/data.json
+/.manifest
+-- exp/data.json --
+{"github":{"created":"2025-08-28T14:49:47Z"}}
