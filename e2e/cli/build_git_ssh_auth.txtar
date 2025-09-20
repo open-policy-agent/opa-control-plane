@@ -1,0 +1,45 @@
+[!env:E2E_CONTRIB_DEPLOY_KEY] stop 'E2E_CONTRIB_DEPLOY_KEY not set, skipping'
+
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/hello-world/bundle.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/hello-world/bundle.tar.gz
+cmp data.json exp/data.json
+
+exec sha512sum --check checksum_rego
+
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: git-policies
+sources:
+  git-policies:
+    git:
+      repo: git@github.com:open-policy-agent/contrib
+      commit: 0f81d9a0018451d98dcd3f4bb885ee676f49f6fe
+      included_files:
+      - k8s_authorization/policy/policy.rego
+      excluded_files:
+      - .*/*
+      credentials: policies-github-token
+secrets:
+  policies-github-token:
+    type: ssh_key
+    key: ${E2E_CONTRIB_DEPLOY_KEY}
+    passphrase: "c is for cookie"
+-- exp/tarball --
+/data.json
+/k8s_authorization/policy/policy.rego
+/.manifest
+-- exp/data.json --
+{}
+-- checksum_rego --
+255e743f5253095547c30e48195819c9a0faac6296337d5b24defb3fb4efc67ca048d85f9bdc30cd521b04b1bbc67164a5b7066563c0fc772d7bfb45a6a4c822 k8s_authorization/policy/policy.rego
