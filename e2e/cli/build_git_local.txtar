@@ -1,0 +1,54 @@
+# local example git repo
+cd repo
+env HOME=.
+exec git init .
+exec git branch -m main
+exec git config --global user.name "botbotbot" 
+exec git config --global user.email "bot@bot.bot" 
+exec git add users.json
+exec git commit -m initial-commit
+cd ..
+
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/a.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/a.tar.gz
+cmp data.json exp/data.json
+cmp .manifest exp/.manifest
+
+
+-- repo/users.json --
+{
+  "users": [
+    {
+      "id": "alice"
+    },
+    {
+      "id": "bob"
+    }
+  ]
+}
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/a.tar.gz
+    requirements:
+    - source: git-data
+sources:
+  git-data:
+    git:
+      repo: ./repo/
+      reference: main
+-- exp/tarball --
+/data.json
+/.manifest
+-- exp/data.json --
+{"users":[{"id":"alice"},{"id":"bob"}]}
+-- exp/.manifest --
+{"revision":"","roots":[""],"rego_version":0}
