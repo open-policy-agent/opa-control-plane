@@ -1,14 +1,16 @@
 package dbs
 
 import (
+	"fmt"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/database"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mysql"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"github.com/styrainc/opa-control-plane/internal/config"
 )
 
 type Setup struct {
@@ -25,6 +27,20 @@ func tcCleanup(t *testing.T, ctr testcontainers.Container) func() {
 	}
 }
 
+// This DSN is for separating multiple in-mem SQLite instances. Each test will get
+// it's own in-memory "file".
+const sqliteMemoryOnlyDSNFormat = "file:%d?cache=shared&mode=memory"
+
+// NB(sr): resetting the in-mem sqlite database between tests is surprisingly hard.
+// So instead, we'll use another in-mem reference for each invocation of Database()
+// for SQLite, by incrementing this counter.
+var counter atomic.Int32
+
+func memoryDBName() string {
+	old := counter.Add(1)
+	return fmt.Sprintf(sqliteMemoryOnlyDSNFormat, old)
+}
+
 func Configs(t *testing.T) map[string]Setup {
 	t.Helper()
 	return map[string]Setup{
@@ -34,7 +50,7 @@ func Configs(t *testing.T) map[string]Setup {
 					Database: &config.Database{
 						SQL: &config.SQLDatabase{
 							Driver: "sqlite3",
-							DSN:    database.SQLiteMemoryOnlyDSN,
+							DSN:    memoryDBName(),
 						},
 					},
 				}
