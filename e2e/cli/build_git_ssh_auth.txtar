@@ -10,6 +10,9 @@ cmp stdout exp/tarball
 exec tar xf bundles/hello-world/bundle.tar.gz
 cmp data.json exp/data.json
 
+# TODO(sr): the manifest detection seems to be broken on windows, it yields roots: null
+[!windows] cmp .manifest exp/.manifest
+
 exec sha512sum --check checksum_rego
 
 -- config.d/bundle.yml --
@@ -27,8 +30,6 @@ sources:
       commit: 0f81d9a0018451d98dcd3f4bb885ee676f49f6fe
       included_files:
       - k8s_authorization/policy/policy.rego
-      excluded_files:
-      - .*/*
       credentials: policies-github-token
 secrets:
   policies-github-token:
@@ -41,5 +42,7 @@ secrets:
 /.manifest
 -- exp/data.json --
 {}
+-- exp/.manifest --
+{"revision":"","roots":["k8s/authz"],"rego_version":0}
 -- checksum_rego --
 255e743f5253095547c30e48195819c9a0faac6296337d5b24defb3fb4efc67ca048d85f9bdc30cd521b04b1bbc67164a5b7066563c0fc772d7bfb45a6a4c822 k8s_authorization/policy/policy.rego
