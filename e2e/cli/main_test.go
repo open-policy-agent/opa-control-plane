@@ -25,6 +25,23 @@ func testServer() {
 			fmt.Fprintln(w, err.Error())
 		}
 	})
+	mux.HandleFunc("GET /users", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("content-type", "application/json")
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"users": []map[string]any{
+				{
+					"id":    "alice",
+					"roles": []string{"admin", "editor"},
+				},
+				{
+					"id":    "bob",
+					"roles": []string{"viewer"},
+				},
+			},
+		}); err != nil {
+			fmt.Fprintln(w, err.Error())
+		}
+	})
 
 	http.ListenAndServe(":9991", mux)
 }
