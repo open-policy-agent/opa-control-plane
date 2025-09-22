@@ -28,7 +28,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const configFile = "ocp.yaml"
+// configFile is an internal config file used to track if a git repository
+// can be re-used or needs to be wiped.
+// NB(sr): If this is called '*.yaml', or '*.json', it'll be picked up by the
+// bundle builder.
+const configFile = "ocpconfig"
 
 func init() {
 	// For Azure DevOps compatibility. More details: https://github.com/go-git/go-git/issues/64
