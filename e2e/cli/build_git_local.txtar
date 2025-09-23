@@ -9,7 +9,7 @@ exec git add users.json
 exec git commit -m initial-commit
 cd ..
 
-exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp #--non-interactive --log-level debug
 stderr '^1/1 bundles built and pushed successfully$'
 ! stdout .
 

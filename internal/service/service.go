@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"maps"
 	"path"
+	"path/filepath"
 	"slices"
 	"sort"
 	"sync"
@@ -399,7 +400,7 @@ func newSource(name string) *source {
 
 func (src *source) addDir(dir string, wipe bool, includedFiles []string, excludedFiles []string) {
 	src.Source.Dirs = append(src.Source.Dirs, builder.Dir{
-		Path:          dir,
+		Path:          filepath.ToSlash(dir),
 		Wipe:          wipe,
 		IncludedFiles: includedFiles,
 		ExcludedFiles: excludedFiles,

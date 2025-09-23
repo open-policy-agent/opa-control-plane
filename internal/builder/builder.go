@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -243,6 +244,7 @@ func (b *Builder) Build(ctx context.Context) error {
 	var roots []string
 	result.Manifest.Roots = &roots
 
+	log.Println("existingRoots", existingRoots)
 	for _, root := range existingRoots {
 		r, err := root.Ptr()
 		if err != nil {
@@ -270,14 +272,20 @@ func walkFilesRecursive(excludes []glob.Glob, dir Dir, suffixes []string, fn fun
 		if fi.IsDir() {
 			return nil
 		}
-		if isExcluded(strings.TrimPrefix(path, dir.Path+"/"), excludes) {
+		// NB(sr): All our globs are "/"-separated, so we need to check for inclusion/exclusion on
+		// the To-Slashed path.
+		trimmed := strings.TrimPrefix(filepath.ToSlash(path), dir.Path+"/")
+		log.Println("path", path, "trimmed", trimmed)
+		if isExcluded(trimmed, excludes) {
 			return nil
 		}
-		if !isIncluded(strings.TrimPrefix(path, dir.Path+"/"), includes) {
+		if !isIncluded(trimmed, includes) {
 			return nil
 		}
+		ext := filepath.Ext(path)
 		if !slices.ContainsFunc(suffixes, func(s string) bool {
-			return strings.EqualFold(s, filepath.Ext(path))
+			r := strings.EqualFold(s, ext)
+			return r
 		}) {
 			return nil
 		}

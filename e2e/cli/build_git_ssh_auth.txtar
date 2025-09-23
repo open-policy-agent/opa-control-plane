@@ -9,9 +9,7 @@ cmp stdout exp/tarball
 
 exec tar xf bundles/hello-world/bundle.tar.gz
 cmp data.json exp/data.json
-
-# TODO(sr): the manifest detection seems to be broken on windows, it yields roots: null
-[!windows] cmp .manifest exp/.manifest
+cmp .manifest exp/.manifest
 
 exec sha512sum --check checksum_rego
 
