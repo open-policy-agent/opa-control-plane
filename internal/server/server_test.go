@@ -224,9 +224,23 @@ func TestServerBundleOwners(t *testing.T) {
 				}
 			}
 
-			ts.Request("PUT", "/v1/bundles/testbundle", "{}", ownerKey2).ExpectStatus(403)
-			ts.Request("GET", "/v1/bundles/testbundle", "", ownerKey2).ExpectStatus(404)
-			ts.Request("PUT", "/v1/bundles/testbundle", "{}", ownerKey).ExpectStatus(200)
+			{ // compared to using ownerKey2
+				ts.Request("PUT", "/v1/bundles/testbundle", "{}", ownerKey2).ExpectStatus(403)
+				ts.Request("GET", "/v1/bundles/testbundle", "", ownerKey2).ExpectStatus(404)
+				ts.Request("PUT", "/v1/bundles/testbundle", "{}", ownerKey).ExpectStatus(200)
+			}
+			{ // deleting as not-the-owner
+				ts.Request("DELETE", "/v1/bundles/guessname", "", ownerKey2).ExpectStatus(403)
+				ts.Request("DELETE", "/v1/bundles/testbundle", "", ownerKey2).ExpectStatus(403)
+			}
+			{ // deleting as owner
+				ts.Request("DELETE", "/v1/bundles/testbundle", "", ownerKey).ExpectStatus(200)
+				var ownerList types.BundlesListResponseV1
+				ts.Request("GET", "/v1/bundles", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
+				if len(ownerList.Result) != 0 {
+					t.Fatal("did not expect to see bundle")
+				}
+			}
 		})
 	}
 }
@@ -305,9 +319,23 @@ func TestServerSourceOwners(t *testing.T) {
 				}
 			}
 
-			ts.Request("PUT", "/v1/sources/testsrc", "{}", ownerKey2).ExpectStatus(403)
-			ts.Request("GET", "/v1/sources/testsrc", "", ownerKey2).ExpectStatus(404)
-			ts.Request("PUT", "/v1/sources/testsrc", "{}", ownerKey).ExpectStatus(200)
+			{ // compared to using ownerKey2
+				ts.Request("PUT", "/v1/sources/testsrc", "{}", ownerKey2).ExpectStatus(403)
+				ts.Request("GET", "/v1/sources/testsrc", "", ownerKey2).ExpectStatus(404)
+				ts.Request("PUT", "/v1/sources/testsrc", "{}", ownerKey).ExpectStatus(200)
+			}
+			{ // deleting as not-the-owner
+				ts.Request("DELETE", "/v1/sources/guessname", "", ownerKey2).ExpectStatus(403)
+				ts.Request("DELETE", "/v1/sources/testsrc", "", ownerKey2).ExpectStatus(403)
+			}
+			{ // deleting as owner
+				ts.Request("DELETE", "/v1/sources/testsrc", "", ownerKey).ExpectStatus(200)
+				var ownerList types.SourcesListResponseV1
+				ts.Request("GET", "/v1/sources", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
+				if len(ownerList.Result) != 0 {
+					t.Fatal("did not expect to see source")
+				}
+			}
 		})
 	}
 }
@@ -512,9 +540,24 @@ func TestServerStackOwners(t *testing.T) {
 					t.Fatal("did not expect to see stack")
 				}
 			}
-			ts.Request("PUT", "/v1/stacks/teststack", `{}`, ownerKey2).ExpectStatus(403)
-			ts.Request("GET", "/v1/stacks/teststack", "", ownerKey2).ExpectStatus(404)
-			ts.Request("PUT", "/v1/stacks/teststack", `{}`, ownerKey).ExpectStatus(200)
+
+			{ // compared to using ownerKey2
+				ts.Request("PUT", "/v1/stacks/teststack", `{}`, ownerKey2).ExpectStatus(403)
+				ts.Request("GET", "/v1/stacks/teststack", "", ownerKey2).ExpectStatus(404)
+				ts.Request("PUT", "/v1/stacks/teststack", `{}`, ownerKey).ExpectStatus(200)
+			}
+			{ // deleting as not-the-owner
+				ts.Request("DELETE", "/v1/stacks/guessname", "", ownerKey2).ExpectStatus(403)
+				ts.Request("DELETE", "/v1/stacks/teststack", "", ownerKey2).ExpectStatus(403)
+			}
+			{ // deleting as owner
+				ts.Request("DELETE", "/v1/stacks/teststack", "", ownerKey).ExpectStatus(200)
+				var ownerList types.StacksListResponseV1
+				ts.Request("GET", "/v1/stacks", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
+				if len(ownerList.Result) != 0 {
+					t.Fatal("did not expect to see stack")
+				}
+			}
 		})
 	}
 }

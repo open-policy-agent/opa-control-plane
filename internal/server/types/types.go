@@ -38,14 +38,17 @@ type BundlesGetResponseV1 struct {
 	Result *config.Bundle `json:"result,omitempty"`
 }
 
-type BundlesPutResponseV1 struct {
-}
+type BundlesPutResponseV1 struct{}
+
+type BundlesDeleteResponseV1 struct{}
 
 type SourcesGetResponseV1 struct {
 	Result *config.Source `json:"result,omitempty"`
 }
 
 type SourcesPutResponseV1 struct{}
+
+type SourcesDeleteResponseV1 struct{}
 
 type SourcesDeleteDataResponseV1 struct{}
 

@@ -33,7 +33,6 @@ func (s *Server) Init() *Server {
 	}
 
 	s.router.HandleFunc("GET    /health", s.health)
-
 	s.router.HandleFunc("GET    /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataGet))
 	s.router.HandleFunc("POST   /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataPut))
 	s.router.HandleFunc("PUT    /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataPut))
@@ -41,12 +40,15 @@ func (s *Server) Init() *Server {
 	s.router.HandleFunc("GET    /v1/sources", authenticationMiddleware(s.db, s.v1SourcesList))
 	s.router.HandleFunc("PUT    /v1/sources/{source}", authenticationMiddleware(s.db, s.v1SourcesPut))
 	s.router.HandleFunc("GET    /v1/sources/{source}", authenticationMiddleware(s.db, s.v1SourcesGet))
+	s.router.HandleFunc("DELETE /v1/sources/{source}", authenticationMiddleware(s.db, s.v1SourcesDelete))
 	s.router.HandleFunc("GET    /v1/bundles", authenticationMiddleware(s.db, s.v1BundlesList))
 	s.router.HandleFunc("PUT    /v1/bundles/{bundle}", authenticationMiddleware(s.db, s.v1BundlesPut))
 	s.router.HandleFunc("GET    /v1/bundles/{bundle}", authenticationMiddleware(s.db, s.v1BundlesGet))
+	s.router.HandleFunc("DELETE /v1/bundles/{bundle}", authenticationMiddleware(s.db, s.v1BundlesDelete))
 	s.router.HandleFunc("GET    /v1/stacks", authenticationMiddleware(s.db, s.v1StacksList))
 	s.router.HandleFunc("PUT    /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksPut))
 	s.router.HandleFunc("GET    /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksGet))
+	s.router.HandleFunc("DELETE /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksDelete))
 
 	return s
 }
@@ -147,6 +149,24 @@ func (s *Server) v1BundlesGet(w http.ResponseWriter, r *http.Request) {
 	JSONOK(w, resp, pretty(r))
 }
 
+func (s *Server) v1BundlesDelete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	name, err := url.PathUnescape(r.PathValue("bundle"))
+	if err != nil {
+		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	if err := s.db.DeleteBundle(ctx, s.auth(r), name); err != nil {
+		errorAuto(w, err)
+		return
+	}
+
+	resp := types.SourcesDeleteResponseV1{}
+	JSONOK(w, resp, pretty(r))
+}
+
 func (s *Server) v1SourcesList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	opts := s.listOptions(r)
@@ -207,6 +227,24 @@ func (s *Server) v1SourcesGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := types.SourcesGetResponseV1{Result: src}
+	JSONOK(w, resp, pretty(r))
+}
+
+func (s *Server) v1SourcesDelete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	name, err := url.PathUnescape(r.PathValue("source"))
+	if err != nil {
+		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	if err := s.db.DeleteSource(ctx, s.auth(r), name); err != nil {
+		errorAuto(w, err)
+		return
+	}
+
+	resp := types.SourcesDeleteResponseV1{}
 	JSONOK(w, resp, pretty(r))
 }
 
@@ -312,6 +350,24 @@ func (s *Server) v1StacksGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := types.StacksGetResponseV1{Result: stack}
+	JSONOK(w, resp, pretty(r))
+}
+
+func (s *Server) v1StacksDelete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	name, err := url.PathUnescape(r.PathValue("stack"))
+	if err != nil {
+		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	if err := s.db.DeleteStack(ctx, s.auth(r), name); err != nil {
+		errorAuto(w, err)
+		return
+	}
+
+	resp := types.SourcesDeleteResponseV1{}
 	JSONOK(w, resp, pretty(r))
 }
 
