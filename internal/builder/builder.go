@@ -273,9 +273,8 @@ func walkFilesRecursive(excludes []glob.Glob, dir Dir, suffixes []string, fn fun
 			return nil
 		}
 		// NB(sr): All our globs are "/"-separated, so we need to check for inclusion/exclusion on
-		// the To-Slashed path.
+		// the ToSlashed path.
 		trimmed := strings.TrimPrefix(filepath.ToSlash(path), dir.Path+"/")
-		log.Println("path", path, "trimmed", trimmed)
 		if isExcluded(trimmed, excludes) {
 			return nil
 		}
@@ -284,8 +283,7 @@ func walkFilesRecursive(excludes []glob.Glob, dir Dir, suffixes []string, fn fun
 		}
 		ext := filepath.Ext(path)
 		if !slices.ContainsFunc(suffixes, func(s string) bool {
-			r := strings.EqualFold(s, ext)
-			return r
+			return strings.EqualFold(s, ext)
 		}) {
 			return nil
 		}
