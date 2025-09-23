@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gorilla/mux"
 	"github.com/open-policy-agent/opa/v1/server/writer"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/database"
@@ -19,7 +18,7 @@ import (
 )
 
 type Server struct {
-	router  *mux.Router
+	router  *http.ServeMux
 	db      *database.Database
 	readyFn func(context.Context) error
 }
@@ -30,31 +29,47 @@ func New() *Server {
 
 func (s *Server) Init() *Server {
 	if s.router == nil {
-		s.router = mux.NewRouter()
+		s.router = http.NewServeMux()
 	}
 
-	public := s.router.PathPrefix("/").Subrouter()
-	public.Handle("/health", http.HandlerFunc(s.health)).Methods(http.MethodGet)
+	s.router.HandleFunc("GET    /health", s.health)
 
-	api := s.router.PathPrefix("/v1").Subrouter()
-	api.Handle("/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataGet)).Methods(http.MethodGet)
-	api.Handle("/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataPut)).Methods(http.MethodPost, http.MethodPut)
-	api.Handle("/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataDelete)).Methods(http.MethodDelete)
-	api.Handle("/sources", http.HandlerFunc(s.v1SourcesList)).Methods(http.MethodGet)
-	api.Handle("/sources/{source:.+}", http.HandlerFunc(s.v1SourcesPut)).Methods(http.MethodPut)
-	api.Handle("/sources/{source:.+}", http.HandlerFunc(s.v1SourcesGet)).Methods(http.MethodGet)
-	api.Handle("/bundles", http.HandlerFunc(s.v1BundlesList)).Methods(http.MethodGet)
-	api.Handle("/bundles/{bundle:.+}", http.HandlerFunc(s.v1BundlesPut)).Methods(http.MethodPut)
-	api.Handle("/bundles/{bundle:.+}", http.HandlerFunc(s.v1BundlesGet)).Methods(http.MethodGet)
-	api.Handle("/stacks", http.HandlerFunc(s.v1StacksList)).Methods(http.MethodGet)
-	api.Handle("/stacks/{stack:.+}", http.HandlerFunc(s.v1StacksPut)).Methods(http.MethodPut)
-	api.Handle("/stacks/{stack:.+}", http.HandlerFunc(s.v1StacksGet)).Methods(http.MethodGet)
-	api.Use(authenticationMiddleware(s.db))
+	s.router.HandleFunc("GET    /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataGet))
+	s.router.HandleFunc("POST   /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataPut))
+	s.router.HandleFunc("PUT    /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataPut))
+	s.router.HandleFunc("DELETE /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataDelete))
+	s.router.HandleFunc("GET    /v1/sources", authenticationMiddleware(s.db, s.v1SourcesList))
+	s.router.HandleFunc("PUT    /v1/sources/{source}", authenticationMiddleware(s.db, s.v1SourcesPut))
+	s.router.HandleFunc("GET    /v1/sources/{source}", authenticationMiddleware(s.db, s.v1SourcesGet))
+	s.router.HandleFunc("GET    /v1/bundles", authenticationMiddleware(s.db, s.v1BundlesList))
+	s.router.HandleFunc("PUT    /v1/bundles/{bundle}", authenticationMiddleware(s.db, s.v1BundlesPut))
+	s.router.HandleFunc("GET    /v1/bundles/{bundle}", authenticationMiddleware(s.db, s.v1BundlesGet))
+	s.router.HandleFunc("GET    /v1/stacks", authenticationMiddleware(s.db, s.v1StacksList))
+	s.router.HandleFunc("PUT    /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksPut))
+	s.router.HandleFunc("GET    /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksGet))
+
+	// public := s.router.PathPrefix("/").Subrouter()
+	// public.Handle("/health", http.HandlerFunc(s.health)).Methods(http.MethodGet)
+
+	// api := s.router.PathPrefix("/v1").Subrouter()
+	// api.Handle("/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataGet)).Methods(http.MethodGet)
+	// api.Handle("/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataPut)).Methods(http.MethodPost, http.MethodPut)
+	// api.Handle("/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataDelete)).Methods(http.MethodDelete)
+	// api.Handle("/sources", http.HandlerFunc(s.v1SourcesList)).Methods(http.MethodGet)
+	// api.Handle("/sources/{source:.+}", http.HandlerFunc(s.v1SourcesPut)).Methods(http.MethodPut)
+	// api.Handle("/sources/{source:.+}", http.HandlerFunc(s.v1SourcesGet)).Methods(http.MethodGet)
+	// api.Handle("/bundles", http.HandlerFunc(s.v1BundlesList)).Methods(http.MethodGet)
+	// api.Handle("/bundles/{bundle:.+}", http.HandlerFunc(s.v1BundlesPut)).Methods(http.MethodPut)
+	// api.Handle("/bundles/{bundle:.+}", http.HandlerFunc(s.v1BundlesGet)).Methods(http.MethodGet)
+	// api.Handle("/stacks", http.HandlerFunc(s.v1StacksList)).Methods(http.MethodGet)
+	// api.Handle("/stacks/{stack:.+}", http.HandlerFunc(s.v1StacksPut)).Methods(http.MethodPut)
+	// api.Handle("/stacks/{stack:.+}", http.HandlerFunc(s.v1StacksGet)).Methods(http.MethodGet)
+	// api.Use(authenticationMiddleware(s.db))
 
 	return s
 }
 
-func (s *Server) WithRouter(router *mux.Router) *Server {
+func (s *Server) WithRouter(router *http.ServeMux) *Server {
 	s.router = router
 	return s
 }
@@ -102,9 +117,8 @@ func (s *Server) v1BundlesList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) v1BundlesPut(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
-	vars := mux.Vars(r)
 
-	name, err := url.PathUnescape(vars["bundle"])
+	name, err := url.PathUnescape(r.PathValue("bundle"))
 	if err != nil {
 		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		return
@@ -134,9 +148,8 @@ func (s *Server) v1BundlesPut(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) v1BundlesGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	vars := mux.Vars(r)
 
-	name, err := url.PathUnescape(vars["bundle"])
+	name, err := url.PathUnescape(r.PathValue("bundle"))
 	if err != nil {
 		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		return
@@ -153,7 +166,6 @@ func (s *Server) v1BundlesGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) v1SourcesList(w http.ResponseWriter, r *http.Request) {
-
 	ctx := r.Context()
 	opts := s.listOptions(r)
 	sources, nextCursor, err := s.db.ListSources(ctx, s.auth(r), opts)
@@ -167,11 +179,9 @@ func (s *Server) v1SourcesList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) v1SourcesPut(w http.ResponseWriter, r *http.Request) {
-
 	ctx := r.Context()
-	vars := mux.Vars(r)
 
-	name, err := url.PathUnescape(vars["source"])
+	name, err := url.PathUnescape(r.PathValue("source"))
 	if err != nil {
 		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		return
@@ -201,9 +211,8 @@ func (s *Server) v1SourcesPut(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) v1SourcesGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	vars := mux.Vars(r)
 
-	name, err := url.PathUnescape(vars["source"])
+	name, err := url.PathUnescape(r.PathValue("source"))
 	if err != nil {
 		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		return
@@ -222,15 +231,14 @@ func (s *Server) v1SourcesGet(w http.ResponseWriter, r *http.Request) {
 // v1SourcesDataGet handles GET requests to retrieve data from a source.
 func (s *Server) v1SourcesDataGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	vars := mux.Vars(r)
 
-	name, err := url.PathUnescape(vars["source"])
+	name, err := url.PathUnescape(r.PathValue("source"))
 	if err != nil {
 		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		return
 	}
 
-	data, ok, err := s.db.SourcesDataGet(ctx, name, path.Join(vars["path"], "data.json"), s.auth(r))
+	data, ok, err := s.db.SourcesDataGet(ctx, name, path.Join(r.PathValue("path"), "data.json"), s.auth(r))
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -248,9 +256,8 @@ func (s *Server) v1SourcesDataGet(w http.ResponseWriter, r *http.Request) {
 // v1SourcesDataPut handles PUT and POST requests to upload data to a source.
 func (s *Server) v1SourcesDataPut(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	vars := mux.Vars(r)
 
-	name, err := url.PathUnescape(vars["source"])
+	name, err := url.PathUnescape(r.PathValue("source"))
 	if err != nil {
 		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		return
@@ -262,7 +269,7 @@ func (s *Server) v1SourcesDataPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.db.SourcesDataPut(ctx, name, path.Join(vars["path"], "data.json"), value, s.auth(r))
+	err = s.db.SourcesDataPut(ctx, name, path.Join(r.PathValue("path"), "data.json"), value, s.auth(r))
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -275,15 +282,14 @@ func (s *Server) v1SourcesDataPut(w http.ResponseWriter, r *http.Request) {
 // v1SourcesDataDelete handles DELETE requests to remove data from a source.
 func (s *Server) v1SourcesDataDelete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	vars := mux.Vars(r)
 
-	name, err := url.PathUnescape(vars["source"])
+	name, err := url.PathUnescape(r.PathValue("source"))
 	if err != nil {
 		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		return
 	}
 
-	err = s.db.SourcesDataDelete(ctx, name, path.Join(vars["path"], "data.json"), s.auth(r))
+	err = s.db.SourcesDataDelete(ctx, name, path.Join(r.PathValue("path"), "data.json"), s.auth(r))
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -310,9 +316,8 @@ func (s *Server) v1StacksList(w http.ResponseWriter, r *http.Request) {
 // v1StacksGet handles GET /v1/stacks/{stack}
 func (s *Server) v1StacksGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	vars := mux.Vars(r)
 
-	name, err := url.PathUnescape(vars["stack"])
+	name, err := url.PathUnescape(r.PathValue("stack"))
 	if err != nil {
 		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		return
@@ -331,9 +336,8 @@ func (s *Server) v1StacksGet(w http.ResponseWriter, r *http.Request) {
 // v1StacksPut handles PUT /v1/stacks/{stack}
 func (s *Server) v1StacksPut(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	vars := mux.Vars(r)
 
-	name, err := url.PathUnescape(vars["stack"])
+	name, err := url.PathUnescape(r.PathValue("stack"))
 	if err != nil {
 		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		return
@@ -460,23 +464,21 @@ func newJSONDecoder(r io.Reader) *json.Decoder {
 	return decoder
 }
 
-func authenticationMiddleware(db *database.Database) func(http.Handler) http.Handler {
-	return func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			apiKey, err := extractBearerToken(r)
-			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
+func authenticationMiddleware(db *database.Database, inner http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		apiKey, err := extractBearerToken(r)
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 
-			principalId, err := db.GetPrincipalId(r.Context(), apiKey)
-			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
+		principalId, err := db.GetPrincipalId(r.Context(), apiKey)
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 
-			h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principalId)))
-		})
+		inner.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principalId)))
 	}
 }
 

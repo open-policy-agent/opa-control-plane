@@ -5,12 +5,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/gorilla/mux"
 	"github.com/open-policy-agent/opa/v1/util"
 	"github.com/testcontainers/testcontainers-go"
 
@@ -626,14 +626,14 @@ func initTestDB(t *testing.T, db *database.Database) *database.Database {
 type testServer struct {
 	t      *testing.T
 	srv    *Server
-	router *mux.Router
+	router *http.ServeMux
 	s      *httptest.Server
 }
 
 func initTestServer(t *testing.T, db *database.Database) *testServer {
 	var ts testServer
 	ts.t = t
-	ts.router = mux.NewRouter()
+	ts.router = http.NewServeMux()
 	ts.srv = New().WithDatabase(db).WithRouter(ts.router)
 	ts.srv.Init()
 	ts.s = httptest.NewServer(ts.router)
