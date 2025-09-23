@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"maps"
 	"path"
+	"path/filepath"
 	"slices"
 	"sort"
 	"sync"
@@ -306,16 +307,16 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 		syncs := []Synchronizer{}
 		sources := []*builder.Source{&root.Source}
-		bundleDir := path.Join(s.persistenceDir, md5sum(b.Name))
+		bundleDir := join(s.persistenceDir, md5sum(b.Name))
 
 		for _, dep := range deps {
-			srcDir := path.Join(bundleDir, "sources", dep.Name)
+			srcDir := join(bundleDir, "sources", dep.Name)
 
 			src := newSource(dep.Name).
-				SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, path.Join(srcDir, "builtin")).
-				SyncSourceSQL(&syncs, dep.Name, &s.database, path.Join(srcDir, "database")).
-				SyncDatasources(&syncs, dep.Datasources, path.Join(srcDir, "datasources")).
-				SyncGit(&syncs, dep.Name, dep.Git, path.Join(srcDir, "repo"), overrides[dep.Name]).
+				SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
+				SyncSourceSQL(&syncs, dep.Name, &s.database, join(srcDir, "database")).
+				SyncDatasources(&syncs, dep.Datasources, join(srcDir, "datasources")).
+				SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name]).
 				AddRequirements(dep.Requirements)
 
 			sources = append(sources, &src.Source)
@@ -399,7 +400,7 @@ func newSource(name string) *source {
 
 func (src *source) addDir(dir string, wipe bool, includedFiles []string, excludedFiles []string) {
 	src.Source.Dirs = append(src.Source.Dirs, builder.Dir{
-		Path:          dir,
+		Path:          filepath.ToSlash(dir),
 		Wipe:          wipe,
 		IncludedFiles: includedFiles,
 		ExcludedFiles: excludedFiles,
@@ -410,7 +411,7 @@ func (src *source) SyncGit(syncs *[]Synchronizer, sourceName string, git config.
 	if git.Repo != "" {
 		srcDir := repoDir
 		if git.Path != nil {
-			srcDir = path.Join(srcDir, *git.Path)
+			srcDir = join(srcDir, *git.Path)
 		}
 		src.addDir(srcDir, false, git.IncludedFiles, git.ExcludedFiles)
 		if reqCommit != "" {
@@ -436,13 +437,13 @@ func (src *source) SyncDatasources(syncs *[]Synchronizer, datasources []config.D
 		case "http":
 			url, _ := datasource.Config["url"].(string)
 			headers, _ := datasource.Config["headers"].(map[string]interface{})
-			*syncs = append(*syncs, httpsync.New(path.Join(dir, datasource.Path, "data.json"), url, headers, datasource.Credentials))
+			*syncs = append(*syncs, httpsync.New(join(dir, datasource.Path, "data.json"), url, headers, datasource.Credentials))
 		}
 
 		if datasource.TransformQuery != "" {
 			src.Transforms = append(src.Transforms, builder.Transform{
 				Query: datasource.TransformQuery,
-				Path:  path.Join(dir, datasource.Path, "data.json"),
+				Path:  join(dir, datasource.Path, "data.json"),
 			})
 		}
 	}
@@ -471,4 +472,11 @@ func md5sum(s string) string {
 	h := md5.New()
 	h.Write([]byte(s))
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// join is used to normalize all paths: where `path.Join()` calls `Clean()` and gives
+// us `\`-separated paths on windows, `join` will convert the result back using
+// `filepath.ToSlash`.
+func join(ps ...string) string {
+	return filepath.ToSlash(path.Join(ps...))
 }

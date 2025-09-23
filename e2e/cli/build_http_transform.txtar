@@ -5,8 +5,9 @@ stderr '^1/1 bundles built and pushed successfully$'
 exec tar tf bundles/hello-world/bundle.tar.gz
 cmp stdout exp/tarball
 
-exec tar xf bundles/hello-world/bundle.tar.gz /data.json
+exec tar xf bundles/hello-world/bundle.tar.gz
 cmp data.json exp/data.json
+cmp .manifest exp/.manifest
 
 -- config.d/bundle.yml --
 bundles:
@@ -62,3 +63,5 @@ rule := [u, p] if {
 /.manifest
 -- exp/data.json --
 {"basicauth":["user001","letmein"],"headers":["open","sesame"]}
+-- exp/.manifest --
+{"revision":"","roots":["basicauth","headers"],"rego_version":0}

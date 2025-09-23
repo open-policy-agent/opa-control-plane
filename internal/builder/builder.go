@@ -270,14 +270,15 @@ func walkFilesRecursive(excludes []glob.Glob, dir Dir, suffixes []string, fn fun
 		if fi.IsDir() {
 			return nil
 		}
-		if isExcluded(strings.TrimPrefix(path, dir.Path+"/"), excludes) {
+		// NB(sr): All our globs are "/"-separated, so we need to check for inclusion/exclusion on
+		// the ToSlash-ed path.
+		trimmed := strings.TrimPrefix(filepath.ToSlash(path), dir.Path+"/")
+		if isExcluded(trimmed, excludes) || !isIncluded(trimmed, includes) {
 			return nil
 		}
-		if !isIncluded(strings.TrimPrefix(path, dir.Path+"/"), includes) {
-			return nil
-		}
+		ext := filepath.Ext(path)
 		if !slices.ContainsFunc(suffixes, func(s string) bool {
-			return strings.EqualFold(s, filepath.Ext(path))
+			return strings.EqualFold(s, ext)
 		}) {
 			return nil
 		}
