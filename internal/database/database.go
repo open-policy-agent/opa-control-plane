@@ -485,6 +485,25 @@ func (d *Database) GetBundle(ctx context.Context, principal string, name string)
 	return bundles[0], nil
 }
 
+func (d *Database) DeleteBundle(ctx context.Context, principal string, name string) error {
+	return tx1(ctx, d, func(tx *sql.Tx) error {
+		if err := d.prepareDelete(ctx, tx, principal, "bundles", name, "bundles.manage"); err != nil {
+			return err
+		}
+
+		if err := d.delete(ctx, tx, "bundles_secrets", "bundle_name", name); err != nil {
+			return err
+		}
+		if err := d.delete(ctx, tx, "bundles_requirements", "bundle_name", name); err != nil {
+			return err
+		}
+		if err := d.delete(ctx, tx, "bundles", "name", name); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
 func (d *Database) ListBundles(ctx context.Context, principal string, opts ListOptions) ([]*config.Bundle, string, error) {
 	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.Bundle, string, error) {
 		expr, err := authz.Partial(ctx, authz.Access{
@@ -682,6 +701,33 @@ func (d *Database) GetSource(ctx context.Context, principal string, name string)
 	}
 
 	return sources[0], nil
+}
+
+func (d *Database) DeleteSource(ctx context.Context, principal string, name string) error {
+	return tx1(ctx, d, func(tx *sql.Tx) error {
+		if err := d.prepareDelete(ctx, tx, principal, "sources", name, "sources.manage"); err != nil {
+			return err
+		}
+
+		// NB(sr): We do not clean out stacks_requirements and bundles_requirements:
+		// that'll ensure that only unused sources can be deleted.
+		if err := d.delete(ctx, tx, "sources_datasources", "source_name", name); err != nil {
+			return err
+		}
+		if err := d.delete(ctx, tx, "sources_secrets", "source_name", name); err != nil {
+			return err
+		}
+		if err := d.delete(ctx, tx, "sources_requirements", "source_name", name); err != nil {
+			return err
+		}
+		if err := d.delete(ctx, tx, "sources_data", "source_name", name); err != nil {
+			return err
+		}
+		if err := d.delete(ctx, tx, "sources", "name", name); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // ListSources returns a list of sources in the database. Note it does not return the source data.
@@ -898,6 +944,22 @@ func (d *Database) GetStack(ctx context.Context, principal string, name string) 
 	}
 
 	return stacks[0], nil
+}
+
+func (d *Database) DeleteStack(ctx context.Context, principal string, name string) error {
+	return tx1(ctx, d, func(tx *sql.Tx) error {
+		if err := d.prepareDelete(ctx, tx, principal, "stacks", name, "stacks.manage"); err != nil {
+			return err
+		}
+
+		if err := d.delete(ctx, tx, "stacks_requirements", "stack_name", name); err != nil {
+			return err
+		}
+		if err := d.delete(ctx, tx, "stacks", "name", name); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOptions) ([]*config.Stack, string, error) {
@@ -1337,6 +1399,21 @@ func (d *Database) prepareUpsert(ctx context.Context, tx *sql.Tx, principal, res
 	return nil
 }
 
+func (d *Database) prepareDelete(ctx context.Context, tx *sql.Tx, principal, resource, name string, permUpdate string) error {
+	a := authz.Access{
+		Principal:  principal,
+		Resource:   resource,
+		Permission: permUpdate,
+		Name:       name,
+	}
+
+	if authz.Check(ctx, tx, d.arg, a) {
+		return d.resourceExists(ctx, tx, resource, name) // only inform about existence if authorized
+	}
+
+	return ErrNotAuthorized
+}
+
 func (d *Database) resourceExists(ctx context.Context, tx *sql.Tx, table string, name string) error {
 	var exists any
 	err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT 1 FROM %v as T WHERE T.name = %s", table, d.arg(0)), name).Scan(&exists)
@@ -1395,21 +1472,24 @@ func (d *Database) upsert(ctx context.Context, tx *sql.Tx, table string, columns
 	return err
 }
 
+func (d *Database) delete(ctx context.Context, tx *sql.Tx, table, keyColumn string, keyValue any) error {
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s = %s", table, keyColumn, d.arg(0))
+	_, err := tx.ExecContext(ctx, query, keyValue)
+	return err
+}
+
 func (d *Database) deleteNotIn(ctx context.Context, tx *sql.Tx, table, keyColumn string, keyValue any, column string, values []string) error {
-	var query string
 	if len(values) == 0 {
-		query = fmt.Sprintf("DELETE FROM %s WHERE %s = %s", table, keyColumn, d.arg(0))
-		_, err := tx.ExecContext(ctx, query, keyValue)
-		return err
+		return d.delete(ctx, tx, table, keyColumn, keyValue)
 	}
 
 	placeholders := make([]string, len(values))
 	for i := range values {
 		placeholders[i] = d.arg(i + 1)
 	}
-	query = fmt.Sprintf("DELETE FROM %s WHERE %s = %s AND %s NOT IN (%s)", table, keyColumn, d.arg(0), column, strings.Join(placeholders, ", "))
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s = %s AND %s NOT IN (%s)", table, keyColumn, d.arg(0), column, strings.Join(placeholders, ", "))
 
-	args := make([]interface{}, 0, 1+len(values))
+	args := make([]any, 0, 1+len(values))
 	args = append(args, keyValue)
 	for _, v := range values {
 		args = append(args, v)
