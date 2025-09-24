@@ -5,7 +5,8 @@ stderr '^1/1 bundles built and pushed successfully$'
 exec tar tf bundles/hello-world/bundle.tar.gz
 cmp stdout exp/tarball
 
-exec tar xf bundles/hello-world/bundle.tar.gz /data.json
+exec tar xf bundles/hello-world/bundle.tar.gz
+cmp .manifest exp/.manifest
 cmp data.json exp/data.json
 
 -- data/common.json --
@@ -39,7 +40,9 @@ sources:
     - data/common.json
 -- exp/tarball --
 /data.json
-/rules/rules.rego
+/dir-paths/rules/rules.rego
 /.manifest
 -- exp/data.json --
 {"data":{"common":true},"prefix":{"some":"thing"}}
+-- exp/.manifest --
+{"revision":"","roots":["prefix","rules","data"],"rego_version":0}

@@ -47,8 +47,8 @@ cases:
   - "/651b945976b07287063e8967060724a4/sources/TestApp/datasources/datasource1/data.json"
   expected_bundle:
     rego:
-      app/app.rego: *app_rego
-      foo.rego: *foo_rego
+      TestApp/app/app.rego: *app_rego
+      TestApp/foo.rego: *foo_rego
     data: |
         {
           "datasource1": [{{ .datasource1_json }}]

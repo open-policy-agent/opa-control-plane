@@ -1,0 +1,47 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/acme/bundle.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/acme/bundle.tar.gz
+cmp data.json exp/data.json
+
+[exec:opa] exec opa eval --fail --bundle bundles/acme/bundle.tar.gz --input input.json data.rules.result
+
+-- input.json --
+{}
+-- sources/a/policy.rego --
+package rules
+import rego.v1
+result if data.shared.foo(input)
+-- sources/shared/policy.rego --
+package shared
+import rego.v1
+foo(_) := "yay"
+-- config.d/bundle.yml --
+bundles:
+  acme-bundle:
+    object_storage:
+      filesystem:
+        path: bundles/acme/bundle.tar.gz
+    requirements:
+    - source: shared-source
+    - source: acme-source
+sources:
+  acme-source:
+    directory: sources/a
+    paths:
+    - policy.rego
+  shared-source:
+    directory: sources/shared
+    paths:
+    - policy.rego
+-- exp/tarball --
+/data.json
+/acme-source/policy.rego
+/shared-source/policy.rego
+/.manifest
+-- exp/data.json --
+{}

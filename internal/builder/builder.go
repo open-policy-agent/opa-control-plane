@@ -5,20 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/gobwas/glob"
+
 	"github.com/open-policy-agent/opa/ast"     // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle"  // nolint:staticcheck
 	"github.com/open-policy-agent/opa/compile" // nolint:staticcheck
 	"github.com/open-policy-agent/opa/rego"    // nolint:staticcheck
+
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/util"
-	"github.com/yalue/merged_fs"
 )
 
 type Source struct {
@@ -65,8 +66,7 @@ func (s *Source) Transform(ctx context.Context) error {
 		}
 
 		var input any
-		err = json.Unmarshal(content, &input)
-		if err != nil {
+		if err := json.Unmarshal(content, &input); err != nil {
 			return fmt.Errorf("failed to unmarshal content: %w", err)
 		}
 
@@ -97,13 +97,11 @@ func (s *Source) Transform(ctx context.Context) error {
 		} else {
 			content, err = json.Marshal(value)
 		}
-
 		if err != nil {
 			return err
 		}
 
-		err = os.WriteFile(t.Path, content, 0644)
-		if err != nil {
+		if err := os.WriteFile(t.Path, content, 0644); err != nil {
 			return err
 		}
 	}
@@ -164,8 +162,11 @@ func (err *PackageConflictErr) Error() string {
 func (b *Builder) Build(ctx context.Context) error {
 
 	var existingRoots []ast.Ref
+	// NB(sr): We've accumulated all deps already (service.go#getDeps), but we'll
+	// process them again here: We're applying the inclusion/exclusion filters, and
+	// they have an effect on the roots.
 	toProcess := []*Source{b.sources[0]}
-	toBuild := []Dir{}
+	buildSources := []*Source{}
 	sourceMap := make(map[string]*Source)
 	for _, src := range b.sources {
 		sourceMap[src.Name] = src
@@ -202,7 +203,7 @@ func (b *Builder) Build(ctx context.Context) error {
 			rootMap[root.String()] = next
 		}
 		existingRoots = append(existingRoots, newRoots...)
-		toBuild = append(toBuild, next.Dirs...)
+		buildSources = append(buildSources, next)
 		for _, r := range next.Requirements {
 			if r.Source != nil {
 				src, ok := sourceMap[*r.Source]
@@ -217,23 +218,30 @@ func (b *Builder) Build(ctx context.Context) error {
 		}
 	}
 
-	fses := make([]fs.FS, 0, len(toBuild))
-	for _, srcDir := range toBuild {
-		fs, err := util.NewFilterFS(os.DirFS(srcDir.Path), srcDir.IncludedFiles, srcDir.ExcludedFiles)
-		if err != nil {
-			return err
+	ns := util.Namespace()
+	var paths []string
+	for _, src := range buildSources {
+		for i, srcDir := range src.Dirs {
+			fs0, err := util.NewFilterFS(os.DirFS(srcDir.Path),
+				srcDir.IncludedFiles,
+				slices.Concat(b.excluded, srcDir.ExcludedFiles))
+			if err != nil {
+				return err
+			}
+			bind := src.Name
+			if bind == "" || i > 0 {
+				bind += strconv.Itoa(i)
+			}
+			if err := ns.Bind(bind, fs0); err != nil {
+				return err
+			}
+			paths = append(paths, bind)
 		}
-		fses = append(fses, fs)
-	}
-
-	ufs, err := util.NewFilterFS(merged_fs.MergeMultiple(fses...), nil, b.excluded)
-	if err != nil {
-		return err
 	}
 
 	c := compile.New().
-		WithFS(ufs).
-		WithPaths(".")
+		WithFS(ns).
+		WithPaths(paths...)
 	if err := c.Build(ctx); err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
@@ -241,7 +249,7 @@ func (b *Builder) Build(ctx context.Context) error {
 	result := c.Bundle()
 
 	var roots []string
-	result.Manifest.Roots = &roots
+	result.Manifest.Roots = &roots // avoid "" default root
 
 	for _, root := range existingRoots {
 		r, err := root.Ptr()
@@ -305,9 +313,7 @@ func getRegoAndJSONRootsForDirs(excluded []glob.Glob, dirs []Dir) ([]ast.Ref, er
 	set := ast.NewSet()
 
 	for _, dir := range dirs {
-
-		err := walkFilesRecursive(excluded, dir, []string{".rego"}, func(path string, _ os.FileInfo) error {
-
+		if err := walkFilesRecursive(excluded, dir, []string{".rego"}, func(path string, _ os.FileInfo) error {
 			bs, err := os.ReadFile(path)
 			if err != nil {
 				return err
@@ -320,19 +326,15 @@ func getRegoAndJSONRootsForDirs(excluded []glob.Glob, dirs []Dir) ([]ast.Ref, er
 
 			set.Add(ast.NewTerm(module.Package.Path))
 			return nil
-		})
-
-		if err != nil {
+		}); err != nil {
 			return nil, err
 		}
 
-		err = walkFilesRecursive(excluded, dir, []string{".json", ".yaml", ".yml"}, func(path string, _ os.FileInfo) error {
-
+		if err := walkFilesRecursive(excluded, dir, []string{".json", ".yaml", ".yml"}, func(path string, _ os.FileInfo) error {
 			path, err := filepath.Rel(dir.Path, path)
 			if err != nil {
 				return err
 			}
-
 			path = filepath.ToSlash(filepath.Dir(path))
 
 			var keys []*ast.Term
@@ -345,9 +347,7 @@ func getRegoAndJSONRootsForDirs(excluded []glob.Glob, dirs []Dir) ([]ast.Ref, er
 			keys = append([]*ast.Term{ast.DefaultRootDocument}, keys...)
 			set.Add(ast.RefTerm(keys...))
 			return nil
-		})
-
-		if err != nil {
+		}); err != nil {
 			return nil, err
 		}
 	}

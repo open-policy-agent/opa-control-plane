@@ -35,7 +35,7 @@ sources:
     - rules/rules.rego
 -- exp/tarball --
 /data.json
-/rules/rules.rego
+/dir-paths/rules/rules.rego
 /.manifest
 -- exp/data.json --
 {"prefix":{"some":"thing"}}

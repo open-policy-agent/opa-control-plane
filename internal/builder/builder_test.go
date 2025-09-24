@@ -2,9 +2,10 @@ package builder_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 
@@ -39,6 +40,7 @@ func TestBuilder(t *testing.T) {
 			note: "no requirements",
 			sources: []sourceMock{
 				{
+					name: "src",
 					files: map[string]string{
 						"/x/x.rego": `package x
 						p := 7`,
@@ -49,7 +51,27 @@ func TestBuilder(t *testing.T) {
 			},
 			excluded: []string{"x/z/data.json"},
 			exp: map[string]string{
-				"/x/x.rego": `package x
+				"/src/x/x.rego": `package x
+				p := 7`,
+				"/data.json": `{"x":{"y":{"A":7}}}`,
+			},
+			expRoots: []string{"x"},
+		},
+		{
+			note: "no requirements, no source name",
+			sources: []sourceMock{
+				{
+					files: map[string]string{
+						"/x/x.rego": `package x
+						p := 7`,
+						"/x/y/data.json": `{"A": 7}`,
+						"/x/z/data.json": `{"B": 7}`,
+					},
+				},
+			},
+			excluded: []string{"x/z/data.json"},
+			exp: map[string]string{
+				"/0/x/x.rego": `package x
 				p := 7`,
 				"/data.json": `{"x":{"y":{"A":7}}}`,
 			},
@@ -59,6 +81,7 @@ func TestBuilder(t *testing.T) {
 			note: "multiple requirements",
 			sources: []sourceMock{
 				{
+					name: "src",
 					files: map[string]string{
 						"/x/x.rego": `package x
 						import rego.v1
@@ -67,38 +90,38 @@ func TestBuilder(t *testing.T) {
 					requirements: []string{"lib1"},
 				},
 				{
+					name: "lib1",
 					files: map[string]string{
 						"/lib1.rego": `package lib1
 						import rego.v1
 						q if data.lib2.r`,
 					},
 					requirements: []string{"lib2"},
-					name:         "lib1",
 				},
 				{
+					name: "lib2",
 					files: map[string]string{
 						"/lib2.rego": `package lib2
 						import rego.v1
 						r if input.x > 7`,
 					},
-					name: "lib2",
 				},
 				{
 					// this source should not show up
+					name: "lib3",
 					files: map[string]string{
 						"/lib3.rego": `package lib3`,
 					},
-					name: "lib3",
 				},
 			},
 			exp: map[string]string{
-				"/x/x.rego": `package x
+				"/src/x/x.rego": `package x
 				import rego.v1
 				p if data.lib1.q`,
-				"/lib1.rego": `package lib1
+				"/lib1/lib1.rego": `package lib1
 				import rego.v1
 				q if data.lib2.r`,
-				"/lib2.rego": `package lib2
+				"/lib2/lib2.rego": `package lib2
 				import rego.v1
 				r if input.x > 7`,
 			},
@@ -247,6 +270,7 @@ func TestBuilder(t *testing.T) {
 			note: "shared dependency",
 			sources: []sourceMock{
 				{
+					name: "shared-dep",
 					files: map[string]string{
 						"x.rego": `package x
 						p := data.y.q+data.z.r`,
@@ -270,11 +294,11 @@ func TestBuilder(t *testing.T) {
 				},
 			},
 			exp: map[string]string{
-				"/x.rego": `package x
+				"/shared-dep/x.rego": `package x
 				p := data.y.q+data.z.r`,
-				"/lib1.rego": `package y
+				"/lib1/lib1.rego": `package y
 				p := data.z.r`,
-				"/lib2.rego": `package z
+				"/lib2/lib2.rego": `package z
 				r := 7`,
 			},
 			expRoots: []string{"x", "y", "z"},
@@ -283,6 +307,7 @@ func TestBuilder(t *testing.T) {
 			note: "included and excluded files (source level)",
 			sources: []sourceMock{
 				{
+					name: "primary",
 					files: map[string]string{
 						"x/x.rego": "package x\np := 7",
 						"y/y.rego": "package y\nq := 8",
@@ -302,8 +327,8 @@ func TestBuilder(t *testing.T) {
 				},
 			},
 			exp: map[string]string{
-				"/x/x.rego": "package x\np := 7",
-				"/z/z.rego": "package z\nq := 10",
+				"/primary/x/x.rego": "package x\np := 7",
+				"/lib/z/z.rego":     "package z\nq := 10",
 			},
 			expRoots: []string{"x", "z"},
 		},
@@ -325,8 +350,8 @@ func TestBuilder(t *testing.T) {
 				},
 			},
 			exp: map[string]string{
-				"/x.rego":       "package x\np { data.lib.y.q }",
-				"/lib/y/y.rego": "package lib.y\nq := true",
+				"/sys/x.rego":       "package x\np { data.lib.y.q }",
+				"/lib/lib/y/y.rego": "package lib.y\nq := true",
 			},
 			expRoots: []string{"x", "lib/y"},
 		},
@@ -344,7 +369,7 @@ func TestBuilder(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		t.Run(tc.note, func(b *testing.T) {
+		t.Run(tc.note, func(t *testing.T) {
 			allFiles := map[string]string{}
 
 			for i, src := range tc.sources {
@@ -378,7 +403,7 @@ func TestBuilder(t *testing.T) {
 					WithExcluded(tc.excluded).
 					WithOutput(buf)
 
-				err := b.Build(context.Background())
+				err := b.Build(t.Context())
 				if err != nil {
 					if tc.expError != nil {
 						if err.Error() == tc.expError.Error() {
@@ -402,15 +427,14 @@ func TestBuilder(t *testing.T) {
 				}
 
 				fileMap := map[string]string{}
-
 				for _, mf := range bundle.Modules {
 					fileMap[mf.Path] = string(mf.Raw)
 				}
-
 				if len(bundle.Data) > 0 {
 					data, _ := json.Marshal(bundle.Data)
 					fileMap["/data.json"] = string(data)
 				}
+				t.Log("got files", slices.Collect(maps.Keys(fileMap)))
 
 				if len(fileMap) != len(tc.exp) {
 					for k, v := range fileMap {

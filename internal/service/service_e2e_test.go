@@ -161,7 +161,9 @@ func TestService(t *testing.T) {
 
 				got := map[string]*ast.Module{}
 				for _, mf := range b.Modules {
-					got[strings.TrimPrefix(mf.Path, "/")] = mf.Parsed
+					p := strings.TrimPrefix(mf.Path, "/")
+					got[p] = mf.Parsed
+					t.Log("got", p)
 				}
 
 				for k := range test.ExpectedBundle.Rego {

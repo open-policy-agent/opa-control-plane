@@ -29,4 +29,4 @@ cases:
   - "/651b945976b07287063e8967060724a4/sources/TestLibrary/builtin/test/test.rego"
   expected_bundle:
     rego:
-      test/test.rego: *test_rego
+      TestLibrary/test/test.rego: *test_rego

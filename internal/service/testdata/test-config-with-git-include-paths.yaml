@@ -50,5 +50,5 @@ cases:
   - /651b945976b07287063e8967060724a4/sources/TestLibrary/repo/lib/lib.rego
   expected_bundle:
     rego:
-      app/app.rego: *app_rego
-      lib/lib.rego: *lib_rego
+      TestApp1/app/app.rego: *app_rego
+      TestLibrary1/lib/lib.rego: *lib_rego

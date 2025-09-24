@@ -23,6 +23,17 @@ type filteredDir struct {
 	excluded []glob.Glob
 }
 
+// NewFilterFS takes an fs.FS instances and lists of glob strings to be included and excluded.
+// On Open(), it'll return `fs.ErrNotExist` if the file is excluded, or if the include list is
+// non-empty and the file wasn't explicitly included.
+// Both glob lists expect /-separated paths.
+// On ReadDir(), the same logic applies, except that any directory is returned, unless it is
+// explicitly excluded. With typical usage, it'll result in many empty directories; but for
+// our use case of feeding the `fs.FS` into OPA's bundle build machinery, that doesn't make a
+// difference.
+// Filtering by ReadDir() lets us avoid listing files that we'll not allow access to. When
+// building a bundle using fs.FS, not doing this would give us "file does not exist" errors
+// for excluded files.
 func NewFilterFS(fs fs.FS, include []string, exclude []string) (*FilterFS, error) {
 	ffs := FilterFS{fs: fs}
 

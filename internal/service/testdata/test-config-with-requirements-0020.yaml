@@ -45,6 +45,6 @@ cases:
   - "/651b945976b07287063e8967060724a4/sources/TestLibrary2/database/lib2.rego"
   expected_bundle:
     rego:
-      app.rego: *app_rego
-      main.rego: *lib_rego
-      lib2.rego: *lib2_rego
+      TestApp/app.rego: *app_rego
+      TestLibrary/main.rego: *lib_rego
+      TestLibrary2/lib2.rego: *lib2_rego
