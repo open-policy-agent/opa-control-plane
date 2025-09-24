@@ -48,24 +48,6 @@ func (s *Server) Init() *Server {
 	s.router.HandleFunc("PUT    /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksPut))
 	s.router.HandleFunc("GET    /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksGet))
 
-	// public := s.router.PathPrefix("/").Subrouter()
-	// public.Handle("/health", http.HandlerFunc(s.health)).Methods(http.MethodGet)
-
-	// api := s.router.PathPrefix("/v1").Subrouter()
-	// api.Handle("/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataGet)).Methods(http.MethodGet)
-	// api.Handle("/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataPut)).Methods(http.MethodPost, http.MethodPut)
-	// api.Handle("/sources/{source:.+}/data/{path:.+}", http.HandlerFunc(s.v1SourcesDataDelete)).Methods(http.MethodDelete)
-	// api.Handle("/sources", http.HandlerFunc(s.v1SourcesList)).Methods(http.MethodGet)
-	// api.Handle("/sources/{source:.+}", http.HandlerFunc(s.v1SourcesPut)).Methods(http.MethodPut)
-	// api.Handle("/sources/{source:.+}", http.HandlerFunc(s.v1SourcesGet)).Methods(http.MethodGet)
-	// api.Handle("/bundles", http.HandlerFunc(s.v1BundlesList)).Methods(http.MethodGet)
-	// api.Handle("/bundles/{bundle:.+}", http.HandlerFunc(s.v1BundlesPut)).Methods(http.MethodPut)
-	// api.Handle("/bundles/{bundle:.+}", http.HandlerFunc(s.v1BundlesGet)).Methods(http.MethodGet)
-	// api.Handle("/stacks", http.HandlerFunc(s.v1StacksList)).Methods(http.MethodGet)
-	// api.Handle("/stacks/{stack:.+}", http.HandlerFunc(s.v1StacksPut)).Methods(http.MethodPut)
-	// api.Handle("/stacks/{stack:.+}", http.HandlerFunc(s.v1StacksGet)).Methods(http.MethodGet)
-	// api.Use(authenticationMiddleware(s.db))
-
 	return s
 }
 
