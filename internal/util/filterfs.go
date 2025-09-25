@@ -23,7 +23,7 @@ type filteredDir struct {
 	excluded []glob.Glob
 }
 
-// NewFilterFS takes an fs.FS instances and lists of glob strings to be included and excluded.
+// NewFilterFS takes an fs.FS instance and lists of glob strings to be included and excluded.
 // On Open(), it'll return `fs.ErrNotExist` if the file is excluded, or if the include list is
 // non-empty and the file wasn't explicitly included.
 // Both glob lists expect /-separated paths.
