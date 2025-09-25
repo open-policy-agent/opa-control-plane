@@ -101,7 +101,7 @@ func (s *Source) Transform(ctx context.Context) error {
 			return err
 		}
 
-		if err := os.WriteFile(t.Path, content, 0644); err != nil {
+		if err := os.WriteFile(t.Path, content, 0o644); err != nil {
 			return err
 		}
 	}
