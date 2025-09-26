@@ -57,8 +57,8 @@ var wellknownFingerprints = []string{
 //   - "ssh_key" for SSH private key authentication. Value for key "key" (private key) is expected. "fingerprints" (string array) and "passphrase" are optional.
 //   - "token_auth" for HTTP bearer token authentication. Value for a key "token" is expected.
 type Secret struct {
-	Name  string                 `json:"-" yaml:"-"`
-	Value map[string]interface{} `json:"-" yaml:"-"`
+	Name  string                 `json:"name" yaml:"-"`
+	Value map[string]interface{} `json:"value" yaml:"-"`
 }
 
 func (s *Secret) Ref() *SecretRef {

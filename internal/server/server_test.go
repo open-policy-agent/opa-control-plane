@@ -142,6 +142,99 @@ func TestServerSourcesData(t *testing.T) {
 	}
 }
 
+func TestServerSecretsOwners(t *testing.T) {
+	ctx := t.Context()
+
+	for databaseType, databaseConfig := range dbs.Configs(t) {
+		t.Run(databaseType, func(t *testing.T) {
+			t.Parallel()
+			var ctr testcontainers.Container
+			if databaseConfig.Setup != nil {
+				ctr = databaseConfig.Setup(t)
+				t.Cleanup(databaseConfig.Cleanup(t, ctr))
+			}
+
+			db := (&database.Database{}).WithConfig(databaseConfig.Database(t, ctr).Database)
+			db = initTestDB(t, db)
+			ts := initTestServer(t, db)
+			defer ts.Close()
+
+			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "internal", Role: "administrator"}); err != nil {
+				t.Fatal(err)
+			}
+
+			const ownerKey = "test-owner-key"
+			const ownerKey2 = "test-owner-key2"
+
+			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner2", APIKey: ownerKey2, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+				t.Fatal(err)
+			}
+
+			ts.Request("PUT", "/v1/secrets/test", `{"value":{"type":"token_auth","token":"yadda"}}`, ownerKey).ExpectStatus(200)
+			exp := &config.Secret{
+				Name: "test",
+				Value: map[string]any{
+					"value": map[string]any{
+						"type":  "token_auth",
+						"token": "yadda",
+					},
+				},
+			}
+
+			{
+				var secret types.SecretsGetResponseV1
+				ts.Request("GET", "/v1/secrets/test", "", ownerKey).ExpectStatus(200).ExpectBody(&secret)
+				act := secret.Result
+				if diff := cmp.Diff(exp, act); diff != "" {
+					t.Fatal("unexpected response (-want,+got)", diff)
+				}
+			}
+
+			{
+				var ownerList types.SecretsListResponseV1
+				ts.Request("GET", "/v1/secrets", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
+				if len(ownerList.Result) != 1 {
+					t.Fatal("expected exactly one secret")
+				}
+				act := ownerList.Result[0]
+				if diff := cmp.Diff(exp, act); diff != "" {
+					t.Fatal("unexpected response (-want,+got)", diff)
+				}
+			}
+
+			{
+				var ownerList2 types.SecretsListResponseV1
+				ts.Request("GET", "/v1/secrets", "", ownerKey2).ExpectStatus(200).ExpectBody(&ownerList2)
+				if len(ownerList2.Result) != 0 {
+					t.Fatal("did not expect to see secret")
+				}
+			}
+
+			{ // compared to using ownerKey2
+				ts.Request("PUT", "/v1/secrets/test", "{}", ownerKey2).ExpectStatus(403)
+				ts.Request("GET", "/v1/secrets/test", "", ownerKey2).ExpectStatus(404)
+				ts.Request("PUT", "/v1/secrets/test", "{}", ownerKey).ExpectStatus(200)
+			}
+			{ // deleting as not-the-owner
+				ts.Request("DELETE", "/v1/secrets/guessname", "", ownerKey2).ExpectStatus(403)
+				ts.Request("DELETE", "/v1/secrets/test", "", ownerKey2).ExpectStatus(403)
+			}
+			{ // deleting as owner
+				ts.Request("DELETE", "/v1/secrets/test", "", ownerKey).ExpectStatus(200)
+				var ownerList types.SecretsListResponseV1
+				ts.Request("GET", "/v1/secrets", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
+				if len(ownerList.Result) != 0 {
+					t.Fatal("did not expect to see secret")
+				}
+			}
+		})
+	}
+}
+
 func TestServerBundleOwners(t *testing.T) {
 	ctx := t.Context()
 

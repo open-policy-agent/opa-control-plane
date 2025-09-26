@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/server/writer"
+
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/database"
 	"github.com/styrainc/opa-control-plane/internal/server/types"
@@ -49,6 +50,10 @@ func (s *Server) Init() *Server {
 	s.router.HandleFunc("PUT    /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksPut))
 	s.router.HandleFunc("GET    /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksGet))
 	s.router.HandleFunc("DELETE /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksDelete))
+	s.router.HandleFunc("GET    /v1/secrets", authenticationMiddleware(s.db, s.v1SecretsList))
+	s.router.HandleFunc("PUT    /v1/secrets/{secret}", authenticationMiddleware(s.db, s.v1SecretsPut))
+	s.router.HandleFunc("GET    /v1/secrets/{secret}", authenticationMiddleware(s.db, s.v1SecretsGet))
+	s.router.HandleFunc("DELETE /v1/secrets/{secret}", authenticationMiddleware(s.db, s.v1SecretsDelete))
 
 	return s
 }
@@ -283,7 +288,7 @@ func (s *Server) v1SourcesDataPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var value interface{}
+	var value any
 	if err := newJSONDecoder(r.Body).Decode(&value); err != nil {
 		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		return
@@ -367,7 +372,7 @@ func (s *Server) v1StacksDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := types.SourcesDeleteResponseV1{}
+	resp := types.StacksDeleteResponseV1{}
 	JSONOK(w, resp, pretty(r))
 }
 
@@ -400,6 +405,87 @@ func (s *Server) v1StacksPut(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := types.StacksPutResponseV1{}
+	JSONOK(w, resp, pretty(r))
+}
+
+func (s *Server) v1SecretsList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	opts := s.listOptions(r)
+	secrets, nextCursor, err := s.db.ListSecrets(ctx, s.auth(r), opts)
+	if err != nil {
+		errorAuto(w, err)
+		return
+	}
+
+	resp := types.SecretsListResponseV1{Result: secrets, NextCursor: nextCursor}
+	JSONOK(w, resp, pretty(r))
+}
+
+func (s *Server) v1SecretsGet(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	name, err := url.PathUnescape(r.PathValue("secret"))
+	if err != nil {
+		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	secret, err := s.db.GetSecret(ctx, s.auth(r), name)
+	if err != nil {
+		errorAuto(w, err)
+		return
+	}
+
+	resp := types.SecretsGetResponseV1{Result: secret}
+	JSONOK(w, resp, pretty(r))
+}
+
+func (s *Server) v1SecretsDelete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	name, err := url.PathUnescape(r.PathValue("secret"))
+	if err != nil {
+		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	if err := s.db.DeleteSecret(ctx, s.auth(r), name); err != nil {
+		errorAuto(w, err)
+		return
+	}
+
+	resp := types.SecretsDeleteResponseV1{}
+	JSONOK(w, resp, pretty(r))
+}
+
+func (s *Server) v1SecretsPut(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	name, err := url.PathUnescape(r.PathValue("secret"))
+	if err != nil {
+		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	var secret config.Secret
+	if err := newJSONDecoder(r.Body).Decode(&secret); err != nil {
+		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	if secret.Name == "" {
+		secret.Name = name
+	} else if secret.Name != name {
+		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, errors.New("stack name must match path"))
+		return
+	}
+
+	if err := s.db.UpsertSecret(ctx, s.auth(r), &secret); err != nil {
+		errorAuto(w, err)
+		return
+	}
+
+	resp := types.SecretsPutResponseV1{}
 	JSONOK(w, resp, pretty(r))
 }
 
@@ -455,7 +541,7 @@ func Error(w http.ResponseWriter, status int, err *types.ErrorV1) {
 	_, _ = w.Write(append(err.Bytes(), byte('\n')))
 }
 
-func JSON(w http.ResponseWriter, code int, v interface{}, pretty bool) {
+func JSON(w http.ResponseWriter, code int, v any, pretty bool) {
 	enc := json.NewEncoder(w)
 	if pretty {
 		enc.SetIndent("", "  ")
@@ -469,7 +555,7 @@ func JSON(w http.ResponseWriter, code int, v interface{}, pretty bool) {
 	}
 }
 
-func JSONOK(w http.ResponseWriter, v interface{}, pretty bool) {
+func JSONOK(w http.ResponseWriter, v any, pretty bool) {
 	JSON(w, http.StatusOK, v, pretty)
 }
 
