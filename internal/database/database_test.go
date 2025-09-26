@@ -180,6 +180,22 @@ func TestDatabase(t *testing.T) {
 						Name:         "source-b",
 						Requirements: config.Requirements{},
 					},
+					"source-x": { // x -> y -> z
+						Name: "source-x",
+						Requirements: config.Requirements{
+							config.Requirement{Source: newString("source-y")},
+						},
+					},
+					"source-y": {
+						Name: "source-y",
+						Requirements: config.Requirements{
+							config.Requirement{Source: newString("source-z")},
+						},
+					},
+					"source-z": {
+						Name:         "source-z",
+						Requirements: config.Requirements{},
+					},
 				},
 				Secrets: map[string]*config.Secret{
 					"secret1": {
@@ -207,10 +223,22 @@ func TestDatabase(t *testing.T) {
 
 				// source operations:
 				newTestCase("list sources").ListSources([]*config.Source{
-					root.Sources["source-a"], root.Sources["source-b"], root.Sources["system1"],
-					root.Sources["system2"], root.Sources["system3"], root.Sources["system5"],
-					root.Sources["system4"]}),
+					root.Sources["source-a"], root.Sources["source-b"], root.Sources["source-z"], root.Sources["source-y"], root.Sources["source-x"],
+					root.Sources["system1"], root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"]}),
 				newTestCase("get source system1").GetSource("system1", root.Sources["system1"]),
+				newTestCase("delete sources + requirements").
+					DeleteSource("source-z", false). // used by x and y
+					DeleteSource("source-y", false). // used by x
+					DeleteSource("source-x", true).  // unused
+					DeleteSource("source-z", false). // used by y
+					DeleteSource("source-y", true).  // unused
+					DeleteSource("source-z", true).  // unused
+					GetSource("source-x", nil).
+					GetSource("source-y", nil).
+					GetSource("source-z", nil),
+				newTestCase("list sources again").ListSources([]*config.Source{
+					root.Sources["source-a"], root.Sources["source-b"],
+					root.Sources["system1"], root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"]}),
 
 				// stack operations:
 				newTestCase("list stacks").ListStacks([]*config.Stack{root.Stacks["stack1"]}),
