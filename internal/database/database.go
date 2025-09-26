@@ -942,7 +942,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 	})
 }
 
-func (d *Database) GetSecret(ctx context.Context, principal string, name string) (*config.Secret, error) {
+func (d *Database) GetSecret(ctx context.Context, principal string, name string) (*config.SecretRef, error) {
 	secrets, _, err := d.ListSecrets(ctx, principal, ListOptions{name: name})
 	if err != nil {
 		return nil, err
@@ -967,8 +967,8 @@ func (d *Database) DeleteSecret(ctx context.Context, principal string, name stri
 	})
 }
 
-func (d *Database) ListSecrets(ctx context.Context, principal string, opts ListOptions) ([]*config.Secret, string, error) {
-	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.Secret, string, error) {
+func (d *Database) ListSecrets(ctx context.Context, principal string, opts ListOptions) ([]*config.SecretRef, string, error) {
+	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.SecretRef, string, error) {
 		expr, err := authz.Partial(ctx, authz.Access{
 			Principal:  principal,
 			Resource:   "secrets",
@@ -983,8 +983,7 @@ func (d *Database) ListSecrets(ctx context.Context, principal string, opts ListO
 		conditions, args := expr.SQL(d.arg, nil)
 		query := `SELECT
         secrets.id,
-        secrets.name,
-        secrets.value
+        secrets.name
     FROM
         secrets
     WHERE (` + conditions + ")"
@@ -1011,26 +1010,21 @@ func (d *Database) ListSecrets(ctx context.Context, principal string, opts ListO
 		defer rows.Close()
 
 		type secretRow struct {
-			id    int64
-			name  string
-			value string
+			id   int64
+			name string
 		}
 
-		var sl []*config.Secret
+		var sl []*config.SecretRef
 		var lastId int64
 		for rows.Next() {
 			var row secretRow
-			if err := rows.Scan(&row.id, &row.name, &row.value); err != nil {
+			if err := rows.Scan(&row.id, &row.name); err != nil {
 				return nil, "", err
 			}
 			if row.id > lastId {
 				lastId = row.id
 			}
-			s := config.Secret{Name: row.name}
-			if err := json.Unmarshal([]byte(row.value), &s.Value); err != nil {
-				return nil, "", err
-			}
-			sl = append(sl, &s)
+			sl = append(sl, &config.SecretRef{Name: row.name})
 		}
 		if err := rows.Err(); err != nil {
 			return nil, "", err

@@ -175,14 +175,8 @@ func TestServerSecretsOwners(t *testing.T) {
 			}
 
 			ts.Request("PUT", "/v1/secrets/test", `{"value":{"type":"token_auth","token":"yadda"}}`, ownerKey).ExpectStatus(200)
-			exp := &config.Secret{
+			exp := &config.SecretRef{
 				Name: "test",
-				Value: map[string]any{
-					"value": map[string]any{
-						"type":  "token_auth",
-						"token": "yadda",
-					},
-				},
 			}
 
 			{

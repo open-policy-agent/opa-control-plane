@@ -68,12 +68,12 @@ type StacksPutResponseV1 struct{}
 type StacksDeleteResponseV1 struct{}
 
 type SecretsListResponseV1 struct {
-	Result     []*config.Secret `json:"result"`
-	NextCursor string           `json:"next_cursor,omitempty"`
+	Result     []*config.SecretRef `json:"result"`
+	NextCursor string              `json:"next_cursor,omitempty"`
 }
 
 type SecretsGetResponseV1 struct {
-	Result *config.Secret `json:"result"`
+	Result *config.SecretRef `json:"result"`
 }
 
 type SecretsPutResponseV1 struct{}
