@@ -476,7 +476,7 @@ func (s *Server) v1SecretsPut(w http.ResponseWriter, r *http.Request) {
 	if secret.Name == "" {
 		secret.Name = name
 	} else if secret.Name != name {
-		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, errors.New("stack name must match path"))
+		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, errors.New("secret name must match path"))
 		return
 	}
 
