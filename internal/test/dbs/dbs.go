@@ -36,7 +36,7 @@ const sqliteMemoryOnlyDSNFormat = "file:%d?cache=shared&mode=memory"
 // for SQLite, by incrementing this counter.
 var counter atomic.Int32
 
-func memoryDBName() string {
+func MemoryDBName() string {
 	old := counter.Add(1)
 	return fmt.Sprintf(sqliteMemoryOnlyDSNFormat, old)
 }
@@ -50,7 +50,7 @@ func Configs(t *testing.T) map[string]Setup {
 					Database: &config.Database{
 						SQL: &config.SQLDatabase{
 							Driver: "sqlite3",
-							DSN:    memoryDBName(),
+							DSN:    MemoryDBName(),
 						},
 					},
 				}

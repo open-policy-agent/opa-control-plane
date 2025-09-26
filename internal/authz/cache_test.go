@@ -5,6 +5,9 @@ import (
 )
 
 func TestCache(t *testing.T) {
+	// reset cache
+	partialCache = newCache(cacheSize)
+
 	expr1 := sqlExprIsNotNull{Column: ColumnRef{Table: "table1", Column: "id1"}}
 	expr2 := sqlExprIsNotNull{Column: ColumnRef{Table: "table2", Column: "id2"}}
 	expr3 := sqlExprIsNotNull{Column: ColumnRef{Table: "table3", Column: "id3"}}
