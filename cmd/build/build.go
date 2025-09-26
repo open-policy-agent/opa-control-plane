@@ -85,8 +85,14 @@ func init() {
 				os.Exit(1)
 			}
 
+			buildReport := collectBuildReport(svc.Report())
+
 			if !params.noninteractive {
-				printReport(svc.Report())
+				printReport(buildReport)
+			}
+
+			if !buildReport.allBuildsSuccessful() {
+				os.Exit(1)
 			}
 		},
 	}
@@ -104,24 +110,56 @@ func init() {
 	)
 }
 
-func printReport(r *service.Report) {
+type buildError struct {
+	bundleName string
+	buildState service.BuildState
+	message    string
+}
 
-	table := tablewriter.NewWriter(os.Stderr)
-	table.SetAutoWrapText(false)
-	table.SetHeader([]string{"Bundle", "Status", "Message"})
+type buildReport struct {
+	totalBuilds      int
+	successfulBuilds int
+	buildErrors      []buildError
+}
+
+func (b *buildReport) allBuildsSuccessful() bool {
+	return b.totalBuilds == b.successfulBuilds
+}
+
+func collectBuildReport(r *service.Report) *buildReport {
 	sorted := slices.Collect(maps.Keys(r.Bundles))
 	sort.Strings(sorted)
+
 	var success int
+	var buildErrors []buildError
 	for _, name := range sorted {
 		if r.Bundles[name].State == service.BuildStateSuccess {
 			success++
 		} else {
-			table.Append([]string{name, r.Bundles[name].State.String(), r.Bundles[name].Message})
+			buildErrors = append(buildErrors, buildError{
+				bundleName: name,
+				buildState: r.Bundles[name].State,
+				message:    r.Bundles[name].Message,
+			})
 		}
 	}
-	fmt.Fprintf(os.Stderr, "%d/%d bundles built and pushed successfully\n", success, len(r.Bundles))
-	if success != len(r.Bundles) {
+
+	return &buildReport{
+		totalBuilds:      len(r.Bundles),
+		successfulBuilds: success,
+		buildErrors:      buildErrors,
+	}
+}
+
+func printReport(r *buildReport) {
+	fmt.Fprintf(os.Stderr, "%d/%d bundles built and pushed successfully\n", r.successfulBuilds, r.totalBuilds)
+	if !r.allBuildsSuccessful() {
+		table := tablewriter.NewWriter(os.Stderr)
+		table.SetAutoWrapText(false)
+		table.SetHeader([]string{"Bundle", "Status", "Message"})
+		for _, buildError := range r.buildErrors {
+			table.Append([]string{buildError.bundleName, buildError.buildState.String(), buildError.message})
+		}
 		table.Render()
-		os.Exit(1)
 	}
 }
