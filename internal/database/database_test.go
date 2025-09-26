@@ -205,6 +205,13 @@ func TestDatabase(t *testing.T) {
 							"password": "value",
 						},
 					},
+					"secret2": {
+						Name: "secret2",
+						Value: map[string]any{
+							"type":  "token_auth",
+							"token": "xyz",
+						},
+					},
 				},
 				Database: &config.Database{
 					SQL: &config.SQLDatabase{
@@ -335,6 +342,19 @@ func TestDatabase(t *testing.T) {
 					DeleteSource("source-a", true). // Can delete source now!
 					GetBundle("bundle-a", nil).
 					GetSource("source-a", nil),
+
+				// secrets ops
+				newTestCase("secrets crud").
+					GetSecret("secret2",
+						&config.SecretRef{Name: "secret2"},
+					).
+					ListSecrets([]*config.SecretRef{
+						{Name: "secret1"},
+						{Name: "secret2"},
+					}).
+					DeleteSecret("secret1", false). // in use
+					DeleteSecret("secret2", true).  // unused
+					GetSecret("secret2", nil),
 			}
 			for _, test := range tests {
 				t.Run(test.note, func(t *testing.T) {
@@ -512,18 +532,7 @@ func (tc *testCase) GetBundle(id string, expected *config.Bundle) *testCase {
 }
 
 func (tc *testCase) DeleteBundle(id string, expSuccess bool) *testCase {
-	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		err := db.DeleteBundle(ctx, "admin", id)
-		// NB(sr): we're rather loose with the error matching because these tests run
-		// with all three backends and the error types returned are driver-specific.
-		if !expSuccess && err == nil {
-			t.Fatal("expected error, got nil")
-		}
-		if expSuccess && err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-	})
-
+	tc.deleteBy((*database.Database).DeleteBundle, id, expSuccess)
 	return tc
 }
 
@@ -582,18 +591,66 @@ func (tc *testCase) GetSource(id string, expected *config.Source) *testCase {
 }
 
 func (tc *testCase) DeleteSource(id string, expSuccess bool) *testCase {
+	tc.deleteBy((*database.Database).DeleteSource, id, expSuccess)
+	return tc
+}
+
+func (tc *testCase) ListSecrets(expected []*config.SecretRef) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		err := db.DeleteSource(ctx, "admin", id)
-		// NB(sr): we're rather loose with the error matching because these tests run
-		// with all three backends and the error types returned are driver-specific.
-		if !expSuccess && err == nil {
-			t.Fatal("expected error, got nil")
+		cursor := ""
+		var listed []*config.SecretRef
+
+		for {
+			var secrets []*config.SecretRef
+			var err error
+			limit := 4
+			secrets, cursor, err = db.ListSecrets(ctx, "admin", database.ListOptions{Limit: limit, Cursor: cursor})
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			listed = append(listed, secrets...)
+
+			if len(secrets) < limit {
+				break
+
+			}
 		}
-		if expSuccess && err != nil {
-			t.Fatalf("unexpected error: %v", err)
+
+		if diff := cmp.Diff(expected, listed); diff != "" {
+			t.Fatal("unexpected list result", diff)
 		}
 	})
 
+	return tc
+}
+
+func (tc *testCase) GetSecret(id string, expected *config.SecretRef) *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		secret, err := db.GetSecret(ctx, "admin", id)
+		if err != nil && err != database.ErrNotFound {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		switch {
+		case secret != nil && expected == nil:
+			t.Fatal("expected no secret to be found")
+		case secret == nil && expected != nil:
+			t.Fatal("expected secret to be found")
+		case secret == nil && expected == nil:
+			// OK
+		case secret != nil && expected != nil:
+			if !secret.Equal(expected) {
+				t.Fatalf("expected secret not found, got %v", secret)
+			}
+		}
+	})
+
+	return tc
+}
+
+func (tc *testCase) DeleteSecret(id string, expSuccess bool) *testCase {
+	tc.deleteBy((*database.Database).DeleteSecret, id, expSuccess)
 	return tc
 }
 
@@ -652,8 +709,13 @@ func (tc *testCase) GetStack(id string, expected *config.Stack) *testCase {
 }
 
 func (tc *testCase) DeleteStack(id string, expSuccess bool) *testCase {
+	tc.deleteBy((*database.Database).DeleteStack, id, expSuccess)
+	return tc
+}
+
+func (tc *testCase) deleteBy(by func(*database.Database, context.Context, string, string) error, id string, expSuccess bool) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		err := db.DeleteStack(ctx, "admin", id)
+		err := by(db, ctx, "admin", id)
 		// NB(sr): we're rather loose with the error matching because these tests run
 		// with all three backends and the error types returned are driver-specific.
 		if !expSuccess && err == nil {

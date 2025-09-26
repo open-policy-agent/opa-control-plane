@@ -675,6 +675,9 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 				lastId = row.id
 			}
 		}
+		if err := rows.Err(); err != nil {
+			return nil, "", err
+		}
 
 		sl := slices.Collect(maps.Values(bundleMap))
 		sort.Slice(sl, func(i, j int) bool {
@@ -863,6 +866,9 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 				last = row.id
 			}
 		}
+		if err := rows.Err(); err != nil {
+			return nil, "", err
+		}
 
 		// Load datasources for each source.
 
@@ -917,6 +923,9 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 				src.Datasources = append(src.Datasources, datasource)
 			}
 		}
+		if err := rows2.Err(); err != nil {
+			return nil, "", err
+		}
 
 		sl := slices.Collect(maps.Values(srcMap))
 		sort.Slice(sl, func(i, j int) bool {
@@ -929,6 +938,108 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			nextCursor = base64.URLEncoding.EncodeToString([]byte(cursor))
 		}
 
+		return sl, nextCursor, nil
+	})
+}
+
+func (d *Database) GetSecret(ctx context.Context, principal string, name string) (*config.Secret, error) {
+	secrets, _, err := d.ListSecrets(ctx, principal, ListOptions{name: name})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(secrets) == 0 {
+		return nil, ErrNotFound
+	}
+
+	return secrets[0], nil
+}
+
+func (d *Database) DeleteSecret(ctx context.Context, principal string, name string) error {
+	return tx1(ctx, d, func(tx *sql.Tx) error {
+		if err := d.prepareDelete(ctx, tx, principal, "secrets", name, "secrets.manage"); err != nil {
+			return err
+		}
+		if err := d.delete(ctx, tx, "secrets", "name", name); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func (d *Database) ListSecrets(ctx context.Context, principal string, opts ListOptions) ([]*config.Secret, string, error) {
+	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.Secret, string, error) {
+		expr, err := authz.Partial(ctx, authz.Access{
+			Principal:  principal,
+			Resource:   "secrets",
+			Permission: "secrets.view",
+		}, map[string]authz.ColumnRef{
+			"input.name": {Table: "secrets", Column: "name"},
+		})
+		if err != nil {
+			return nil, "", err
+		}
+
+		conditions, args := expr.SQL(d.arg, nil)
+		query := `SELECT
+        secrets.id,
+        secrets.name,
+        secrets.value
+    FROM
+        secrets
+    WHERE (` + conditions + ")"
+
+		if opts.name != "" {
+			query += fmt.Sprintf(" AND (secrets.name = %s)", d.arg(len(args)))
+			args = append(args, opts.name)
+		}
+
+		if after := opts.cursor(); after > 0 {
+			query += fmt.Sprintf(" AND (secrets.id > %s)", d.arg(len(args)))
+			args = append(args, after)
+		}
+		query += " ORDER BY secrets.id"
+		if opts.Limit > 0 {
+			query += " LIMIT " + d.arg(len(args))
+			args = append(args, opts.Limit)
+		}
+
+		rows, err := txn.Query(query, args...)
+		if err != nil {
+			return nil, "", err
+		}
+		defer rows.Close()
+
+		type secretRow struct {
+			id    int64
+			name  string
+			value string
+		}
+
+		var sl []*config.Secret
+		var lastId int64
+		for rows.Next() {
+			var row secretRow
+			if err := rows.Scan(&row.id, &row.name, &row.value); err != nil {
+				return nil, "", err
+			}
+			if row.id > lastId {
+				lastId = row.id
+			}
+			s := config.Secret{Name: row.name}
+			if err := json.Unmarshal([]byte(row.value), &s.Value); err != nil {
+				return nil, "", err
+			}
+			sl = append(sl, &s)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, "", err
+		}
+
+		var nextCursor string
+		if opts.Limit > 0 && len(sl) == opts.Limit {
+			nextCursor = encodeCursor(lastId)
+		}
 		return sl, nextCursor, nil
 	})
 }
@@ -1060,6 +1171,9 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 			if row.id > lastId {
 				lastId = row.id
 			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, "", err
 		}
 
 		sl := slices.Collect(maps.Values(stacksMap))

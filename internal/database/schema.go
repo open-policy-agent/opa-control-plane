@@ -38,7 +38,8 @@ var schema = []sqlTable{
 		TextNonNullColumn("selector").
 		TextColumn("exclude_selector"),
 	createSQLTable("secrets").
-		VarCharPrimaryKeyColumn("name").
+		IntegerPrimaryKeyAutoincrementColumn("id").
+		VarCharNonNullUniqueColumn("name").
 		TextColumn("value"),
 	createSQLTable("tokens").
 		VarCharPrimaryKeyColumn("name").
