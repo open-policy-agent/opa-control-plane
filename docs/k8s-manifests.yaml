@@ -259,9 +259,8 @@ spec:
     spec:
       containers:
       - name: opactl
-        image: openpolicyagent/opactl
+        image: openpolicyagent/opa-control-plane:edge
         imagePullPolicy: IfNotPresent
-        command: ["/app/opactl"]
         args:
         - "run"
         - "--addr=0.0.0.0:8282"
