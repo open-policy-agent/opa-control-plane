@@ -1,11 +1,43 @@
-package database
+package migrations
 
 import (
 	"fmt"
-	"slices"
+	"io/fs"
 	"strings"
+
+	"github.com/styrainc/opa-control-plane/internal/util"
 )
 
+func Migrations(dialect string) (fs.FS, error) {
+	ns := util.Namespace()
+	ns.Bind(".", initialSchemaFS(dialect))
+	return ns, nil
+}
+
+func initialSchemaFS(dialect string) fs.FS {
+	var kind int
+	switch dialect {
+	case "postgresql":
+		kind = postgres
+	case "mysql":
+		kind = mysql
+	case "sqlite":
+		kind = sqlite
+	}
+	m := make(map[string]string, len(schema))
+	for i, tbl := range schema {
+		f := fmt.Sprintf("%03d_%s.up.sql", i, tbl.name)
+		m[f] = tbl.SQL(kind)
+	}
+	return util.MapFS(m)
+}
+
+// schema holds the initial set of database tables, dating back to when database
+// migrations were introduced. THESE MAY NOT BE CHANGED, as the migrations machinery
+// would fall apart for anyone who already applied these migrations.
+// They are the basis of all further migrations. We keep them here because it's
+// convienent to lookup the tables and there relations in one place -- the initial
+// migrations are generated from for each of the dialects we support.
 var schema = []sqlTable{
 	createSQLTable("bundles").
 		IntegerPrimaryKeyAutoincrementColumn("id").
@@ -110,6 +142,12 @@ var schema = []sqlTable{
 		PrimaryKey("name", "resource").
 		ForeignKeyOnDeleteCascade("principal_id", "principals(id)"),
 }
+
+const (
+	sqlite = iota
+	postgres
+	mysql
+)
 
 type sqlColumn struct {
 	Name                    string
@@ -332,34 +370,4 @@ func (t sqlTable) SQL(kind int) string {
 
 	return `CREATE TABLE IF NOT EXISTS ` + t.name + ` (
 			` + strings.Join(c, ",\n") + `);`
-}
-
-// checkTablePrimaryKey checks if the primary key columns for a table match the schema.
-// It serves to validate that the primary key columns specified in the upsert operation are valid.
-func checkTablePrimaryKey(table string, primaryKey []string) error {
-	for _, t := range schema {
-		if t.name == table {
-			if len(primaryKey) == 1 {
-				for _, col := range t.columns {
-					if col.Name == primaryKey[0] && (col.PrimaryKey || col.Unique) {
-						return nil
-					}
-				}
-
-				return fmt.Errorf("primary key column %q not found in table %q", primaryKey[0], table)
-			}
-
-			if len(primaryKey) != len(t.primaryKeyColumns) {
-				return fmt.Errorf("invalid number of primary key columns for table %q: expected %d, got %d", table, len(t.primaryKeyColumns), len(primaryKey))
-			}
-
-			if !slices.Equal(primaryKey, t.primaryKeyColumns) {
-				return fmt.Errorf("primary key columns %v do not match expected columns %v for table %q", primaryKey, t.primaryKeyColumns, table)
-			}
-
-			return nil
-		}
-	}
-
-	return fmt.Errorf("table %q not found in schema", table)
 }

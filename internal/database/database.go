@@ -39,10 +39,28 @@ const SQLiteMemoryOnlyDSN = "file::memory:?cache=shared"
 
 // Database implements the database operations. It will hide any differences between the varying SQL databases from the rest of the codebase.
 type Database struct {
-	db     *sql.DB
-	config *config.Database
-	kind   int
-	log    *logging.Logger
+	db      *sql.DB
+	config  *config.Database
+	kind    int
+	log     *logging.Logger
+	migrate bool
+}
+
+func (d *Database) DB() *sql.DB {
+	return d.db
+}
+
+func (d *Database) Dialect() (string, error) {
+	switch d.kind {
+	case sqlite:
+		return "sqlite", nil
+	case postgres:
+		return "postgresql", nil
+	case mysql:
+		return "mysql", nil
+	default:
+		return "", fmt.Errorf("unknown kind: %d", d.kind)
+	}
 }
 
 type ListOptions struct {
@@ -316,12 +334,6 @@ func (d *Database) InitDB(ctx context.Context) error {
 
 	default:
 		return errors.New("unsupported database connection type")
-	}
-
-	for _, table := range schema {
-		if _, err := d.db.Exec(table.SQL(d.kind)); err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -1532,10 +1544,6 @@ func (d *Database) resourceExists(ctx context.Context, tx *sql.Tx, table string,
 }
 
 func (d *Database) upsert(ctx context.Context, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) error {
-	if err := checkTablePrimaryKey(table, primaryKey); err != nil {
-		return err
-	}
-
 	var query string
 	switch d.kind {
 	case sqlite:

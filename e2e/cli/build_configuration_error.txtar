@@ -1,9 +1,9 @@
 ! exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
-stderr '^unexpected error: load config failed: upsert bundle "hello-world" failed'
+stderr '^load config failed: upsert bundle "hello-world" failed'
 ! stdout .
 
 ! exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --non-interactive
-stderr '^unexpected error: load config failed: upsert bundle "hello-world" failed'
+stderr '^load config failed: upsert bundle "hello-world" failed'
 ! stdout .
 
 -- config.d/bundle.yml --

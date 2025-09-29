@@ -8,7 +8,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/database"
-	"github.com/styrainc/opa-control-plane/internal/service"
+	"github.com/styrainc/opa-control-plane/internal/migrations"
 	"github.com/styrainc/opa-control-plane/internal/test/dbs"
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -26,8 +26,7 @@ func TestDatabase(t *testing.T) {
 				t.Cleanup(databaseConfig.Cleanup(t, ctr))
 			}
 
-			db := service.New().WithConfig(databaseConfig.Database(t, ctr)).Database()
-			err := db.InitDB(ctx)
+			db, err := migrations.New().WithConfig(databaseConfig.Database(t, ctr).Database).WithMigrate(true).Run(ctx)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}

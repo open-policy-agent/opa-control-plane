@@ -1,0 +1,37 @@
+exec $OPACTL db migrate --config config.d/no_db.yml --dry-run
+stderr 'WARN'
+stderr 'database has never run migrations'
+! stdout .
+
+# rule of silence
+exec $OPACTL db migrate --config config.d/no_db.yml
+! stderr .
+! stdout .
+
+exec $OPACTL db migrate --config config.d/local_db.yml --log-level debug
+stderr 'Finished 13/u resource_permissions'
+! stdout .
+
+exec $OPACTL db migrate --config config.d/local_db.yml --log-level debug --dry-run
+stderr 'database migrations up to date'
+! stdout .
+
+-- config.d/no_db.yml --
+bundles:
+  a:
+    object_storage:
+      filesystem:
+        path: bundles/a/bundle.tar.gz
+    requirements:
+-- config.d/local_db.yml --
+database:
+  sql:
+    driver: sqlite
+    dsn: ocp_sqlite.db
+bundles:
+  a:
+    object_storage:
+      filesystem:
+        path: bundles/a/bundle.tar.gz
+    requirements:
+

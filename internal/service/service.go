@@ -22,6 +22,7 @@ import (
 	"github.com/styrainc/opa-control-plane/internal/gitsync"
 	"github.com/styrainc/opa-control-plane/internal/httpsync"
 	"github.com/styrainc/opa-control-plane/internal/logging"
+	"github.com/styrainc/opa-control-plane/internal/migrations"
 	"github.com/styrainc/opa-control-plane/internal/pool"
 	"github.com/styrainc/opa-control-plane/internal/progress"
 	"github.com/styrainc/opa-control-plane/internal/s3"
@@ -46,6 +47,7 @@ type Service struct {
 	report         *Report
 	log            *logging.Logger
 	noninteractive bool
+	migrateDB      bool
 }
 
 type Report struct {
@@ -96,6 +98,7 @@ func New() *Service {
 		workers:        make(map[string]*BundleWorker),
 		failures:       make(map[string]Status),
 		noninteractive: true,
+		migrateDB:      false,
 	}
 }
 
@@ -135,11 +138,16 @@ func (s *Service) WithNoninteractive(yes bool) *Service {
 	return s
 }
 
-func (s *Service) Run(ctx context.Context) error {
-	if err := s.initDB(ctx); err != nil {
-		return err
-	}
+func (s *Service) WithMigrateDB(yes bool) *Service {
+	s.migrateDB = yes
+	return s
+}
 
+func (s *Service) Init(ctx context.Context) error {
+	return s.initDB(ctx)
+}
+
+func (s *Service) Run(ctx context.Context) error {
 	defer s.database.CloseDB()
 
 	s.readyMutex.Lock()
@@ -177,20 +185,17 @@ shutdown:
 		for _, w := range s.workers {
 			s.report.Bundles[w.bundleConfig.Name] = w.status
 		}
-		for b, status := range s.failures {
-			s.report.Bundles[b] = status
-		}
+		maps.Copy(s.report.Bundles, s.failures)
 	}
 
 	return nil
-
 }
 
 func (s *Service) Report() *Report {
 	return s.report
 }
 
-func (s *Service) Ready(_ context.Context) error {
+func (s *Service) Ready(context.Context) error {
 	s.readyMutex.Lock()
 	defer s.readyMutex.Unlock()
 	if s.ready {
@@ -203,9 +208,15 @@ func (s *Service) initDB(ctx context.Context) error {
 	bar := progress.New(s.noninteractive, -1, "loading configuration")
 	defer bar.Finish()
 
-	if err := s.database.InitDB(ctx); err != nil {
+	db, err := migrations.New().
+		WithConfig(s.config.Database).
+		WithLogger(s.log).
+		WithMigrate(s.migrateDB).
+		Run(ctx)
+	if err != nil {
 		return err
 	}
+	s.database = *db
 
 	if err := s.database.UpsertPrincipal(ctx, database.Principal{Id: internalPrincipal, Role: "administrator"}); err != nil {
 		return err

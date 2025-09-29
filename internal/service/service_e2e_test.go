@@ -106,7 +106,11 @@ func TestService(t *testing.T) {
 					WithPersistenceDir(persistenceDir).
 					WithBuiltinFS(util.NewEscapeFS(libraries.FS)).
 					WithSingleShot(true).
+					WithMigrateDB(true).
 					WithLogger(logging.NewLogger(logging.Config{Level: logging.LevelDebug}))
+				if err := svc.Init(ctx); err != nil {
+					t.Fatal(err)
+				}
 				if err := svc.Run(ctx); err != nil {
 					t.Fatal(err)
 				}

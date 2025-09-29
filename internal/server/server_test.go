@@ -16,6 +16,7 @@ import (
 
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/database"
+	"github.com/styrainc/opa-control-plane/internal/migrations"
 	"github.com/styrainc/opa-control-plane/internal/server/types"
 	"github.com/styrainc/opa-control-plane/internal/test/dbs"
 )
@@ -31,8 +32,7 @@ func TestServerSourcesData(t *testing.T) {
 				t.Cleanup(databaseConfig.Cleanup(t, ctr))
 			}
 
-			db := (&database.Database{}).WithConfig(databaseConfig.Database(t, ctr).Database)
-			db = initTestDB(t, db)
+			db := initTestDB(t, databaseConfig.Database(t, ctr).Database)
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
@@ -154,8 +154,7 @@ func TestServerSecretsOwners(t *testing.T) {
 				t.Cleanup(databaseConfig.Cleanup(t, ctr))
 			}
 
-			db := (&database.Database{}).WithConfig(databaseConfig.Database(t, ctr).Database)
-			db = initTestDB(t, db)
+			db := initTestDB(t, databaseConfig.Database(t, ctr).Database)
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
@@ -241,8 +240,7 @@ func TestServerBundleOwners(t *testing.T) {
 				t.Cleanup(databaseConfig.Cleanup(t, ctr))
 			}
 
-			db := (&database.Database{}).WithConfig(databaseConfig.Database(t, ctr).Database)
-			db = initTestDB(t, db)
+			db := initTestDB(t, databaseConfig.Database(t, ctr).Database)
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
@@ -343,9 +341,7 @@ func TestServerSourceOwners(t *testing.T) {
 				t.Cleanup(databaseConfig.Cleanup(t, ctr))
 			}
 
-			db := (&database.Database{}).WithConfig(databaseConfig.Database(t, ctr).Database)
-			db = initTestDB(t, db)
-
+			db := initTestDB(t, databaseConfig.Database(t, ctr).Database)
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
@@ -438,9 +434,7 @@ func TestSourcesDatasourcesSecrets(t *testing.T) {
 				t.Cleanup(databaseConfig.Cleanup(t, ctr))
 			}
 
-			db := (&database.Database{}).WithConfig(databaseConfig.Database(t, ctr).Database)
-			db = initTestDB(t, db)
-
+			db := initTestDB(t, databaseConfig.Database(t, ctr).Database)
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
@@ -569,8 +563,7 @@ func TestServerStackOwners(t *testing.T) {
 				t.Cleanup(databaseConfig.Cleanup(t, ctr))
 			}
 
-			db := (&database.Database{}).WithConfig(databaseConfig.Database(t, ctr).Database)
-			db = initTestDB(t, db)
+			db := initTestDB(t, databaseConfig.Database(t, ctr).Database)
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
@@ -661,9 +654,7 @@ func TestServerSourcePagination(t *testing.T) {
 				t.Cleanup(databaseConfig.Cleanup(t, ctr))
 			}
 
-			db := (&database.Database{}).WithConfig(databaseConfig.Database(t, ctr).Database)
-			db = initTestDB(t, db)
-
+			db := initTestDB(t, databaseConfig.Database(t, ctr).Database)
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
@@ -742,12 +733,13 @@ func TestServerHealthEndpoint(t *testing.T) {
 
 }
 
-func initTestDB(t *testing.T, db *database.Database) *database.Database {
+func initTestDB(t *testing.T, config *config.Database) *database.Database {
 	t.Helper()
-	if db == nil {
-		db = &database.Database{}
-	}
-	if err := db.InitDB(t.Context()); err != nil {
+	db, err := migrations.New().
+		WithConfig(config).
+		WithMigrate(true).
+		Run(t.Context())
+	if err != nil {
 		t.Fatal(err)
 	}
 	return db

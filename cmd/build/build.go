@@ -14,6 +14,7 @@ import (
 	"github.com/styrainc/opa-control-plane/cmd/internal/flags"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/logging"
+	"github.com/styrainc/opa-control-plane/internal/migrations"
 	"github.com/styrainc/opa-control-plane/internal/progress"
 	"github.com/styrainc/opa-control-plane/internal/service"
 	"github.com/styrainc/opa-control-plane/internal/util"
@@ -26,6 +27,7 @@ type buildParams struct {
 	persistenceDir    string
 	resetPersistence  bool
 	mergeConflictFail bool
+	migrateDB         bool
 	bundleNames       []string
 	logging           logging.Config
 }
@@ -72,16 +74,28 @@ func init() {
 				}
 			}
 
+			// It might be that `opactl build` is connecting to database -- but
+			// the common use is that `opactl build` will just use its own in-memory
+			// sqlite DB. The logic for running migrations is thus: Do as you're told
+			// if you're told; otherwise apply migrations if there is no database
+			// config.
+			migrate := params.migrateDB || config.Database == nil
+
 			svc := service.New().
 				WithPersistenceDir(params.persistenceDir).
 				WithConfig(config).
 				WithBuiltinFS(util.NewEscapeFS(libraries.FS)).
 				WithSingleShot(true).
 				WithLogger(log).
-				WithNoninteractive(params.noninteractive)
+				WithNoninteractive(params.noninteractive).
+				WithMigrateDB(migrate)
+			if err := svc.Init(ctx); err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
 
 			if err := svc.Run(ctx); err != nil {
-				fmt.Fprintln(os.Stderr, "unexpected error:", err)
+				fmt.Fprintln(os.Stderr, err.Error())
 				os.Exit(1)
 			}
 
@@ -104,6 +118,7 @@ func init() {
 	build.Flags().BoolVarP(&params.mergeConflictFail, "merge-conflict-fail", "", false, "Fail on config merge conflicts")
 	progress.Var(build.Flags(), &params.noninteractive)
 	logging.VarP(build, &params.logging)
+	migrations.Var(build.Flags(), &params.migrateDB)
 
 	cmd.RootCommand.AddCommand(
 		build,

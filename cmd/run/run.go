@@ -10,6 +10,7 @@ import (
 	"github.com/styrainc/opa-control-plane/cmd/internal/flags"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/logging"
+	"github.com/styrainc/opa-control-plane/internal/migrations"
 	"github.com/styrainc/opa-control-plane/internal/server"
 	"github.com/styrainc/opa-control-plane/internal/service"
 	"github.com/styrainc/opa-control-plane/internal/util"
@@ -24,6 +25,7 @@ type runParams struct {
 	persistenceDir    string
 	resetPersistence  bool
 	mergeConflictFail bool
+	migrateDB         bool
 	logging           logging.Config
 }
 
@@ -63,7 +65,12 @@ func init() {
 				WithPersistenceDir(params.persistenceDir).
 				WithConfig(config).
 				WithBuiltinFS(util.NewEscapeFS(libraries.FS)).
-				WithLogger(log)
+				WithLogger(log).
+				WithMigrateDB(params.migrateDB)
+
+			if err := svc.Init(ctx); err != nil {
+				log.Fatalf("initialize service: %v", err)
+			}
 
 			go func() {
 				if err := server.New().WithDatabase(svc.Database()).WithReadiness(svc.Ready).Init().ListenAndServe(params.addr); err != nil {
@@ -83,6 +90,7 @@ func init() {
 	run.Flags().BoolVarP(&params.resetPersistence, "reset-persistence", "", false, "Reset the persistence directory (for development purposes)")
 	run.Flags().BoolVarP(&params.mergeConflictFail, "merge-conflict-fail", "", false, "Fail on config merge conflicts")
 	logging.VarP(run, &params.logging)
+	migrations.Var(run.Flags(), &params.migrateDB)
 
 	cmd.RootCommand.AddCommand(
 		run,
