@@ -48,6 +48,7 @@ type Service struct {
 	log            *logging.Logger
 	noninteractive bool
 	migrateDB      bool
+	initialized    bool
 }
 
 type Report struct {
@@ -144,10 +145,18 @@ func (s *Service) WithMigrateDB(yes bool) *Service {
 }
 
 func (s *Service) Init(ctx context.Context) error {
-	return s.initDB(ctx)
+	if s.initialized {
+		return nil
+	}
+	err := s.initDB(ctx)
+	s.initialized = err == nil
+	return err
 }
 
 func (s *Service) Run(ctx context.Context) error {
+	if err := s.Init(ctx); err != nil {
+		return err
+	}
 	defer s.database.CloseDB()
 
 	s.readyMutex.Lock()

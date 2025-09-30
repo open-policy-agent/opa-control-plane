@@ -108,9 +108,6 @@ func TestService(t *testing.T) {
 					WithSingleShot(true).
 					WithMigrateDB(true).
 					WithLogger(logging.NewLogger(logging.Config{Level: logging.LevelDebug}))
-				if err := svc.Init(ctx); err != nil {
-					t.Fatal(err)
-				}
 				if err := svc.Run(ctx); err != nil {
 					t.Fatal(err)
 				}

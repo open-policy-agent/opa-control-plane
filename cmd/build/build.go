@@ -89,11 +89,6 @@ func init() {
 				WithLogger(log).
 				WithNoninteractive(params.noninteractive).
 				WithMigrateDB(migrate)
-			if err := svc.Init(ctx); err != nil {
-				fmt.Fprintln(os.Stderr, err.Error())
-				os.Exit(1)
-			}
-
 			if err := svc.Run(ctx); err != nil {
 				fmt.Fprintln(os.Stderr, err.Error())
 				os.Exit(1)

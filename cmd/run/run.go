@@ -68,6 +68,7 @@ func init() {
 				WithLogger(log).
 				WithMigrateDB(params.migrateDB)
 
+			// NOTE(sr): We run Init() separately here because we're passing svc.Database() to server below
 			if err := svc.Init(ctx); err != nil {
 				log.Fatalf("initialize service: %v", err)
 			}
