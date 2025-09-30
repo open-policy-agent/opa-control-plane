@@ -13,7 +13,6 @@ import (
 )
 
 type migrateParams struct {
-	noninteractive    bool
 	dryrun            bool
 	mergeConflictFail bool
 	configFile        []string

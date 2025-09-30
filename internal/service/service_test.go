@@ -206,6 +206,7 @@ func oneshot(t *testing.T, bs []byte, dir string) *service.Service {
 		WithConfig(cfg).
 		WithPersistenceDir(filepath.Join(dir, "data")).
 		WithSingleShot(true).
+		WithMigrateDB(true).
 		WithLogger(log)
 
 	err = svc.Run(context.Background())

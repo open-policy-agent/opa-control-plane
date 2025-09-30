@@ -10,7 +10,9 @@ import (
 
 func Migrations(dialect string) (fs.FS, error) {
 	ns := util.Namespace()
-	ns.Bind(".", initialSchemaFS(dialect))
+	if err := ns.Bind(".", initialSchemaFS(dialect)); err != nil {
+		return nil, err
+	}
 	return ns, nil
 }
 
@@ -36,7 +38,7 @@ func initialSchemaFS(dialect string) fs.FS {
 // migrations were introduced. THESE MAY NOT BE CHANGED, as the migrations machinery
 // would fall apart for anyone who already applied these migrations.
 // They are the basis of all further migrations. We keep them here because it's
-// convienent to lookup the tables and there relations in one place -- the initial
+// convenient to lookup the tables and there relations in one place -- the initial
 // migrations are generated from for each of the dialects we support.
 var schema = []sqlTable{
 	createSQLTable("bundles").

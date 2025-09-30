@@ -39,11 +39,10 @@ const SQLiteMemoryOnlyDSN = "file::memory:?cache=shared"
 
 // Database implements the database operations. It will hide any differences between the varying SQL databases from the rest of the codebase.
 type Database struct {
-	db      *sql.DB
-	config  *config.Database
-	kind    int
-	log     *logging.Logger
-	migrate bool
+	db     *sql.DB
+	config *config.Database
+	kind   int
+	log    *logging.Logger
 }
 
 func (d *Database) DB() *sql.DB {
