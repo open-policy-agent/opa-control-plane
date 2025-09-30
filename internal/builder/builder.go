@@ -231,7 +231,7 @@ func (b *Builder) Build(ctx context.Context) error {
 	}
 
 	ns := util.Namespace()
-	var paths []string
+	paths := make([]string, 0, len(buildSources))
 	for _, src := range buildSources {
 		if err := ns.Bind(src.prefix, src.fsys); err != nil {
 			return err
@@ -269,7 +269,7 @@ func (b *Builder) Build(ctx context.Context) error {
 // `utils.FilterFS`).
 func getRegoAndJSONRoots(fsys fs.FS) ([]ast.Ref, error) {
 	set := ast.NewSet()
-	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry, err error) error {
+	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry) error {
 		bs, err := fs.ReadFile(fsys, path)
 		if err != nil {
 			return err
@@ -281,11 +281,11 @@ func getRegoAndJSONRoots(fsys fs.FS) ([]ast.Ref, error) {
 		}
 
 		set.Add(ast.NewTerm(module.Package.Path))
-		return err
+		return nil
 	}, ".rego")); err != nil {
 		return nil, err
 	}
-	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry, err error) error {
+	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry) error {
 		path = filepath.ToSlash(filepath.Dir(path))
 
 		var keys []*ast.Term
@@ -297,7 +297,7 @@ func getRegoAndJSONRoots(fsys fs.FS) ([]ast.Ref, error) {
 
 		keys = append([]*ast.Term{ast.DefaultRootDocument}, keys...)
 		set.Add(ast.RefTerm(keys...))
-		return err
+		return nil
 	}, ".json", ".yml", ".yaml")); err != nil {
 		return nil, err
 	}
@@ -314,7 +314,7 @@ func getRegoAndJSONRoots(fsys fs.FS) ([]ast.Ref, error) {
 // NB(sr): Why not glob the suffixes on top of our existing globs? Or make FilterFS take
 // a function, so we could reuse it for filtering out the interesting suffixes. Room for
 // improvements!
-func walkSuffixes(f fs.WalkDirFunc, suffixes ...string) fs.WalkDirFunc {
+func walkSuffixes(f func(path string, d fs.DirEntry) error, suffixes ...string) fs.WalkDirFunc {
 	return func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -328,7 +328,7 @@ func walkSuffixes(f fs.WalkDirFunc, suffixes ...string) fs.WalkDirFunc {
 		}) {
 			return nil
 		}
-		return f(path, d, err)
+		return f(path, d)
 	}
 }
 
