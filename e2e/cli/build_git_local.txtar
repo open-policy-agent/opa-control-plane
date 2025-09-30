@@ -5,7 +5,7 @@ exec git init .
 exec git branch -m main
 exec git config --global user.name "botbotbot" 
 exec git config --global user.email "bot@bot.bot" 
-exec git add users.json
+exec git add .
 exec git commit -m initial-commit
 cd ..
 
@@ -20,18 +20,17 @@ exec tar xf bundles/a.tar.gz
 cmp data.json exp/data.json
 cmp .manifest exp/.manifest
 
-
--- repo/users.json --
-{
-  "users": [
-    {
-      "id": "alice"
-    },
-    {
-      "id": "bob"
-    }
-  ]
-}
+-- repo/unrelated.yaml --
+ignore: me
+-- repo/users/data.json --
+[
+  {
+    "id": "alice"
+  },
+  {
+    "id": "bob"
+  }
+]
 -- config.d/bundle.yml --
 bundles:
   hello-world:
@@ -45,10 +44,12 @@ sources:
     git:
       repo: ./repo/
       reference: main
+      excluded_files:
+      - unrelated.yaml
 -- exp/tarball --
 /data.json
 /.manifest
 -- exp/data.json --
 {"users":[{"id":"alice"},{"id":"bob"}]}
 -- exp/.manifest --
-{"revision":"","roots":[""],"rego_version":0}
+{"revision":"","roots":["users"],"rego_version":0}

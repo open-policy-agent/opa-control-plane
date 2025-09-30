@@ -1,0 +1,40 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/a/bundle.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/a/bundle.tar.gz /data.json
+cmp data.json exp/data.json
+
+-- files/sources/a/unrelated.yaml --
+a: "not to be included"
+-- files/sources/a/prefix/data.json --
+{ "some": "thing" }
+-- files/sources/a/rules/rules.rego --
+package rules
+import rego.v1
+result if input.yay
+-- config.d/bundle.yml --
+bundles:
+  a:
+    object_storage:
+      filesystem:
+        path: bundles/a/bundle.tar.gz
+    requirements:
+    - source: dir-paths
+sources:
+  dir-paths:
+    directory: files/sources/a
+    excluded_files:
+    - unrelated.yaml
+    paths:
+    - rules/rules.rego
+    - prefix/data.json
+-- exp/tarball --
+/data.json
+/dir-paths/rules/rules.rego
+/.manifest
+-- exp/data.json --
+{"prefix":{"some":"thing"}}

@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/gobwas/glob"
 
 	"github.com/open-policy-agent/opa/ast"     // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle"  // nolint:staticcheck
@@ -166,7 +165,12 @@ func (b *Builder) Build(ctx context.Context) error {
 	// process them again here: We're applying the inclusion/exclusion filters, and
 	// they have an effect on the roots.
 	toProcess := []*Source{b.sources[0]}
-	buildSources := []*Source{}
+
+	type build struct {
+		prefix string
+		fsys   fs.FS
+	}
+	buildSources := []build{}
 	sourceMap := make(map[string]*Source)
 	for _, src := range b.sources {
 		sourceMap[src.Name] = src
@@ -175,22 +179,31 @@ func (b *Builder) Build(ctx context.Context) error {
 	processed := map[string]struct{}{}
 	rootMap := map[string]*Source{}
 
-	excluded := make([]glob.Glob, 0, len(b.excluded))
-	for _, e := range b.excluded {
-		g, err := glob.Compile(e)
-		if err != nil {
-			return err
-		}
-		excluded = append(excluded, g)
-	}
-
 	for len(toProcess) > 0 {
 		var next *Source
 		next, toProcess = toProcess[0], toProcess[1:]
-		newRoots, err := getRegoAndJSONRootsForDirs(excluded, next.Dirs)
-		if err != nil {
-			return fmt.Errorf("%v: %w", next.Name, err)
+		var newRoots []ast.Ref
+
+		for i, srcDir := range next.Dirs {
+			fs0, err := util.NewFilterFS(os.DirFS(srcDir.Path),
+				srcDir.IncludedFiles,
+				slices.Concat(b.excluded, srcDir.ExcludedFiles))
+			if err != nil {
+				return err
+			}
+
+			rs, err := getRegoAndJSONRoots(fs0)
+			if err != nil {
+				return fmt.Errorf("%v: %w", next.Name, err)
+			}
+			newRoots = append(newRoots, rs...)
+			prefix := next.Name
+			if prefix == "" || i > 0 {
+				prefix += strconv.Itoa(i)
+			}
+			buildSources = append(buildSources, build{prefix: prefix, fsys: fs0})
 		}
+
 		for _, root := range newRoots {
 			if overlap := rootsOverlap(existingRoots, root); len(overlap) > 0 {
 				return &PackageConflictErr{
@@ -203,7 +216,6 @@ func (b *Builder) Build(ctx context.Context) error {
 			rootMap[root.String()] = next
 		}
 		existingRoots = append(existingRoots, newRoots...)
-		buildSources = append(buildSources, next)
 		for _, r := range next.Requirements {
 			if r.Source != nil {
 				src, ok := sourceMap[*r.Source]
@@ -221,22 +233,10 @@ func (b *Builder) Build(ctx context.Context) error {
 	ns := util.Namespace()
 	var paths []string
 	for _, src := range buildSources {
-		for i, srcDir := range src.Dirs {
-			fs0, err := util.NewFilterFS(os.DirFS(srcDir.Path),
-				srcDir.IncludedFiles,
-				slices.Concat(b.excluded, srcDir.ExcludedFiles))
-			if err != nil {
-				return err
-			}
-			bind := src.Name
-			if bind == "" || i > 0 {
-				bind += strconv.Itoa(i)
-			}
-			if err := ns.Bind(bind, fs0); err != nil {
-				return err
-			}
-			paths = append(paths, bind)
+		if err := ns.Bind(src.prefix, src.fsys); err != nil {
+			return err
 		}
+		paths = append(paths, src.prefix)
 	}
 
 	c := compile.New().
@@ -262,94 +262,44 @@ func (b *Builder) Build(ctx context.Context) error {
 	return bundle.Write(b.output, *result)
 }
 
-func walkFilesRecursive(excludes []glob.Glob, dir Dir, suffixes []string, fn func(path string, fi os.FileInfo) error) error {
-	includes := make([]glob.Glob, 0, len(dir.IncludedFiles))
-	for _, i := range dir.IncludedFiles {
-		g, err := glob.Compile(i)
-		if err != nil {
-			return err
-		}
-		includes = append(includes, g)
-	}
-	return filepath.Walk(dir.Path, func(path string, fi os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if fi.IsDir() {
-			return nil
-		}
-		// NB(sr): All our globs are "/"-separated, so we need to check for inclusion/exclusion on
-		// the ToSlash-ed path.
-		trimmed := strings.TrimPrefix(filepath.ToSlash(path), dir.Path+"/")
-		if isExcluded(trimmed, excludes) || !isIncluded(trimmed, includes) {
-			return nil
-		}
-		ext := filepath.Ext(path)
-		if !slices.ContainsFunc(suffixes, func(s string) bool {
-			return strings.EqualFold(s, ext)
-		}) {
-			return nil
-		}
-		return fn(path, fi)
-	})
-}
-
-func isExcluded(path string, excludes []glob.Glob) bool {
-	return slices.ContainsFunc(excludes, func(g glob.Glob) bool {
-		return g.Match(path)
-	})
-}
-
-func isIncluded(path string, includes []glob.Glob) bool {
-	return len(includes) == 0 || slices.ContainsFunc(includes, func(g glob.Glob) bool {
-		return g.Match(path)
-	})
-}
-
-// getRegoAndJSONRootsForDirs returns the set of roots for the given directories. The
-// returned roots are the package paths for rego files and the directories
+// getRegoAndJSONRoots returns the set of roots for the given directories.
+// The returned roots are the package paths for rego files and the directories
 // holding the JSON files.
-func getRegoAndJSONRootsForDirs(excluded []glob.Glob, dirs []Dir) ([]ast.Ref, error) {
+// It works on `fs.FS`es and expects filters to already have been applied (via
+// `utils.FilterFS`).
+func getRegoAndJSONRoots(fsys fs.FS) ([]ast.Ref, error) {
 	set := ast.NewSet()
-
-	for _, dir := range dirs {
-		if err := walkFilesRecursive(excluded, dir, []string{".rego"}, func(path string, _ os.FileInfo) error {
-			bs, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-
-			module, err := ast.ParseModule(path, string(bs))
-			if err != nil {
-				return err
-			}
-
-			set.Add(ast.NewTerm(module.Package.Path))
-			return nil
-		}); err != nil {
-			return nil, err
+	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry, err error) error {
+		bs, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return err
 		}
 
-		if err := walkFilesRecursive(excluded, dir, []string{".json", ".yaml", ".yml"}, func(path string, _ os.FileInfo) error {
-			path, err := filepath.Rel(dir.Path, path)
-			if err != nil {
-				return err
-			}
-			path = filepath.ToSlash(filepath.Dir(path))
-
-			var keys []*ast.Term
-			for path != "" && path != "." {
-				dir := filepath.Base(path)
-				path = filepath.Dir(path)
-				keys = append([]*ast.Term{ast.StringTerm(dir)}, keys...)
-			}
-
-			keys = append([]*ast.Term{ast.DefaultRootDocument}, keys...)
-			set.Add(ast.RefTerm(keys...))
-			return nil
-		}); err != nil {
-			return nil, err
+		module, err := ast.ParseModule(path, string(bs))
+		if err != nil {
+			return err
 		}
+
+		set.Add(ast.NewTerm(module.Package.Path))
+		return err
+	}, ".rego")); err != nil {
+		return nil, err
+	}
+	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry, err error) error {
+		path = filepath.ToSlash(filepath.Dir(path))
+
+		var keys []*ast.Term
+		for path != "" && path != "." {
+			dir := filepath.Base(path)
+			path = filepath.Dir(path)
+			keys = append([]*ast.Term{ast.StringTerm(dir)}, keys...)
+		}
+
+		keys = append([]*ast.Term{ast.DefaultRootDocument}, keys...)
+		set.Add(ast.RefTerm(keys...))
+		return err
+	}, ".json", ".yml", ".yaml")); err != nil {
+		return nil, err
 	}
 
 	sl := set.Slice()
@@ -359,6 +309,27 @@ func getRegoAndJSONRootsForDirs(excluded []glob.Glob, dirs []Dir) ([]ast.Ref, er
 	}
 
 	return result, nil
+}
+
+// NB(sr): Why not glob the suffixes on top of our existing globs? Or make FilterFS take
+// a function, so we could reuse it for filtering out the interesting suffixes. Room for
+// improvements!
+func walkSuffixes(f fs.WalkDirFunc, suffixes ...string) fs.WalkDirFunc {
+	return func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		ext := filepath.Ext(path)
+		if !slices.ContainsFunc(suffixes, func(s string) bool {
+			return strings.EqualFold(s, ext)
+		}) {
+			return nil
+		}
+		return f(path, d, err)
+	}
 }
 
 func rootsOverlap(roots []ast.Ref, root ast.Ref) (result []ast.Ref) {
