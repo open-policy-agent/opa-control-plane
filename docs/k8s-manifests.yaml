@@ -88,9 +88,8 @@ data:
             path: httpbin
             type: http
             config:
-              # url: https://httpbin.org/bearer   #TODO: this is not working for some reason (the header doesn't seem to be passed)
-              url: https://httpbin.org/headers
-              credentials: httpbin-credentials
+              url: https://httpbin.org/bearer
+            credentials: httpbin-credentials
 ---
 # Local policy files for my-beta-app bundle
 apiVersion: v1
