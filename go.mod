@@ -232,7 +232,7 @@ require (
 	github.com/swaggest/jsonschema-go v0.3.78
 	github.com/testcontainers/testcontainers-go v0.39.0
 	github.com/testcontainers/testcontainers-go/modules/mysql v0.39.0
-	github.com/testcontainers/testcontainers-go/modules/postgres v0.38.0
+	github.com/testcontainers/testcontainers-go/modules/postgres v0.39.0
 	github.com/thediveo/enumflag/v2 v2.0.7
 	golang.org/x/crypto v0.41.0
 	golang.org/x/sync v0.16.0
