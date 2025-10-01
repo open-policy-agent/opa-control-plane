@@ -94,9 +94,7 @@ func (worker *BundleWorker) UpdateConfig(b *config.Bundle, sources []*config.Sou
 // Execute runs a bundle synchronization iteration: git sync, bundle construct
 // and then push bundles to object storage.
 func (w *BundleWorker) Execute(ctx context.Context) time.Time {
-	startTime := time.Now()
-	w.updateStartMetrics(startTime)
-	defer w.updateEndMetrics(startTime)
+	startTime := time.Now() // Used for timing metric
 
 	defer w.bar.Add(1)
 
@@ -110,7 +108,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	for _, src := range w.sources {
 		if err := src.Wipe(); err != nil {
 			w.log.Warnf("failed to remove a directory for bundle %q: %v", w.bundleConfig.Name, err)
-			return w.report(ctx, BuildStateInternalError, err)
+			return w.report(ctx, BuildStateInternalError, startTime, err)
 		}
 	}
 
@@ -118,14 +116,14 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		err := synchronizer.Execute(ctx)
 		if err != nil {
 			w.log.Warnf("failed to synchronize bundle %q: %v", w.bundleConfig.Name, err)
-			return w.report(ctx, BuildStateSyncFailed, err)
+			return w.report(ctx, BuildStateSyncFailed, startTime, err)
 		}
 	}
 
 	for _, src := range w.sources {
 		if err := src.Transform(ctx); err != nil {
 			w.log.Warnf("failed to evaluate source %q for bundle %q: %v", src.Name, w.bundleConfig.Name, err)
-			return w.report(ctx, BuildStateTransformFailed, err)
+			return w.report(ctx, BuildStateTransformFailed, startTime, err)
 		}
 	}
 
@@ -139,28 +137,27 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	err := b.Build(ctx)
 	if err != nil {
 		w.log.Warnf("failed to build a bundle %q: %v", w.bundleConfig.Name, err)
-		return w.report(ctx, BuildStateBuildFailed, err)
+		return w.report(ctx, BuildStateBuildFailed, startTime, err)
 	}
 
 	if w.storage != nil {
 		if err := w.storage.Upload(ctx, bytes.NewReader(buffer.Bytes())); err != nil {
 			w.log.Warnf("failed to upload bundle %q: %v", w.bundleConfig.Name, err)
-			return w.report(ctx, BuildStatePushFailed, err)
+			return w.report(ctx, BuildStatePushFailed, startTime, err)
 		}
 
 		w.log.Debugf("Bundle %q built and uploaded.", w.bundleConfig.Name)
-		return w.report(ctx, BuildStateSuccess, nil)
+		return w.report(ctx, BuildStateSuccess, startTime, nil)
 	}
 
 	w.log.Debugf("Bundle %q built.", w.bundleConfig.Name)
-	return w.report(ctx, BuildStateSuccess, nil)
+	return w.report(ctx, BuildStateSuccess, startTime, nil)
 }
 
-func (w *BundleWorker) report(ctx context.Context, state BuildState, err error) time.Time {
+func (w *BundleWorker) report(ctx context.Context, state BuildState, startTime time.Time, err error) time.Time {
+	w.updatePostBundleBuildMetrics(startTime, state)
 	w.status.State = state
 	if err != nil {
-		metrics.BundleBuildFailed.WithLabelValues(w.bundleConfig.Name, state.String()).Inc()
-
 		if _, ok := err.(ast.Errors); ok {
 			w.status.Message = "Run 'opa build " + w.bundleDir + "' to see errors"
 		} else {
@@ -203,12 +200,7 @@ func (w *BundleWorker) die(ctx context.Context) time.Time {
 	return zero
 }
 
-func (w *BundleWorker) updateStartMetrics(startTime time.Time) {
-	metrics.BundleBuildCount.Inc()
-	metrics.LastBundleBuildStart.WithLabelValues(w.bundleConfig.Name).Set(float64(startTime.Unix()))
-}
-
-func (w *BundleWorker) updateEndMetrics(startTime time.Time) {
+func (w *BundleWorker) updatePostBundleBuildMetrics(startTime time.Time, state BuildState) {
+	metrics.BundleBuildCount.WithLabelValues(w.bundleConfig.Name, state.String()).Inc()
 	metrics.BundleBuildDuration.WithLabelValues(w.bundleConfig.Name).Observe(float64(time.Since(startTime).Seconds()))
-	metrics.LastBundleBuildEnd.WithLabelValues(w.bundleConfig.Name).Set(float64(time.Now().Unix()))
 }

@@ -61,18 +61,18 @@ func New(path string, config config.Git, sourceName string) *Synchronizer {
 // Execute performs the synchronization of the configured Git repository. If the repository does not exist
 // on disk, clone it. If it does exist, pull the latest changes and rebase the local branch onto the remote branch.
 func (s *Synchronizer) Execute(ctx context.Context) error {
+	startTime := time.Now()
+	defer s.updatePostSyncMetrics(startTime)
+
 	if err := s.execute(ctx); err != nil {
-		metrics.GitSyncFailed.WithLabelValues(s.sourceName).Inc()
+		metrics.GitSyncCount.WithLabelValues(s.sourceName, s.config.Repo, "failed").Inc()
 		return fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
 	}
+	metrics.GitSyncCount.WithLabelValues(s.sourceName, s.config.Repo, "success").Inc()
 	return nil
 }
 
 func (s *Synchronizer) execute(ctx context.Context) error {
-	startTime := time.Now()
-	s.updateStartMetrics(startTime)
-	defer s.updateEndMetrics(startTime)
-
 	var repository *git.Repository
 
 	authMethod, err := s.auth(ctx)
@@ -326,12 +326,6 @@ func (a *basicAuth) SetAuth(r *gohttp.Request) {
 	}
 }
 
-func (s *Synchronizer) updateStartMetrics(startTime time.Time) {
-	metrics.GitSyncCount.Inc()
-	metrics.LastGitSyncStart.WithLabelValues(s.sourceName, s.config.Repo).Set(float64(startTime.Unix()))
-}
-
-func (s *Synchronizer) updateEndMetrics(startTime time.Time) {
+func (s *Synchronizer) updatePostSyncMetrics(startTime time.Time) {
 	metrics.GitSyncDuration.WithLabelValues(s.sourceName, s.config.Repo).Observe(float64(time.Since(startTime).Seconds()))
-	metrics.LastGitSyncEnd.WithLabelValues(s.sourceName, s.config.Repo).Set(float64(time.Now().Unix()))
 }
