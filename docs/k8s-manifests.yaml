@@ -272,6 +272,7 @@ spec:
         - "--config=/config.d/my-beta-app.yaml"
         - "--config=/config.d/my-shared-datasource.yaml"
         # - "--reset-persistence"                     # Not suitable for production, but useful for testing
+        - "--apply-migrations" # single OCP instance can run migrations on startup, use `opactl db migrate` for out-of-band migrations
         - "--log-level=debug"
         env:
         - name: AWS_ACCESS_KEY_ID
