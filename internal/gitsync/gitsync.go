@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/go-git/go-git/v5"
@@ -24,6 +25,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/styrainc/opa-control-plane/internal/config"
+	"github.com/styrainc/opa-control-plane/internal/metrics"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
@@ -60,12 +62,17 @@ func New(path string, config config.Git, sourceName string) *Synchronizer {
 // on disk, clone it. If it does exist, pull the latest changes and rebase the local branch onto the remote branch.
 func (s *Synchronizer) Execute(ctx context.Context) error {
 	if err := s.execute(ctx); err != nil {
+		metrics.GitSyncFailed.WithLabelValues(s.sourceName).Inc()
 		return fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
 	}
 	return nil
 }
 
 func (s *Synchronizer) execute(ctx context.Context) error {
+	startTime := time.Now()
+	s.updateStartMetrics(startTime)
+	defer s.updateEndMetrics(startTime)
+
 	var repository *git.Repository
 
 	authMethod, err := s.auth(ctx)
@@ -317,4 +324,14 @@ func (a *basicAuth) SetAuth(r *gohttp.Request) {
 			r.Header.Set(strings.TrimSpace(name), strings.TrimSpace(value))
 		}
 	}
+}
+
+func (s *Synchronizer) updateStartMetrics(startTime time.Time) {
+	metrics.GitSyncCount.Inc()
+	metrics.LastGitSyncStart.WithLabelValues(s.sourceName, s.config.Repo).Set(float64(startTime.Unix()))
+}
+
+func (s *Synchronizer) updateEndMetrics(startTime time.Time) {
+	metrics.GitSyncDuration.WithLabelValues(s.sourceName, s.config.Repo).Observe(float64(time.Since(startTime).Seconds()))
+	metrics.LastGitSyncEnd.WithLabelValues(s.sourceName, s.config.Repo).Set(float64(time.Now().Unix()))
 }

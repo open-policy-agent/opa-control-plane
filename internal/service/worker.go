@@ -9,6 +9,7 @@ import (
 	"github.com/styrainc/opa-control-plane/internal/builder"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/logging"
+	"github.com/styrainc/opa-control-plane/internal/metrics"
 	"github.com/styrainc/opa-control-plane/internal/progress"
 	"github.com/styrainc/opa-control-plane/internal/s3"
 )
@@ -93,6 +94,9 @@ func (worker *BundleWorker) UpdateConfig(b *config.Bundle, sources []*config.Sou
 // Execute runs a bundle synchronization iteration: git sync, bundle construct
 // and then push bundles to object storage.
 func (w *BundleWorker) Execute(ctx context.Context) time.Time {
+	startTime := time.Now()
+	w.updateStartMetrics(startTime)
+	defer w.updateEndMetrics(startTime)
 
 	defer w.bar.Add(1)
 
@@ -155,6 +159,8 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 func (w *BundleWorker) report(ctx context.Context, state BuildState, err error) time.Time {
 	w.status.State = state
 	if err != nil {
+		metrics.BundleBuildFailed.WithLabelValues(w.bundleConfig.Name, state.String()).Inc()
+
 		if _, ok := err.(ast.Errors); ok {
 			w.status.Message = "Run 'opa build " + w.bundleDir + "' to see errors"
 		} else {
@@ -195,4 +201,14 @@ func (w *BundleWorker) die(ctx context.Context) time.Time {
 
 	var zero time.Time
 	return zero
+}
+
+func (w *BundleWorker) updateStartMetrics(startTime time.Time) {
+	metrics.BundleBuildCount.Inc()
+	metrics.LastBundleBuildStart.WithLabelValues(w.bundleConfig.Name).Set(float64(startTime.Unix()))
+}
+
+func (w *BundleWorker) updateEndMetrics(startTime time.Time) {
+	metrics.BundleBuildDuration.WithLabelValues(w.bundleConfig.Name).Observe(float64(time.Since(startTime).Seconds()))
+	metrics.LastBundleBuildEnd.WithLabelValues(w.bundleConfig.Name).Set(float64(time.Now().Unix()))
 }
