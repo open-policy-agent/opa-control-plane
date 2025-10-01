@@ -59,14 +59,14 @@ func init() {
 				log.Fatalf("configuration error: %v", err)
 			}
 
-			config.SetSQLitePersistentByDefault(params.persistenceDir)
+			sqlite := config.SetSQLitePersistentByDefault(params.persistenceDir)
 
 			svc := service.New().
 				WithPersistenceDir(params.persistenceDir).
 				WithConfig(config).
 				WithBuiltinFS(util.NewEscapeFS(libraries.FS)).
 				WithLogger(log).
-				WithMigrateDB(params.migrateDB)
+				WithMigrateDB(params.migrateDB || sqlite) // always run migrations with sqlite
 
 			// NOTE(sr): We run Init() separately here because we're passing svc.Database() to server below
 			if err := svc.Init(ctx); err != nil {

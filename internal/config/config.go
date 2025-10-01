@@ -46,7 +46,7 @@ type Root struct {
 // database stored in the given persistence directory if no other database configuration
 // exists. This is used for the 'run' command to change its default behavior from other
 // commands.
-func (r *Root) SetSQLitePersistentByDefault(persistenceDir string) {
+func (r *Root) SetSQLitePersistentByDefault(persistenceDir string) bool {
 	if r.Database == nil {
 		r.Database = &Database{}
 	}
@@ -59,7 +59,9 @@ func (r *Root) SetSQLitePersistentByDefault(persistenceDir string) {
 		r.Database.SQL.Driver == "sqlite3" || r.Database.SQL.Driver == "sqlite") && r.Database.SQL.DSN == "" {
 		r.Database.SQL.Driver = "sqlite3"
 		r.Database.SQL.DSN = filepath.Join(persistenceDir, "sqlite.db")
+		return true
 	}
+	return false
 }
 
 // UnmarshalYAML implements the yaml.Marshaler interface for the Root struct. This

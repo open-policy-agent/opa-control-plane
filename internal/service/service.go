@@ -245,6 +245,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 		s.log.Errorf("error listing bundles: %s", err.Error())
 		return
 	}
+	s.log.Debugf("launchWorkers for %d bundles", len(bundles))
 
 	sourceDefs, _, err := s.database.ListSources(ctx, internalPrincipal, database.ListOptions{})
 	if err != nil {
