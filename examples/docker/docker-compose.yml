@@ -1,0 +1,32 @@
+services:
+  ocp:
+    image: ${OCP_IMAGE:-openpolicyagent/opa-control-plane:edge}
+    command:
+      - run
+      - --addr=0.0.0.0:8282
+      - --apply-migrations
+      - --config=/ocp.yml
+      - --data-dir=/tmp
+      - --log-level=debug
+    volumes:
+      - ./ocp.yml:/ocp.yml
+    ports:
+      - 8282:8282
+
+  db:
+    image: postgres:latest
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: sesame
+    volumes:
+      - pgdata:/var/lib/postgresql/data 
+ 
+  # use username 'postgres', password 'sesame' on http://127.0.0.1:8080
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+ 
+volumes:
+  pgdata:

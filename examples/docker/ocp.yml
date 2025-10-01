@@ -1,0 +1,9 @@
+tokens:
+  admin:
+    api_key: sesame
+    scopes:
+    - role: administrator
+database:
+  sql:
+    driver: postgres
+    dsn: postgresql://postgres:sesame@db:5432
