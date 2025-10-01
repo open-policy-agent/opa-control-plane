@@ -135,7 +135,7 @@ func findLatest(d migrate_source.Driver) uint {
 	}
 }
 
-// wrap wires our logger into migrate's logger. We'll log every migration-related
+// wrap wires our logger into migrate's logger. We'll log all migration-related
 // messages with level DEBUG, and hardcode "verbose" to true. That way, you'll
 // see no migration-related logs in standard operations, but you can see as much
 // as it'll give us when using log-level debug.
