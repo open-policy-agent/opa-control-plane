@@ -335,6 +335,18 @@
         "api_prefix": {
           "pattern": "^/([^/].*[^/])?$",
           "type": "string"
+        },
+        "bundle_rebuild_interval": {
+          "type": [
+            "null",
+            "integer"
+          ]
+        },
+        "reconfiguration_interval": {
+          "type": [
+            "null",
+            "integer"
+          ]
         }
       },
       "type": "object"

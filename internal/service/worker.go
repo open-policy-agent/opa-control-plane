@@ -46,7 +46,7 @@ type Synchronizer interface {
 	Close(ctx context.Context)
 }
 
-func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Source, stacks []*config.Stack, logger *logging.Logger, bar *progress.Bar) *BundleWorker {
+func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Source, stacks []*config.Stack, logger *logging.Logger, bar *progress.Bar, buildInterval time.Duration) *BundleWorker {
 	return &BundleWorker{
 		bundleDir:     bundleDir,
 		bundleConfig:  b,
@@ -54,8 +54,9 @@ func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Sourc
 		stackConfigs:  stacks,
 		log:           logger,
 		bar:           bar,
-		changed:       make(chan struct{}), done: make(chan struct{}),
-		interval: defaultInterval,
+		interval:      buildInterval,
+		changed:       make(chan struct{}),
+		done:          make(chan struct{}),
 	}
 }
 
@@ -107,7 +108,6 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	defer w.bar.Add(1)
 
 	// If a configuration change was requested, request the worker to be removed from the pool and signal this worker being done.
-
 	if w.configurationChanged() {
 		return w.die(ctx)
 	}
