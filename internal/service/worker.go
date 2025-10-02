@@ -14,10 +14,6 @@ import (
 	"github.com/styrainc/opa-control-plane/internal/s3"
 )
 
-var (
-	errorDelay = 30 * time.Second
-)
-
 // BundleWorker is responsible for constructing a bundle from the source
 // dependencies and uploading it to an object storage service. It uses a git
 // synchronizer to pull the latest changes from the source repositories,
@@ -37,6 +33,7 @@ type BundleWorker struct {
 	log           *logging.Logger
 	bar           *progress.Bar
 	status        Status
+	interval      time.Duration
 }
 
 type Synchronizer interface {
@@ -44,7 +41,7 @@ type Synchronizer interface {
 	Close(ctx context.Context)
 }
 
-func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Source, stacks []*config.Stack, logger *logging.Logger, bar *progress.Bar) *BundleWorker {
+func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Source, stacks []*config.Stack, logger *logging.Logger, bar *progress.Bar, buildInterval time.Duration) *BundleWorker {
 	return &BundleWorker{
 		bundleDir:     bundleDir,
 		bundleConfig:  b,
@@ -52,7 +49,9 @@ func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Sourc
 		stackConfigs:  stacks,
 		log:           logger,
 		bar:           bar,
-		changed:       make(chan struct{}), done: make(chan struct{}),
+		interval:      buildInterval,
+		changed:       make(chan struct{}),
+		done:          make(chan struct{}),
 	}
 }
 
@@ -99,7 +98,6 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	defer w.bar.Add(1)
 
 	// If a configuration change was requested, request the worker to be removed from the pool and signal this worker being done.
-
 	if w.configurationChanged() {
 		return w.die(ctx)
 	}
@@ -174,7 +172,7 @@ func (w *BundleWorker) report(ctx context.Context, state BuildState, startTime t
 		return w.die(ctx)
 	}
 
-	return time.Now().Add(errorDelay)
+	return time.Now().Add(w.interval)
 }
 
 func (w *BundleWorker) changeConfiguration() {
