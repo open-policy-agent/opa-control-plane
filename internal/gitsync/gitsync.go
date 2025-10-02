@@ -325,7 +325,3 @@ func (a *basicAuth) SetAuth(r *gohttp.Request) {
 		}
 	}
 }
-
-func (s *Synchronizer) updatePostSyncMetrics(startTime time.Time) {
-	metrics.GitSyncDuration.WithLabelValues(s.sourceName, s.config.Repo).Observe(float64(time.Since(startTime).Seconds()))
-}
