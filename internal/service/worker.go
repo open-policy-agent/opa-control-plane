@@ -155,7 +155,6 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 }
 
 func (w *BundleWorker) report(ctx context.Context, state BuildState, startTime time.Time, err error) time.Time {
-	w.updatePostBundleBuildMetrics(startTime, state)
 	w.status.State = state
 	if err != nil {
 		if _, ok := err.(ast.Errors); ok {
@@ -163,6 +162,12 @@ func (w *BundleWorker) report(ctx context.Context, state BuildState, startTime t
 		} else {
 			w.status.Message = err.Error()
 		}
+	}
+
+	if state == BuildStateSuccess {
+		metrics.BundleBuildSucceeded(w.bundleConfig.Name, state.String(), startTime)
+	} else {
+		metrics.BundleBuildFailed(w.bundleConfig.Name, state.String())
 	}
 
 	if w.singleShot {
@@ -198,9 +203,4 @@ func (w *BundleWorker) die(ctx context.Context) time.Time {
 
 	var zero time.Time
 	return zero
-}
-
-func (w *BundleWorker) updatePostBundleBuildMetrics(startTime time.Time, state BuildState) {
-	metrics.BundleBuildCount.WithLabelValues(w.bundleConfig.Name, state.String()).Inc()
-	metrics.BundleBuildDuration.WithLabelValues(w.bundleConfig.Name).Observe(float64(time.Since(startTime).Seconds()))
 }

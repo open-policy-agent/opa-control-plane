@@ -34,7 +34,7 @@ func (s *Server) Init() *Server {
 		s.router = http.NewServeMux()
 	}
 
-	s.router.Handle("GET /metrics", metrics.Handler())
+	s.router.Handle("/metrics", metrics.Handler())
 	s.router.HandleFunc("GET    /health", s.health)
 	s.router.HandleFunc("GET    /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataGet))
 	s.router.HandleFunc("POST   /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataPut))

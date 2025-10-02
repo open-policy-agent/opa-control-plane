@@ -62,13 +62,13 @@ func New(path string, config config.Git, sourceName string) *Synchronizer {
 // on disk, clone it. If it does exist, pull the latest changes and rebase the local branch onto the remote branch.
 func (s *Synchronizer) Execute(ctx context.Context) error {
 	startTime := time.Now()
-	defer s.updatePostSyncMetrics(startTime)
 
 	if err := s.execute(ctx); err != nil {
-		metrics.GitSyncCount.WithLabelValues(s.sourceName, s.config.Repo, "failed").Inc()
+		metrics.GitSyncFailed(s.sourceName, s.config.Repo)
 		return fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
 	}
-	metrics.GitSyncCount.WithLabelValues(s.sourceName, s.config.Repo, "success").Inc()
+
+	metrics.GitSyncSucceeded(s.sourceName, s.config.Repo, startTime)
 	return nil
 }
 
