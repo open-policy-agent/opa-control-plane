@@ -1,0 +1,55 @@
+# local example git repo
+cd repo
+env HOME=.
+exec git init .
+exec git branch -m main
+exec git config --global user.name "botbotbot" 
+exec git config --global user.email "bot@bot.bot" 
+exec git add .
+exec git commit -m initial-commit
+cd ..
+
+exec $OPACTL run --config config.d/bundle.yml --data-dir tmp &opactl&
+! stderr .
+! stdout .
+
+exec curl --retry 5 --retry-all-errors http://127.0.0.1:8282/metrics
+
+# assert git sync and bundle build metrics
+stdout 'ocp_git_sync_count_total{repo="./repo/",source="git-data",state="SUCCESS"} 1'
+stdout 'ocp_git_sync_duration_seconds_count{repo="./repo/",source="git-data"} 1'
+stdout 'ocp_git_sync_duration_seconds_sum.*'
+stdout 'ocp_git_sync_duration_seconds_bucket.*'
+stdout 'ocp_bundle_build_duration_seconds_count{bundle="hello-world"} 1'
+stdout 'ocp_bundle_build_duration_seconds_sum.*'
+stdout 'ocp_bundle_build_duration_seconds_bucket.*'
+stdout 'ocp_bundle_build_count_total{bundle="hello-world",state="SUCCESS"} 1'
+
+kill opactl
+
+-- repo/unrelated.yaml --
+ignore: me
+-- repo/users/data.json --
+[
+  {
+    "id": "alice"
+  },
+  {
+    "id": "bob"
+  }
+]
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: git-data
+sources:
+  git-data:
+    git:
+      repo: ./repo/
+      reference: main
+      excluded_files:
+      - unrelated.yaml

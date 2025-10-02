@@ -27,10 +27,10 @@ var (
 )
 
 func GitSyncFailed(source string, repo string) {
-	GitSyncCount.WithLabelValues(source, repo, "failed").Inc()
+	GitSyncCount.WithLabelValues(source, repo, "FAILED").Inc()
 }
 
 func GitSyncSucceeded(source string, repo string, startTime time.Time) {
-	GitSyncCount.WithLabelValues(source, repo, "success").Inc()
+	GitSyncCount.WithLabelValues(source, repo, "SUCCESS").Inc()
 	GitSyncDuration.WithLabelValues(source, repo).Observe(float64(time.Since(startTime).Seconds()))
 }
