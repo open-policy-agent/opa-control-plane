@@ -9,11 +9,11 @@ exec git add .
 exec git commit -m initial-commit
 cd ..
 
-exec $OPACTL run --config config.d/bundle.yml --data-dir tmp &opactl&
+exec $OPACTL run --addr 127.0.0.1:8383 --config config.d/bundle.yml --data-dir tmp1 &opactl&
 ! stderr .
 ! stdout .
 
-exec curl --retry 5 --retry-all-errors http://127.0.0.1:8282/metrics
+exec curl --retry 5 --retry-all-errors http://127.0.0.1:8383/metrics
 
 # assert git sync and bundle build metrics
 stdout 'ocp_git_sync_count_total{repo="./repo/",source="git-data",state="SUCCESS"} 1'
