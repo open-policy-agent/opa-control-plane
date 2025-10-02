@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"gopkg.in/yaml.v3"
 )
@@ -272,4 +273,68 @@ func TestTopoSortSourcesCycle(t *testing.T) {
 		t.Fatal("expected cycle error on source A but got:", err)
 	}
 
+}
+
+func TestSetSQLitePersistentByDefault(t *testing.T) {
+	for _, tc := range []struct {
+		note      string
+		input     *config.Root
+		exp       *config.Root
+		expSQLite bool
+	}{
+		{
+			note:  "no database whatsoever",
+			input: &config.Root{},
+			exp: &config.Root{Database: &config.Database{
+				SQL: &config.SQLDatabase{
+					Driver: "sqlite3",
+					DSN:    "/tmp/sqlite.db",
+				},
+			}},
+			expSQLite: true,
+		},
+		{
+			note: "existing non-sqlite SQL database",
+			input: &config.Root{Database: &config.Database{
+				SQL: &config.SQLDatabase{
+					Driver: "postgresql",
+					DSN:    "postgresql://foo:bar@localhost:5432/opactl",
+				},
+			}},
+			exp: &config.Root{Database: &config.Database{
+				SQL: &config.SQLDatabase{
+					Driver: "postgresql",
+					DSN:    "postgresql://foo:bar@localhost:5432/opactl",
+				},
+			}},
+			expSQLite: false,
+		},
+		{
+			note: "existing AWSRDS database",
+			input: &config.Root{Database: &config.Database{
+				AWSRDS: &config.AmazonRDS{
+					Driver: "mysql",
+					DSN:    "mysql://foo:bar@localhost:5432/opactl",
+				},
+			}},
+			exp: &config.Root{Database: &config.Database{
+				AWSRDS: &config.AmazonRDS{
+					Driver: "mysql",
+					DSN:    "mysql://foo:bar@localhost:5432/opactl",
+				},
+			}},
+			expSQLite: false,
+		},
+	} {
+		t.Run(tc.note, func(t *testing.T) {
+			p := "/tmp"
+			isSQLite := tc.input.SetSQLitePersistentByDefault(p)
+			if diff := cmp.Diff(tc.exp, tc.input); diff != "" {
+				t.Error("unexpected diff, (-want, +got)", diff)
+			}
+			if isSQLite != tc.expSQLite {
+				t.Errorf("unexpected return value, want %v, got %v", tc.expSQLite, isSQLite)
+			}
+		})
+	}
 }

@@ -49,16 +49,20 @@ type Root struct {
 func (r *Root) SetSQLitePersistentByDefault(persistenceDir string) bool {
 	if r.Database == nil {
 		r.Database = &Database{}
+	} else if r.Database.AWSRDS != nil {
+		return false
 	}
 
 	if r.Database.SQL == nil && r.Database.AWSRDS == nil {
 		r.Database.SQL = &SQLDatabase{}
 	}
 
-	if (r.Database.SQL.Driver == "" ||
-		r.Database.SQL.Driver == "sqlite3" || r.Database.SQL.Driver == "sqlite") && r.Database.SQL.DSN == "" {
-		r.Database.SQL.Driver = "sqlite3"
-		r.Database.SQL.DSN = filepath.Join(persistenceDir, "sqlite.db")
+	switch r.Database.SQL.Driver {
+	case "", "sqlite3", "sqlite":
+		if r.Database.SQL.DSN == "" {
+			r.Database.SQL.Driver = "sqlite3"
+			r.Database.SQL.DSN = filepath.Join(persistenceDir, "sqlite.db")
+		}
 		return true
 	}
 	return false
