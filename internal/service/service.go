@@ -30,25 +30,30 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const internalPrincipal = "internal"
-const reconfigurationInterval = 15 * time.Second
+const (
+	internalPrincipal              = "internal"
+	defaultReconfigurationInterval = 15 * time.Second
+	defaultBuildInterval           = 30 * time.Second
+)
 
 type Service struct {
-	config         *config.Root
-	persistenceDir string
-	pool           *pool.Pool
-	workers        map[string]*BundleWorker
-	readyMutex     sync.Mutex
-	ready          bool
-	failures       map[string]Status
-	database       database.Database
-	builtinFS      fs.FS
-	singleShot     bool
-	report         *Report
-	log            *logging.Logger
-	noninteractive bool
-	migrateDB      bool
-	initialized    bool
+	config                  *config.Root
+	persistenceDir          string
+	pool                    *pool.Pool
+	workers                 map[string]*BundleWorker
+	readyMutex              sync.Mutex
+	ready                   bool
+	failures                map[string]Status
+	database                database.Database
+	builtinFS               fs.FS
+	singleShot              bool
+	report                  *Report
+	log                     *logging.Logger
+	noninteractive          bool
+	migrateDB               bool
+	initialized             bool
+	reconfigurationInterval time.Duration
+	buildInterval           time.Duration
 }
 
 type Report struct {
@@ -95,11 +100,13 @@ type Status struct {
 
 func New() *Service {
 	return &Service{
-		pool:           pool.New(10),
-		workers:        make(map[string]*BundleWorker),
-		failures:       make(map[string]Status),
-		noninteractive: true,
-		migrateDB:      false,
+		pool:                    pool.New(10),
+		workers:                 make(map[string]*BundleWorker),
+		failures:                make(map[string]Status),
+		noninteractive:          true,
+		migrateDB:               false,
+		reconfigurationInterval: defaultReconfigurationInterval,
+		buildInterval:           defaultBuildInterval,
 	}
 }
 
@@ -111,6 +118,14 @@ func (s *Service) WithPersistenceDir(d string) *Service {
 func (s *Service) WithConfig(config *config.Root) *Service {
 	s.config = config
 	s.database = *s.database.WithConfig(config.Database)
+	if s.config.Service != nil {
+		if s.config.Service.ReconfigurationInterval != nil {
+			s.reconfigurationInterval = *s.config.Service.ReconfigurationInterval
+		}
+		if s.config.Service.BundleRebuildInterval != nil {
+			s.buildInterval = *s.config.Service.BundleRebuildInterval
+		}
+	}
 	return s
 }
 
@@ -173,11 +188,12 @@ shutdown:
 				break shutdown
 			}
 
+			// NB(sr): if a worker fails to shut down, we'll be stuck here forever
 			time.Sleep(100 * time.Millisecond)
 		}
 
 		select {
-		case <-time.After(reconfigurationInterval):
+		case <-time.After(s.reconfigurationInterval):
 		case <-ctx.Done():
 			break shutdown
 		}
@@ -202,6 +218,23 @@ shutdown:
 
 func (s *Service) Report() *Report {
 	return s.report
+}
+
+func (s *Service) TriggerAll(ctx context.Context) error {
+	for name := range s.workers {
+		return s.Trigger(ctx, name)
+	}
+	return nil
+}
+
+func (s *Service) Trigger(_ context.Context, name string) error {
+	err := s.pool.Trigger(name)
+	if err != nil {
+		s.log.Errorf("trigger bundle build for %s: %v", name, err)
+	} else {
+		s.log.Debugf("triggered bundle build for %s", name)
+	}
+	return err
 }
 
 func (s *Service) Ready(context.Context) error {
@@ -239,7 +272,6 @@ func (s *Service) initDB(ctx context.Context) error {
 }
 
 func (s *Service) launchWorkers(ctx context.Context) {
-
 	bundles, _, err := s.database.ListBundles(ctx, internalPrincipal, database.ListOptions{})
 	if err != nil {
 		s.log.Errorf("error listing bundles: %s", err.Error())
@@ -284,7 +316,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 	// Start any new workers for bundles that are in the current configuration but not yet running. Inform any existing
 	// workers of the current configuration, which will cause them to shutdown if configuration has changed.
 	//
-	// For each bundle, create the following directory structure under persistencyDir for the builder to use
+	// For each bundle, create the following directory structure under persistenceDir for the builder to use
 	// when constructing bundles:
 	//
 	// persistenceDir/
@@ -351,12 +383,12 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			continue
 		}
 
-		w := NewBundleWorker(bundleDir, b, sourceDefs, stacks, s.log, bar).
+		w := NewBundleWorker(bundleDir, b, sourceDefs, stacks, s.log, bar, s.buildInterval).
 			WithSources(sources).
 			WithSynchronizers(syncs).
 			WithStorage(storage).
 			WithSingleShot(s.singleShot)
-		s.pool.Add(w.Execute)
+		s.pool.Add(b.Name, w.Execute)
 
 		s.workers[b.Name] = w
 	}
@@ -434,6 +466,7 @@ func (src *source) addFS(fsys fs.FS) {
 }
 
 func (src *source) SyncGit(syncs *[]Synchronizer, sourceName string, git config.Git, repoDir string, reqCommit string) *source {
+	// Q(sr): Why errorDelay if we use this function to report BuildStateSuccess, too?
 	if git.Repo != "" {
 		srcDir := repoDir
 		if git.Path != nil {

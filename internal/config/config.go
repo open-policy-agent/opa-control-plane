@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"time"
 
 	"github.com/gobwas/glob"
 	"github.com/swaggest/jsonschema-go"
@@ -960,6 +961,18 @@ type Datasources []Datasource
 
 func (a Datasources) Equal(b Datasources) bool {
 	return setEqual(a, b, func(ds Datasource) string { return ds.Name }, func(a, b Datasource) bool { return a.Equal(&b) })
+}
+
+type Service struct {
+	// ReconfigurationInterval is the duration between configuration checks, i.e. when a change
+	// to a bundle/stack/source will have an effect on the internal bundle workers.
+	// String of a duration, e.g. "1m". Defaults to "15s".
+	ReconfigurationInterval *time.Duration `json:"reconfiguration_interval,omitempty" yaml:"reconfiguration_interval,omitempty"`
+
+	// BundleRebuildInterval is the time between bundle builds: After a bundle build as finished,
+	// OCP will wait _this long_ until it's build again (unless the bundle build is triggered by
+	// other means). String duration, e.g. "90s". Defaults to "30s".
+	BundleRebuildInterval *time.Duration `json:"bundle_rebuild_interval,omitempty" yaml:"bundle_rebuild_interval,omitempty"`
 }
 
 type Database struct {
