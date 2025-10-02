@@ -22,6 +22,7 @@ type V1System struct {
 	BundleRegistry struct {
 		ManualDeployment bool `json:"manual_deployment"`
 	} `json:"bundle_registry"`
+	MatchingStacks []string `json:"matching_stacks"`
 }
 
 func (v1 *V1System) SanitizedName() string {

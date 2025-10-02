@@ -518,6 +518,7 @@ type Options struct {
 	URL               string
 	Headers           []string
 	SystemId          string
+	LimitStacks       bool
 	Prune             bool
 	Datasources       bool
 	FilesPath         string
@@ -561,7 +562,8 @@ func init() {
 
 	migrate.Flags().StringVarP(&params.URL, "url", "u", "", "Styra tenant URL (e.g., https://expo.styra.com)")
 	migrate.Flags().StringSliceVarP(&params.Headers, "header", "", nil, "Set additional HTTP headers for requests to Styra API")
-	migrate.Flags().StringVarP(&params.SystemId, "system-id", "", "", "Scope migraton to a specific system (id)")
+	migrate.Flags().StringVarP(&params.SystemId, "system-id", "", "", "Scope migration to a specific system (id)")
+	migrate.Flags().BoolVarP(&params.LimitStacks, "limit-stacks", "", false, "Limit migrated stacks to only those referenced by system(s)")
 	migrate.Flags().BoolVarP(&params.Prune, "prune", "", false, "Prune unused resources")
 	migrate.Flags().BoolVarP(&params.Datasources, "datasources", "", false, "Copy datasource content")
 	migrate.Flags().StringVarP(&params.FilesPath, "files", "", "files", "Path to write the non-git stored files to")
@@ -689,7 +691,10 @@ func Run(params Options) error {
 	output.Metadata.ExportedFrom = params.URL
 	output.Metadata.ExportedAt = time.Now().UTC().Format(time.RFC3339)
 
-	state, err := fetchDASState(params.Noninteractive, &c, dasFetchOptions{SystemId: params.SystemId})
+	state, err := fetchDASState(params.Noninteractive, &c, dasFetchOptions{
+		SystemId:    params.SystemId,
+		LimitStacks: params.LimitStacks,
+	})
 	if err != nil {
 		return err
 	}
@@ -2094,7 +2099,8 @@ type dasState struct {
 }
 
 type dasFetchOptions struct {
-	SystemId string
+	SystemId    string
+	LimitStacks bool
 }
 
 func fetchDASState(silent bool, c *das.Client, opts dasFetchOptions) (*dasState, error) {
@@ -2226,10 +2232,23 @@ func fetchDASState(silent bool, c *das.Client, opts dasFetchOptions) (*dasState,
 		return nil, err
 	}
 
-	var stacks []*das.V1Stack
-	err = resp.Decode(&stacks)
+	var s []*das.V1Stack
+	err = resp.Decode(&s)
 	if err != nil {
 		return nil, err
+	}
+
+	var stacks []*das.V1Stack
+	if opts.LimitStacks {
+		for _, stack := range s {
+			for _, sys := range systems {
+				if slices.Contains(sys.MatchingStacks, stack.Id) {
+					stacks = append(stacks, stack)
+				}
+			}
+		}
+	} else {
+		stacks = s
 	}
 
 	bar.AddMax(len(stacks))

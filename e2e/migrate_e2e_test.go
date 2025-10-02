@@ -44,6 +44,7 @@ func TestMigration(t *testing.T) {
 		name              string
 		styraURL          string
 		systemId          string
+		limitStacks       bool
 		styraTokenEnvName string // default STYRA_TOKEN
 		bundleName        string
 		extraConfigs      map[string]string
@@ -461,6 +462,43 @@ func TestMigration(t *testing.T) {
 				}`,
 			},
 		},
+		{
+			name:              "limit stacks parameter",
+			styraURL:          "https://test.styra.com",
+			styraTokenEnvName: "STYRA_TOKEN_2",
+			systemId:          "d024548afa144aef9539a604ec96fd81",
+			limitStacks:       true,
+			bundleName:        "opactl-limit-stacks-flag",
+			skipBacktest:      true,
+			queries:           []string{`data.main.main.allowed`, `data.main.main.allowed`},
+			inputs:            []string{`{"foo": "bar"}`, `{}`},
+			decisions:         []string{"true", "false"},
+			extraConfigs: map[string]string{
+				"config.d/2-storage.yaml": `{
+					bundles: {
+						"opactl-manual-deploy-e2e-system": {
+							object_storage: {
+								aws: {
+									url: {{ .URL }},
+									bucket: test,
+									region: mock-region,
+									key: bundle.tar.gz,
+								},
+							},
+						},
+					},
+				}`,
+				"config.d/1-secrets.yaml": `{
+					secrets: {
+						stacks_f7a9564f6b174382816c8373b7f9bcee_git: {
+							type: basic_auth,
+							password: $GITHUB_PASSWORD,
+							username: $GITHUB_USERNAME,
+						},
+					},
+				}`,
+			},
+		},
 	}
 
 	type templateParams struct {
@@ -517,6 +555,7 @@ func TestMigration(t *testing.T) {
 					URL:            tc.styraURL,
 					Token:          styraToken,
 					SystemId:       tc.systemId,
+					LimitStacks:    tc.limitStacks,
 					Prune:          true,
 					Datasources:    tc.datasources,
 					EmbedFiles:     true,
