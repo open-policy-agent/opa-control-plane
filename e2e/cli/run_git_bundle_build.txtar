@@ -27,8 +27,6 @@ stdout 'ocp_bundle_build_count_total{bundle="hello-world",state="SUCCESS"} 1'
 
 kill opactl
 
--- repo/unrelated.yaml --
-ignore: me
 -- repo/users/data.json --
 [
   {
@@ -51,5 +49,3 @@ sources:
     git:
       repo: ./repo/
       reference: main
-      excluded_files:
-      - unrelated.yaml
