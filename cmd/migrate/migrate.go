@@ -2226,10 +2226,19 @@ func fetchDASState(silent bool, c *das.Client, opts dasFetchOptions) (*dasState,
 		return nil, err
 	}
 
-	var stacks []*das.V1Stack
-	err = resp.Decode(&stacks)
+	var s []*das.V1Stack
+	err = resp.Decode(&s)
 	if err != nil {
 		return nil, err
+	}
+
+	var stacks []*das.V1Stack
+	for _, stack := range s {
+		for _, sys := range systems {
+			if slices.Contains(sys.MatchingStacks, stack.Id) {
+				stacks = append(stacks, stack)
+			}
+		}
 	}
 
 	bar.AddMax(len(stacks))
