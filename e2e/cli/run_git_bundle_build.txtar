@@ -13,7 +13,8 @@ exec $OPACTL run --addr 127.0.0.1:8283 --config config.d/bundle.yml --data-dir t
 ! stderr .
 ! stdout .
 
-exec curl --retry 5 --retry-all-errors http://127.0.0.1:8283/metrics
+exec curl --retry 5 --retry-all-errors http://127.0.0.1:8283/health
+exec curl http://127.0.0.1:8283/metrics
 
 # assert git sync and bundle build metrics
 stdout 'ocp_git_sync_count_total{repo="./repo/",source="git-data",state="SUCCESS"} 1'
