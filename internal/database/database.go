@@ -401,7 +401,7 @@ func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, 
 			Name:       sourceName,
 		})
 		if !allowed {
-			return errors.New("unauthorized")
+			return ErrNotAuthorized
 		}
 
 		bs, err := json.Marshal(data)
@@ -1611,6 +1611,15 @@ func (d *Database) deleteNotIn(ctx context.Context, tx *sql.Tx, table, keyColumn
 	}
 	_, err := tx.ExecContext(ctx, query, args...)
 	return err
+}
+
+func (d *Database) Check(ctx context.Context, a authz.Access) error {
+	return tx1(ctx, d, func(tx *sql.Tx) error {
+		if !authz.Check(ctx, tx, d.arg, a) {
+			return ErrNotAuthorized
+		}
+		return nil
+	})
 }
 
 func (d *Database) arg(i int) string {
