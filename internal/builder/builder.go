@@ -23,10 +23,15 @@ import (
 
 type Source struct {
 	Name         string
-	Dirs         []Dir
-	FSes         []fs.FS
 	Requirements []config.Requirement
 	Transforms   []Transform
+
+	// dirs record the underlying OS directories, used for `Wipe` and `Transform`
+	dirs []Dir
+
+	// fses are the fs.FS instances used for building the bundle, with per-source
+	// includes/excludes already applied
+	fses []fs.FS
 }
 
 type Transform struct {
@@ -41,7 +46,7 @@ func NewSource(name string) *Source {
 }
 
 func (s *Source) Wipe() error {
-	for _, dir := range s.Dirs {
+	for _, dir := range s.dirs {
 		if dir.Wipe {
 			if err := removeDir(dir.Path); err != nil {
 				return err
@@ -51,11 +56,29 @@ func (s *Source) Wipe() error {
 	return nil
 }
 
+func (s *Source) AddDir(d Dir) error {
+	// We record the Dir struct because we need to know whether we can Wipe().
+	// `os.DirFS()` does not read anything until it's used, so it's OK to alter
+	// the underlying OS filesystem via Wipe() or when applying the `Transforms`.
+	s.dirs = append(s.dirs, d)
+
+	f, err := util.NewFilterFS(os.DirFS(d.Path), d.IncludedFiles, d.ExcludedFiles)
+	if err != nil {
+		return err
+	}
+	s.AddFS(f)
+	return nil
+}
+
+func (s *Source) AddFS(f fs.FS) {
+	s.fses = append(s.fses, f)
+}
+
 // Transform applies Rego policies to data, replacing the original content with the
 // transformed content.
 func (s *Source) Transform(ctx context.Context) error {
-	paths := make([]string, len(s.Dirs))
-	for i, dir := range s.Dirs {
+	paths := make([]string, len(s.dirs))
+	for i, dir := range s.dirs {
 		paths[i] = dir.Path
 	}
 
@@ -179,47 +202,29 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	processed := map[string]struct{}{}
 	rootMap := map[string]*Source{}
-	record := func(i int, name string, fs_ fs.FS) {
-		prefix := name
-		if prefix == "" || i > 0 {
-			prefix += strconv.Itoa(i)
-		}
-		prefix = util.Escape(prefix)
-		buildSources = append(buildSources, build{prefix: prefix, fsys: fs_})
-	}
 
 	for len(toProcess) > 0 {
 		var next *Source
 		next, toProcess = toProcess[0], toProcess[1:]
 		var newRoots []ast.Ref
 
-		checkRoots := func(fs_ fs.FS) error {
-			rs, err := getRegoAndJSONRoots(fs_)
+		for i, fs_ := range next.fses {
+			fs0, err := util.NewFilterFS(fs_, nil, b.excluded)
+			if err != nil {
+				return err
+			}
+			prefix := next.Name
+			if prefix == "" || i > 0 {
+				prefix += strconv.Itoa(i)
+			}
+			prefix = util.Escape(prefix)
+			buildSources = append(buildSources, build{prefix: prefix, fsys: fs0})
+
+			rs, err := getRegoAndJSONRoots(fs0)
 			if err != nil {
 				return fmt.Errorf("%v: %w", next.Name, err)
 			}
 			newRoots = append(newRoots, rs...)
-			return nil
-		}
-
-		for i, fs0 := range next.FSes {
-			if err := checkRoots(fs0); err != nil {
-				return err
-			}
-			record(i, next.Name, fs0)
-		}
-
-		for i, srcDir := range next.Dirs {
-			fs0, err := util.NewFilterFS(os.DirFS(srcDir.Path),
-				srcDir.IncludedFiles,
-				slices.Concat(b.excluded, srcDir.ExcludedFiles))
-			if err != nil {
-				return err
-			}
-			if err := checkRoots(fs0); err != nil {
-				return err
-			}
-			record(i, next.Name, fs0)
 		}
 
 		for _, root := range newRoots {

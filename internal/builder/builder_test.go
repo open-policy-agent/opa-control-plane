@@ -392,11 +392,14 @@ func TestBuilder(t *testing.T) {
 					for i := range src.requirements {
 						rs = append(rs, config.Requirement{Source: &src.requirements[i]})
 					}
-					srcs = append(srcs, &builder.Source{
-						Name:         src.name,
-						Dirs:         []builder.Dir{{Path: fmt.Sprintf("%v/src%d", root, i), IncludedFiles: src.includedFiles, ExcludedFiles: src.excludedFiles}},
-						Requirements: rs,
+					s := builder.NewSource(src.name)
+					s.Requirements = rs
+					_ = s.AddDir(builder.Dir{
+						Path:          fmt.Sprintf("%v/src%d", root, i),
+						IncludedFiles: src.includedFiles,
+						ExcludedFiles: src.excludedFiles,
 					})
+					srcs = append(srcs, s)
 				}
 				b := builder.New().
 					WithSources(srcs).

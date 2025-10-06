@@ -421,7 +421,7 @@ func newSource(name string) *source {
 }
 
 func (src *source) addDir(dir string, wipe bool, includedFiles []string, excludedFiles []string) {
-	src.Source.Dirs = append(src.Source.Dirs, builder.Dir{
+	_ = src.Source.AddDir(builder.Dir{
 		Path:          filepath.ToSlash(dir),
 		Wipe:          wipe,
 		IncludedFiles: includedFiles,
@@ -430,7 +430,7 @@ func (src *source) addDir(dir string, wipe bool, includedFiles []string, exclude
 }
 
 func (src *source) addFS(fsys fs.FS) {
-	src.Source.FSes = append(src.Source.FSes, fsys)
+	src.Source.AddFS(fsys)
 }
 
 func (src *source) SyncGit(syncs *[]Synchronizer, sourceName string, git config.Git, repoDir string, reqCommit string) *source {
