@@ -20,6 +20,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/ast"
 	_ "modernc.org/sqlite"
 
+	"github.com/open-policy-agent/opa-control-plane/internal/authz"
 	"github.com/open-policy-agent/opa-control-plane/internal/builder"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
@@ -37,7 +38,6 @@ import (
 const (
 	internalPrincipal              = "internal"
 	defaultTenant                  = "default"
-	reconfigurationInterval        = 15 * time.Second
 	defaultReconfigurationInterval = 15 * time.Second
 	defaultBuildInterval           = 30 * time.Second
 )
@@ -230,14 +230,17 @@ func (s *Service) Report() *Report {
 	return s.report
 }
 
-func (s *Service) TriggerAll(ctx context.Context) error {
-	for name := range s.workers {
-		return s.Trigger(ctx, name)
+func (s *Service) Trigger(ctx context.Context, principal, name string) error {
+	a := authz.Access{
+		Principal:  principal,
+		Resource:   "bundles",
+		Permission: "bundles.trigger",
+		Name:       name,
 	}
-	return nil
-}
+	if err := s.database.Check(ctx, a); err != nil {
+		return err
+	}
 
-func (s *Service) Trigger(_ context.Context, name string) error {
 	err := s.pool.Trigger(name)
 	if err != nil {
 		s.log.Errorf("trigger bundle build for %s: %v", name, err)

@@ -3,8 +3,6 @@ package cmd
 import (
 	"context"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/open-policy-agent/opa-control-plane/cmd"
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/flags"
@@ -73,12 +71,14 @@ func init() {
 				log.Fatalf("initialize service: %v", err)
 			}
 
-			// NB(sr): Preliminary, not necessarily something we'll want to keep:
-			// Rebuild all bundles on SIGHUP.
-			signalTrigger(svc, log)
-
 			go func() {
-				if err := server.New().WithDatabase(svc.Database()).WithReadiness(svc.Ready).WithConfig(config.Service).Init().ListenAndServe(params.addr); err != nil {
+				if err := server.New().
+					WithService(svc).
+					WithConfig(config.Service).
+					WithDatabase(svc.Database()).
+					WithReadiness(svc.Ready).
+					Init().
+					ListenAndServe(params.addr); err != nil {
 					log.Fatalf("failed to start server: %v", err)
 				}
 			}()
@@ -100,16 +100,4 @@ func init() {
 	cmd.RootCommand.AddCommand(
 		run,
 	)
-}
-
-func signalTrigger(s *service.Service, l *logging.Logger) {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGHUP)
-	go func() {
-		for range sigs {
-			if err := s.TriggerAll(context.Background()); err != nil {
-				l.Error(err.Error())
-			}
-		}
-	}()
 }
