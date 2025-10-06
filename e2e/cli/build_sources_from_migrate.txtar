@@ -1,0 +1,78 @@
+exec $OPACTL build --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/a/bundle.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/a/bundle.tar.gz
+cmp .manifest exp/.manifest
+cmp data.json exp/data.json
+
+[exec:opa] exec opa inspect bundles/a/bundle.tar.gz
+
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/a/bundle.tar.gz
+    requirements:
+    - source: my-entz-system
+sources:
+  my-entz-system:
+    requirements:
+      - source: template.entitlements:1.0-library
+      - source: template.entitlements:1.0-entrypoint-main
+-- config.d/sources.yml --
+sources:
+  template.entitlements:1.0-library:
+    builtin: entitlements-v1/library
+  template.entitlements:1.0-entrypoint-main:
+    builtin: entitlements-v1/main
+-- exp/tarball --
+/data.json
+/template.entitlements#1.0-entrypoint-main/main/main.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/diagnostics/test_v1/diagnostics_test_v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/diagnostics/v1/diagnostics_text_v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/diagnostics/v1/diagnostics_v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/object/validation/schema_validation.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/policy/abac/test_v1/abac_test_v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/policy/abac/v1/abac_v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/policy/calendar/test_v1/calendar_test_v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/policy/calendar/v1/calendar_v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/policy/general/test_v1/general_test_v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/policy/general/v1/general_v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/policy/locations/test_v1/v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/policy/locations/v1/v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/policy/rbac/test_v1/v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/policy/rbac/v1/v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/car_info_store/actions.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/car_info_store/groups.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/car_info_store/input_request.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/car_info_store/resources.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/car_info_store/role_bindings.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/car_info_store/roles.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/car_info_store/users.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/styra/actions.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/styra/groups.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/styra/input_request.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/styra/resources.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/styra/role_bindings.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/styra/roles.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/styra/users.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/sample/styra_http/objects.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/transform/ldap/v1/ldap.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/transform/okta/test_v1/okta_test.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/transform/okta/v1/okta.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/transform/openapi/test_v1/test_openapi_transforms.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/transform/openapi/v1/openapi_transforms.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/transform/scim/test_v1/scim_test.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/transform/scim/v1/scim.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/utils/test_v1/utils_test_v1.rego
+/template.entitlements#1.0-library/global/systemtypes/entitlements:1.0/library/utils/v1/utils_v1.rego
+/.manifest
+-- exp/data.json --
+{}
+-- exp/.manifest --
+{"revision":"","roots":["main","global/systemtypes/entitlements:1.0/library/diagnostics/test_v1","global/systemtypes/entitlements:1.0/library/diagnostics/v1","global/systemtypes/entitlements:1.0/library/object/validation","global/systemtypes/entitlements:1.0/library/policy/abac/test_v1","global/systemtypes/entitlements:1.0/library/policy/abac/v1","global/systemtypes/entitlements:1.0/library/policy/calendar/test_v1","global/systemtypes/entitlements:1.0/library/policy/calendar/v1","global/systemtypes/entitlements:1.0/library/policy/general/test_v1","global/systemtypes/entitlements:1.0/library/policy/general/v1","global/systemtypes/entitlements:1.0/library/policy/locations/test_v1","global/systemtypes/entitlements:1.0/library/policy/locations/v1","global/systemtypes/entitlements:1.0/library/policy/rbac/test_v1","global/systemtypes/entitlements:1.0/library/policy/rbac/v1","global/systemtypes/entitlements:1.0/library/sample/car_info_store","global/systemtypes/entitlements:1.0/library/sample/styra","global/systemtypes/entitlements:1.0/library/sample/styra_http","global/systemtypes/entitlements:1.0/library/transform/ldap/v1","global/systemtypes/entitlements:1.0/library/transform/okta/test_v1","global/systemtypes/entitlements:1.0/library/transform/okta/v1","global/systemtypes/entitlements:1.0/library/transform/openapi/test_v1","global/systemtypes/entitlements:1.0/library/transform/openapi/v1","global/systemtypes/entitlements:1.0/library/transform/scim/test_v1","global/systemtypes/entitlements:1.0/library/transform/scim/v1","global/systemtypes/entitlements:1.0/library/utils/test_v1","global/systemtypes/entitlements:1.0/library/utils/v1"],"rego_version":0}

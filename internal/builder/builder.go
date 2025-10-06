@@ -201,6 +201,7 @@ func (b *Builder) Build(ctx context.Context) error {
 			if prefix == "" || i > 0 {
 				prefix += strconv.Itoa(i)
 			}
+			prefix = clean(prefix)
 			buildSources = append(buildSources, build{prefix: prefix, fsys: fs0})
 		}
 

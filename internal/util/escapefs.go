@@ -56,7 +56,7 @@ func NewEscapeFS(f fs.ReadDirFS) fs.ReadDirFS {
 }
 
 func (f *escapeFS) Open(name string) (fs.File, error) {
-	entry, err := f.fs.Open(escape(name))
+	entry, err := f.fs.Open(Escape(name))
 	if err != nil {
 		return nil, unescapeError(err)
 	}
@@ -74,7 +74,7 @@ func (f *escapeFS) Open(name string) (fs.File, error) {
 }
 
 func (f *escapeFS) ReadDir(name string) ([]fs.DirEntry, error) {
-	entries, err := f.fs.ReadDir(escape(name))
+	entries, err := f.fs.ReadDir(Escape(name))
 	for i := range entries {
 		entries[i] = &file{entries[i]}
 	}
@@ -177,8 +177,8 @@ func unescape(path string) string {
 	return result
 }
 
-// escape replaces first '#' with '##' and then replaces all remaining ':' with '#'.
-func escape(path string) string {
+// Escape replaces first '#' with '##' and then replaces all remaining ':' with '#'.
+func Escape(path string) string {
 	path = strings.ReplaceAll(path, "#", "##")
 	return strings.ReplaceAll(path, ":", "#")
 }
