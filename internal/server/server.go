@@ -16,6 +16,7 @@ import (
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/database"
 	"github.com/styrainc/opa-control-plane/internal/metrics"
+	"github.com/styrainc/opa-control-plane/internal/server/chain"
 	"github.com/styrainc/opa-control-plane/internal/server/types"
 )
 
@@ -35,27 +36,37 @@ func (s *Server) Init() *Server {
 	}
 
 	s.router.Handle("/metrics", metrics.Handler())
-	s.router.HandleFunc("GET    /health", s.health)
-	s.router.HandleFunc("GET    /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataGet))
-	s.router.HandleFunc("POST   /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataPut))
-	s.router.HandleFunc("PUT    /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataPut))
-	s.router.HandleFunc("DELETE /v1/sources/{source}/data/{path...}", authenticationMiddleware(s.db, s.v1SourcesDataDelete))
-	s.router.HandleFunc("GET    /v1/sources", authenticationMiddleware(s.db, s.v1SourcesList))
-	s.router.HandleFunc("PUT    /v1/sources/{source}", authenticationMiddleware(s.db, s.v1SourcesPut))
-	s.router.HandleFunc("GET    /v1/sources/{source}", authenticationMiddleware(s.db, s.v1SourcesGet))
-	s.router.HandleFunc("DELETE /v1/sources/{source}", authenticationMiddleware(s.db, s.v1SourcesDelete))
-	s.router.HandleFunc("GET    /v1/bundles", authenticationMiddleware(s.db, s.v1BundlesList))
-	s.router.HandleFunc("PUT    /v1/bundles/{bundle}", authenticationMiddleware(s.db, s.v1BundlesPut))
-	s.router.HandleFunc("GET    /v1/bundles/{bundle}", authenticationMiddleware(s.db, s.v1BundlesGet))
-	s.router.HandleFunc("DELETE /v1/bundles/{bundle}", authenticationMiddleware(s.db, s.v1BundlesDelete))
-	s.router.HandleFunc("GET    /v1/stacks", authenticationMiddleware(s.db, s.v1StacksList))
-	s.router.HandleFunc("PUT    /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksPut))
-	s.router.HandleFunc("GET    /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksGet))
-	s.router.HandleFunc("DELETE /v1/stacks/{stack}", authenticationMiddleware(s.db, s.v1StacksDelete))
-	s.router.HandleFunc("GET    /v1/secrets", authenticationMiddleware(s.db, s.v1SecretsList))
-	s.router.HandleFunc("PUT    /v1/secrets/{secret}", authenticationMiddleware(s.db, s.v1SecretsPut))
-	s.router.HandleFunc("GET    /v1/secrets/{secret}", authenticationMiddleware(s.db, s.v1SecretsGet))
-	s.router.HandleFunc("DELETE /v1/secrets/{secret}", authenticationMiddleware(s.db, s.v1SecretsDelete))
+	s.router.HandleFunc("GET /health", s.health)
+
+	base := chain.New(authenticationMiddleware(s.db))
+	setup := func(method, pattern string, hndl http.HandlerFunc) {
+		s.router.Handle(method+" "+pattern, append(base, metrics.InstrumentHandler(pattern)).ThenFunc(hndl))
+	}
+
+	setup("GET", "/v1/sources/{source}/data/{path...}", s.v1SourcesDataGet)
+	setup("POST", "/v1/sources/{source}/data/{path...}", s.v1SourcesDataPut)
+	setup("PUT", "/v1/sources/{source}/data/{path...}", s.v1SourcesDataPut)
+	setup("DELETE", "/v1/sources/{source}/data/{path...}", s.v1SourcesDataDelete)
+
+	setup("GET", "/v1/sources", s.v1SourcesList)
+	setup("GET", "/v1/sources/{source}", s.v1SourcesGet)
+	setup("PUT", "/v1/sources/{source}", s.v1SourcesPut)
+	setup("DELETE", "/v1/sources/{source}", s.v1SourcesDelete)
+
+	setup("GET", "/v1/bundles", s.v1BundlesList)
+	setup("GET", "/v1/bundles/{bundle}", s.v1BundlesGet)
+	setup("PUT", "/v1/bundles/{bundle}", s.v1BundlesPut)
+	setup("DELETE", "/v1/bundles/{bundle}", s.v1BundlesDelete)
+
+	setup("GET", "/v1/stacks", s.v1StacksList)
+	setup("GET", "/v1/stacks/{stack}", s.v1StacksGet)
+	setup("PUT", "/v1/stacks/{stack}", s.v1StacksPut)
+	setup("DELETE", "/v1/stacks/{stack}", s.v1StacksDelete)
+
+	setup("GET", "/v1/secrets", s.v1SecretsList)
+	setup("GET", "/v1/secrets/{secret}", s.v1SecretsGet)
+	setup("PUT", "/v1/secrets/{secret}", s.v1SecretsPut)
+	setup("DELETE", "/v1/secrets/{secret}", s.v1SecretsDelete)
 
 	return s
 }
@@ -70,7 +81,7 @@ func (s *Server) WithDatabase(db *database.Database) *Server {
 	return s
 }
 
-func (s *Server) WithReadiness(fn func(ctx context.Context) error) *Server {
+func (s *Server) WithReadiness(fn func(context.Context) error) *Server {
 	s.readyFn = fn
 	return s
 }
@@ -590,21 +601,23 @@ func newJSONDecoder(r io.Reader) *json.Decoder {
 	return decoder
 }
 
-func authenticationMiddleware(db *database.Database, inner http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		apiKey, err := extractBearerToken(r)
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+func authenticationMiddleware(db *database.Database) func(http.Handler) http.Handler {
+	return func(inner http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			apiKey, err := extractBearerToken(r)
+			if err != nil {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
 
-		principalId, err := db.GetPrincipalId(r.Context(), apiKey)
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+			principalId, err := db.GetPrincipalId(r.Context(), apiKey)
+			if err != nil {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
 
-		inner.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principalId)))
+			inner.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principalId)))
+		})
 	}
 }
 
