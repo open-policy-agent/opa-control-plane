@@ -5,7 +5,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/open-policy-agent/opa/ast" // nolint:staticcheck
 	"github.com/styrainc/opa-control-plane/internal/builder"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/logging"
@@ -157,11 +156,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 func (w *BundleWorker) report(ctx context.Context, state BuildState, startTime time.Time, err error) time.Time {
 	w.status.State = state
 	if err != nil {
-		if _, ok := err.(ast.Errors); ok {
-			w.status.Message = "Run 'opa build " + w.bundleDir + "' to see errors"
-		} else {
-			w.status.Message = err.Error()
-		}
+		w.status.Message = err.Error()
 	}
 
 	if state == BuildStateSuccess {
