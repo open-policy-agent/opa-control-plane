@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/styrainc/opa-control-plane/internal/builder"
-	"github.com/styrainc/opa-control-plane/internal/builtinsync"
 	"github.com/styrainc/opa-control-plane/internal/config"
 	"github.com/styrainc/opa-control-plane/internal/database"
 	"github.com/styrainc/opa-control-plane/internal/gitsync"
@@ -428,6 +427,10 @@ func (src *source) addDir(dir string, wipe bool, includedFiles []string, exclude
 	})
 }
 
+func (src *source) addFS(fsys fs.FS) {
+	src.Source.FSes = append(src.Source.FSes, fsys)
+}
+
 func (src *source) SyncGit(syncs *[]Synchronizer, sourceName string, git config.Git, repoDir string, reqCommit string) *source {
 	if git.Repo != "" {
 		srcDir := repoDir
@@ -444,10 +447,12 @@ func (src *source) SyncGit(syncs *[]Synchronizer, sourceName string, git config.
 	return src
 }
 
-func (src *source) SyncBuiltin(syncs *[]Synchronizer, builtin *string, fs fs.FS, dir string) *source {
+func (src *source) SyncBuiltin(syncs *[]Synchronizer, builtin *string, fs_ fs.FS, dir string) *source {
 	if builtin != nil {
-		src.addDir(dir, true, nil, nil)
-		*syncs = append(*syncs, builtinsync.New(fs, dir, *builtin))
+		// NB(sr): If the builtin isn't known, this will end up returning
+		// "open .: file does not exist", so we don't check it here.
+		sub, _ := fs.Sub(fs_, *builtin)
+		src.addFS(sub)
 	}
 	return src
 }

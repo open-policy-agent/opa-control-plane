@@ -24,6 +24,7 @@ import (
 type Source struct {
 	Name         string
 	Dirs         []Dir
+	FSes         []fs.FS
 	Requirements []config.Requirement
 	Transforms   []Transform
 }
@@ -178,11 +179,35 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	processed := map[string]struct{}{}
 	rootMap := map[string]*Source{}
+	record := func(i int, name string, fs_ fs.FS) {
+		prefix := name
+		if prefix == "" || i > 0 {
+			prefix += strconv.Itoa(i)
+		}
+		prefix = util.Escape(prefix)
+		buildSources = append(buildSources, build{prefix: prefix, fsys: fs_})
+	}
 
 	for len(toProcess) > 0 {
 		var next *Source
 		next, toProcess = toProcess[0], toProcess[1:]
 		var newRoots []ast.Ref
+
+		checkRoots := func(fs_ fs.FS) error {
+			rs, err := getRegoAndJSONRoots(fs_)
+			if err != nil {
+				return fmt.Errorf("%v: %w", next.Name, err)
+			}
+			newRoots = append(newRoots, rs...)
+			return nil
+		}
+
+		for i, fs0 := range next.FSes {
+			if err := checkRoots(fs0); err != nil {
+				return err
+			}
+			record(i, next.Name, fs0)
+		}
 
 		for i, srcDir := range next.Dirs {
 			fs0, err := util.NewFilterFS(os.DirFS(srcDir.Path),
@@ -191,18 +216,10 @@ func (b *Builder) Build(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-
-			rs, err := getRegoAndJSONRoots(fs0)
-			if err != nil {
-				return fmt.Errorf("%v: %w", next.Name, err)
+			if err := checkRoots(fs0); err != nil {
+				return err
 			}
-			newRoots = append(newRoots, rs...)
-			prefix := next.Name
-			if prefix == "" || i > 0 {
-				prefix += strconv.Itoa(i)
-			}
-			prefix = clean(prefix)
-			buildSources = append(buildSources, build{prefix: prefix, fsys: fs0})
+			record(i, next.Name, fs0)
 		}
 
 		for _, root := range newRoots {
