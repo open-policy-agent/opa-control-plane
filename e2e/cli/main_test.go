@@ -74,5 +74,9 @@ func TestScript(t *testing.T) {
 				return false, fmt.Errorf("unknown condition %s", name)
 			}
 		},
+		// NB: To quickly update expectations in txtar files, try re-running the tests with
+		// E2E_UPDATE=y, for example:
+		//   E2E_UPDATE=y go test -tags e2e ./e2e/cli -run TestScript/build_sources_from_migrate -v -count=1
+		UpdateScripts: os.Getenv("E2E_UPDATE") != "",
 	})
 }
