@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	GitSyncCount = promauto.NewCounterVec(
+	gitSyncCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "ocp_git_sync_count_total",
 			Help: "Number of times a git sync has been performed and its state",
@@ -16,7 +16,7 @@ var (
 		[]string{"source", "repo", "state"},
 	)
 
-	GitSyncDuration = promauto.NewHistogramVec(
+	gitSyncDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ocp_git_sync_duration_seconds",
 			Help:    "Git sync duration in seconds",
@@ -27,10 +27,10 @@ var (
 )
 
 func GitSyncFailed(source string, repo string) {
-	GitSyncCount.WithLabelValues(source, repo, "FAILED").Inc()
+	gitSyncCount.WithLabelValues(source, repo, "FAILED").Inc()
 }
 
 func GitSyncSucceeded(source string, repo string, startTime time.Time) {
-	GitSyncCount.WithLabelValues(source, repo, "SUCCESS").Inc()
-	GitSyncDuration.WithLabelValues(source, repo).Observe(float64(time.Since(startTime).Seconds()))
+	gitSyncCount.WithLabelValues(source, repo, "SUCCESS").Inc()
+	gitSyncDuration.WithLabelValues(source, repo).Observe(float64(time.Since(startTime).Seconds()))
 }
