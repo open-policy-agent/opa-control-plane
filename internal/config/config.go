@@ -736,7 +736,7 @@ func (t *Token) Equal(other *Token) bool {
 }
 
 type Scope struct {
-	Role string `json:"role" yaml:"role" enum:"administrator,viewer,owner,stack_owner"`
+	Role string `json:"role" yaml:"role" enum:"administrator,viewer,owner,stack_owner,automation"`
 }
 
 func scopesEqual(a, b []Scope) bool {
@@ -963,18 +963,6 @@ func (a Datasources) Equal(b Datasources) bool {
 	return setEqual(a, b, func(ds Datasource) string { return ds.Name }, func(a, b Datasource) bool { return a.Equal(&b) })
 }
 
-type Service struct {
-	// ReconfigurationInterval is the duration between configuration checks, i.e. when a change
-	// to a bundle/stack/source will have an effect on the internal bundle workers.
-	// String of a duration, e.g. "1m". Defaults to "15s".
-	ReconfigurationInterval *time.Duration `json:"reconfiguration_interval,omitempty" yaml:"reconfiguration_interval,omitempty"`
-
-	// BundleRebuildInterval is the time between bundle builds: After a bundle build as finished,
-	// OCP will wait _this long_ until it's build again (unless the bundle build is triggered by
-	// other means). String duration, e.g. "90s". Defaults to "30s".
-	BundleRebuildInterval *time.Duration `json:"bundle_rebuild_interval,omitempty" yaml:"bundle_rebuild_interval,omitempty"`
-}
-
 type Database struct {
 	SQL    *SQLDatabase `json:"sql,omitempty" yaml:"sql,omitempty"`
 	AWSRDS *AmazonRDS   `json:"aws_rds,omitempty" yaml:"aws_rds,omitempty"`
@@ -1003,6 +991,16 @@ type Service struct {
 	// ApiPrefix prefixes all endpoints (including health and metrics) with its value. It is important to start with `/` and not end with `/`.
 	// For example `/my/path` will make health endpoint be accessible under `/my/path/health`
 	ApiPrefix string `json:"api_prefix,omitempty" yaml:"api_prefix,omitempty" pattern:"^/([^/].*[^/])?$"`
+
+	// ReconfigurationInterval is the duration between configuration checks, i.e. when a change
+	// to a bundle/stack/source will have an effect on the internal bundle workers.
+	// String of a duration, e.g. "1m". Defaults to "15s".
+	ReconfigurationInterval *time.Duration `json:"reconfiguration_interval,omitempty" yaml:"reconfiguration_interval,omitempty"`
+
+	// BundleRebuildInterval is the time between bundle builds: After a bundle build as finished,
+	// OCP will wait _this long_ until it's build again (unless the bundle build is triggered by
+	// other means). String duration, e.g. "90s". Defaults to "30s".
+	BundleRebuildInterval *time.Duration `json:"bundle_rebuild_interval,omitempty" yaml:"bundle_rebuild_interval,omitempty"`
 }
 
 func setEqual[K comparable, V any](a, b []V, key func(V) K, eq func(a, b V) bool) bool {
