@@ -26,6 +26,7 @@ import (
 	"github.com/styrainc/opa-control-plane/internal/progress"
 	"github.com/styrainc/opa-control-plane/internal/s3"
 	"github.com/styrainc/opa-control-plane/internal/sqlsync"
+	"github.com/styrainc/opa-control-plane/internal/util"
 	_ "modernc.org/sqlite"
 )
 
@@ -330,7 +331,8 @@ func (s *Service) launchWorkers(ctx context.Context) {
 		bundleDir := join(s.persistenceDir, md5sum(b.Name))
 
 		for _, dep := range deps {
-			srcDir := join(bundleDir, "sources", dep.Name)
+			// NB(sr): dep.Name could contain a `:` which cause build errors in OPA's bundle build machinery
+			srcDir := join(bundleDir, "sources", util.Escape(dep.Name))
 
 			src := newSource(dep.Name).
 				SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
