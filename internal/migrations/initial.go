@@ -13,7 +13,24 @@ func Migrations(dialect string) (fs.FS, error) {
 	if err := ns.Bind(".", initialSchemaFS(dialect)); err != nil {
 		return nil, err
 	}
+	if err := ns.Bind(".", addMounts(dialect)); err != nil {
+		return nil, err
+	}
 	return ns, nil
+}
+
+func addMounts(dialect string) fs.FS {
+	var stmt string
+	switch dialect {
+	case "postgresql", "sqlite":
+		stmt = `ALTER TABLE bundles_requirements ADD COLUMN mounts TEXT`
+	case "mysql":
+		stmt = `ALTER TABLE bundles_requirements ADD COLUMN mounts VARCHAR`
+	}
+
+	return util.MapFS(map[string]string{
+		"014_add_mounts.up.sql": stmt,
+	})
 }
 
 func initialSchemaFS(dialect string) fs.FS {

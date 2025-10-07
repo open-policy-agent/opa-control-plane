@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -16,6 +17,7 @@ import (
 	"github.com/open-policy-agent/opa/bundle"  // nolint:staticcheck
 	"github.com/open-policy-agent/opa/compile" // nolint:staticcheck
 	"github.com/open-policy-agent/opa/rego"    // nolint:staticcheck
+	"github.com/open-policy-agent/opa/v1/refactor"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/util"
@@ -43,6 +45,12 @@ func NewSource(name string) *Source {
 	return &Source{
 		Name: name,
 	}
+}
+
+func (s *Source) Equal(other *Source) bool {
+	return s.Name == other.Name &&
+		slices.EqualFunc(s.Requirements, other.Requirements, config.Requirement.Equal) &&
+		slices.Equal(s.Transforms, other.Transforms)
 }
 
 func (s *Source) Wipe() error {
@@ -182,87 +190,169 @@ func (err *PackageConflictErr) Error() string {
 	return strings.Join(lines, "\n")
 }
 
+type mntSrc struct {
+	src    *Source
+	mounts config.Mounts
+}
+
 func (b *Builder) Build(ctx context.Context) error {
 
+	sourceMap := make(map[string]*Source, len(b.sources))
+	for _, src := range b.sources {
+		sourceMap[src.Name] = src
+	}
 	var existingRoots []ast.Ref
+
 	// NB(sr): We've accumulated all deps already (service.go#getDeps), but we'll
-	// process them again here: We're applying the inclusion/exclusion filters, and
-	// they have an effect on the roots.
-	toProcess := []*Source{b.sources[0]}
+	// process them again here: We're applying the bundle-level exclusion filters,
+	// and mount options on data and policy; and they can have an effect on the roots.
+	toProcess := []mntSrc{{src: b.sources[0]}}
 
 	type build struct {
 		prefix string
 		fsys   fs.FS
 	}
 	buildSources := []build{}
-	sourceMap := make(map[string]*Source)
-	for _, src := range b.sources {
-		sourceMap[src.Name] = src
-	}
 
-	processed := map[string]struct{}{}
+	alreadyProcessed := []mntSrc{}
+
 	rootMap := map[string]*Source{}
+	var paths []string
 
 	for len(toProcess) > 0 {
-		var next *Source
+		var next mntSrc
 		next, toProcess = toProcess[0], toProcess[1:]
 		var newRoots []ast.Ref
 
-		for i, fs_ := range next.fses {
+		for i, fs_ := range next.src.fses {
 			fs0, err := util.NewFilterFS(fs_, nil, b.excluded)
 			if err != nil {
 				return err
 			}
-			prefix := next.Name
+
+			prefix := next.src.Name
 			if prefix == "" || i > 0 {
 				prefix += strconv.Itoa(i)
 			}
 			prefix = util.Escape(prefix)
-			buildSources = append(buildSources, build{prefix: prefix, fsys: fs0})
+
+			if len(next.mounts) == 0 {
+				// take source (rego and data) as-is
+				buildSources = append(buildSources, build{prefix: prefix, fsys: fs0})
+				paths = append(paths, prefix)
+
+			} else {
+				// construct bind mount FS and use that for determing roots
+				ns := util.Namespace()
+
+				// rewrite policies to match mounts
+				// rego0 contains only rego files now
+				rego0, err := extractAndTransformRego(fs0, next.mounts)
+				if err != nil {
+					return err
+				}
+				if err := ns.Bind("rego", rego0); err != nil {
+					return err
+				}
+				buildSources = append(buildSources, build{prefix: "rego/" + prefix, fsys: rego0})
+				paths = append(paths, "rego/"+prefix)
+
+				// for processing data files, exclude rego
+				fs1, err := util.NewFilterFS(fs0, nil, []string{"*.rego"})
+				if err != nil {
+					return err
+				}
+				for _, mnt := range next.mounts {
+					subPath, _ := toPath(mnt.Sub)
+					prefPath, prefRef := toPath(mnt.Prefix)
+
+					// check if s exists, could be for rego only
+					_, err := fs1.Open(subPath)
+					exists := !errors.Is(err, fs.ErrNotExist)
+					if !exists {
+						continue // next mount
+					}
+
+					subFS, err := fs.Sub(fs1, subPath)
+					if err != nil {
+						return fmt.Errorf("mount %s:%s: %w", subPath, prefPath, err)
+					}
+					if err := ns.Bind(prefPath, subFS); err != nil {
+						return fmt.Errorf("bind mount %s:%s: %w", subPath, prefPath, err)
+					}
+
+					var suffix string
+					if subPath != "." {
+						suffix = "/" + subPath
+					}
+					buildSources = append(buildSources, build{prefix: prefix + suffix, fsys: subFS})
+
+					switch prefRef {
+					case "":
+						paths = append(paths, prefix+suffix)
+					default:
+						paths = append(paths, prefRef+":"+prefix+suffix)
+					}
+				}
+				fs0 = ns
+			}
 
 			rs, err := getRegoAndJSONRoots(fs0)
 			if err != nil {
-				return fmt.Errorf("%v: %w", next.Name, err)
+				return fmt.Errorf("%v: %w", next.src.Name, err)
 			}
 			newRoots = append(newRoots, rs...)
-		}
 
+		}
 		for _, root := range newRoots {
 			if overlap := rootsOverlap(existingRoots, root); len(overlap) > 0 {
 				return &PackageConflictErr{
-					Requirement: next,
+					Requirement: next.src,
 					Package:     &ast.Package{Path: root},
 					rootMap:     rootMap,
 					overlap:     overlap,
 				}
 			}
-			rootMap[root.String()] = next
+			rootMap[root.String()] = next.src
 		}
 		existingRoots = append(existingRoots, newRoots...)
-		for _, r := range next.Requirements {
+
+		for _, r := range next.src.Requirements {
 			if r.Source != nil {
 				src, ok := sourceMap[*r.Source]
 				if !ok {
 					return fmt.Errorf("missing source %q", *r.Source)
 				}
-				if _, ok := processed[src.Name]; !ok {
-					toProcess = append(toProcess, src)
-					processed[src.Name] = struct{}{}
+
+				// add mounts from requirement
+				mounts := append(r.Mounts, next.mounts...)
+				this := mntSrc{src: src, mounts: mounts}
+				if !slices.ContainsFunc(alreadyProcessed, func(other mntSrc) bool {
+					return this.src.Equal(other.src) &&
+						this.mounts.Equal(other.mounts)
+				}) {
+					toProcess = append(toProcess, this)               // queue it
+					alreadyProcessed = append(alreadyProcessed, this) // record "dealt with this"
 				}
 			}
 		}
 	}
 
 	ns := util.Namespace()
-	paths := make([]string, 0, len(buildSources))
 	for _, src := range buildSources {
 		if err := ns.Bind(src.prefix, src.fsys); err != nil {
-			return err
+			return fmt.Errorf("bind %s: %w", src.prefix, err)
 		}
-		paths = append(paths, src.prefix)
+	}
+
+	roots := make([]string, 0, len(existingRoots))
+	for _, root := range existingRoots {
+		r, _ := root.Ptr()
+		roots = append(roots, r)
 	}
 
 	c := compile.New().
+		WithRoots(roots...).
 		WithFS(ns).
 		WithPaths(paths...)
 	if err := c.Build(ctx); err != nil {
@@ -270,19 +360,36 @@ func (b *Builder) Build(ctx context.Context) error {
 	}
 
 	result := c.Bundle()
-
-	var roots []string
-	result.Manifest.Roots = &roots // avoid "" default root
-
-	for _, root := range existingRoots {
-		r, err := root.Ptr()
-		if err != nil {
-			return err
-		}
-		result.Manifest.AddRoot(r)
-	}
 	result.Manifest.SetRegoVersion(ast.RegoV0)
 	return bundle.Write(b.output, *result)
+}
+
+func walk(fs_ fs.FS) {
+	fs.WalkDir(fs_, ".", func(path string, d fs.DirEntry, err error) error {
+		if d.IsDir() {
+			fmt.Fprintf(os.Stderr, "+ %s/\n", path)
+		} else {
+			fmt.Fprintf(os.Stderr, "- %s\n", path)
+		}
+		return nil
+	})
+}
+
+type refSet struct {
+	refs []ast.Ref
+}
+
+func (rs *refSet) add(n ast.Ref) {
+	for i, r := range rs.refs {
+		switch {
+		case r.HasPrefix(n):
+			rs.refs[i] = n
+			return
+		case n.HasPrefix(r):
+			return
+		}
+	}
+	rs.refs = append(rs.refs, n)
 }
 
 // getRegoAndJSONRoots returns the set of roots for the given directories.
@@ -291,7 +398,7 @@ func (b *Builder) Build(ctx context.Context) error {
 // It works on `fs.FS`es and expects filters to already have been applied (via
 // `utils.FilterFS`).
 func getRegoAndJSONRoots(fsys fs.FS) ([]ast.Ref, error) {
-	set := ast.NewSet()
+	set := &refSet{}
 	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry) error {
 		bs, err := fs.ReadFile(fsys, path)
 		if err != nil {
@@ -303,35 +410,30 @@ func getRegoAndJSONRoots(fsys fs.FS) ([]ast.Ref, error) {
 			return err
 		}
 
-		set.Add(ast.NewTerm(module.Package.Path))
+		set.add(module.Package.Path)
 		return nil
 	}, ".rego")); err != nil {
 		return nil, err
 	}
-	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry) error {
-		path = filepath.ToSlash(filepath.Dir(path))
+	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(p string, d fs.DirEntry) error {
+		path := filepath.ToSlash(filepath.Dir(p))
 
 		var keys []*ast.Term
 		for path != "" && path != "." {
 			dir := filepath.Base(path)
 			path = filepath.Dir(path)
-			keys = append([]*ast.Term{ast.StringTerm(dir)}, keys...)
+			keys = append(keys, ast.StringTerm(dir))
 		}
 
-		keys = append([]*ast.Term{ast.DefaultRootDocument}, keys...)
-		set.Add(ast.RefTerm(keys...))
+		keys = append(keys, ast.DefaultRootDocument)
+		slices.Reverse(keys)
+		set.add(keys)
 		return nil
 	}, ".json", ".yml", ".yaml")); err != nil {
 		return nil, err
 	}
 
-	sl := set.Slice()
-	result := make([]ast.Ref, len(sl))
-	for i := range sl {
-		result[i] = sl[i].Value.(ast.Ref)
-	}
-
-	return result, nil
+	return set.refs, nil
 }
 
 // NB(sr): Why not glob the suffixes on top of our existing globs? Or make FilterFS take
@@ -387,4 +489,48 @@ func removeDir(path string) error {
 	}
 
 	return nil
+}
+
+func toPath(d string) (string, string) { // TODO(sr): String ops are wrong, parse as ref, deal with that
+	if d == "data" {
+		return ".", ""
+	}
+	p := strings.Split(d, ".")
+	return strings.Join(p[1:], "/"), d[5:]
+}
+
+func extractAndTransformRego(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
+	modules := make(map[string]*ast.Module)
+	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry) error {
+		bs, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return err
+		}
+
+		modules[path], err = ast.ParseModule(path, string(bs))
+		return err
+	}, ".rego")); err != nil {
+		return nil, err
+	}
+
+	for _, mnt := range mounts {
+		from, to := mnt.Sub, mnt.Prefix
+		replacements := map[string]string{from: to}
+
+		res, err := refactor.New().Move(refactor.MoveQuery{
+			Modules:       modules,
+			SrcDstMapping: replacements,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("refactor: %w", err)
+		}
+		modules = res.Result
+	}
+
+	rendered := make(map[string]string, len(modules))
+	for p, m := range modules {
+		rendered[p] = m.String()
+	}
+
+	return util.MapFS(rendered), nil
 }

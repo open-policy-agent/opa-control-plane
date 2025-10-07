@@ -16,6 +16,12 @@ type ns struct {
 	ns *fsutil.NameSpace
 }
 
+// Namespace lets us knit together `fs.FS` by binding them, either creating a
+// union of FSes, or adding new prefixes (like mount points). This is nice, and
+// good enough for many things, BUT it's leaky: file.Info() can still yield the
+// previous name etc.
+// /!\ Concretely, this cannot be used to create the data layout from directory
+// names when building a bundle.
 func Namespace() NamespaceFS {
 	return &ns{
 		ns: &fsutil.NameSpace{},
