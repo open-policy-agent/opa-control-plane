@@ -24,8 +24,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/metrics"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )

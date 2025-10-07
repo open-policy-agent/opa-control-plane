@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/styrainc/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
 )
 
 // HttpDataSynchronizer is a struct that implements the Synchronizer interface for downloading JSON from HTTP endpoints.

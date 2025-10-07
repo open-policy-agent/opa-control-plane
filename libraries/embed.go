@@ -5,7 +5,7 @@ import (
 
 	_ "github.com/open-policy-agent/opa/cmd" // for running library tests
 
-	"github.com/styrainc/opa-control-plane/internal/util"
+	"github.com/open-policy-agent/opa-control-plane/internal/util"
 )
 
 //go:embed *

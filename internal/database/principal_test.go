@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/styrainc/opa-control-plane/internal/database"
-	"github.com/styrainc/opa-control-plane/internal/migrations"
-	"github.com/styrainc/opa-control-plane/internal/test/dbs"
+	"github.com/open-policy-agent/opa-control-plane/internal/database"
+	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
+	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
 
 	"github.com/testcontainers/testcontainers-go"
 )

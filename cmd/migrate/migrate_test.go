@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/open-policy-agent/opa-control-plane/cmd/internal/das"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/libraries"
 	"github.com/open-policy-agent/opa/ast" // nolint:staticcheck
-	"github.com/styrainc/opa-control-plane/cmd/internal/das"
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/libraries"
 )
 
 func TestLibraryPackageIndex(t *testing.T) {

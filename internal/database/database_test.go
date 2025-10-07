@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/database"
-	"github.com/styrainc/opa-control-plane/internal/migrations"
-	"github.com/styrainc/opa-control-plane/internal/test/dbs"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/database"
+	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
+	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
 	"github.com/testcontainers/testcontainers-go"
 )
 

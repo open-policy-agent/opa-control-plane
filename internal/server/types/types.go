@@ -3,7 +3,7 @@ package types
 import (
 	"encoding/json"
 
-	"github.com/styrainc/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
 )
 
 const (

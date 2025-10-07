@@ -21,13 +21,13 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+	"github.com/open-policy-agent/opa-control-plane/internal/service"
+	"github.com/open-policy-agent/opa-control-plane/internal/test/libraries"
+	"github.com/open-policy-agent/opa-control-plane/internal/util"
 	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/logging"
-	"github.com/styrainc/opa-control-plane/internal/service"
-	"github.com/styrainc/opa-control-plane/internal/test/libraries"
-	"github.com/styrainc/opa-control-plane/internal/util"
 	"gopkg.in/yaml.v3"
 )
 

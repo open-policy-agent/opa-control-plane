@@ -20,18 +20,18 @@ import (
 
 	"github.com/akedrou/textdiff"
 	"github.com/olekukonko/tablewriter"
+	"github.com/open-policy-agent/opa-control-plane/cmd"
+	"github.com/open-policy-agent/opa-control-plane/cmd/internal/das"
+	"github.com/open-policy-agent/opa-control-plane/cmd/internal/flags"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+	"github.com/open-policy-agent/opa-control-plane/internal/progress"
+	"github.com/open-policy-agent/opa-control-plane/internal/s3"
 	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
 	"github.com/open-policy-agent/opa/sdk"    // nolint:staticcheck
 	v1 "github.com/open-policy-agent/opa/v1/logging"
 	"github.com/spf13/cobra"
-	"github.com/styrainc/opa-control-plane/cmd"
-	"github.com/styrainc/opa-control-plane/cmd/internal/das"
-	"github.com/styrainc/opa-control-plane/cmd/internal/flags"
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/logging"
-	"github.com/styrainc/opa-control-plane/internal/progress"
-	"github.com/styrainc/opa-control-plane/internal/s3"
 )
 
 var log *logging.Logger

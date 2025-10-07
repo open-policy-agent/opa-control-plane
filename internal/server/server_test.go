@@ -14,11 +14,11 @@ import (
 	"github.com/open-policy-agent/opa/v1/util"
 	"github.com/testcontainers/testcontainers-go"
 
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/database"
-	"github.com/styrainc/opa-control-plane/internal/migrations"
-	"github.com/styrainc/opa-control-plane/internal/server/types"
-	"github.com/styrainc/opa-control-plane/internal/test/dbs"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/database"
+	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
+	"github.com/open-policy-agent/opa-control-plane/internal/server/types"
+	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
 )
 
 func TestServerSourcesData(t *testing.T) {

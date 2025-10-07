@@ -1,4 +1,4 @@
-module github.com/styrainc/opa-control-plane
+module github.com/open-policy-agent/opa-control-plane
 
 go 1.24.6
 

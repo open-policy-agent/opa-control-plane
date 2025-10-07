@@ -21,12 +21,12 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/styrainc/opa-control-plane/cmd"
-	"github.com/styrainc/opa-control-plane/cmd/internal/das"
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/logging"
-	"github.com/styrainc/opa-control-plane/internal/progress"
-	"github.com/styrainc/opa-control-plane/libraries"
+	"github.com/open-policy-agent/opa-control-plane/cmd"
+	"github.com/open-policy-agent/opa-control-plane/cmd/internal/das"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+	"github.com/open-policy-agent/opa-control-plane/internal/progress"
+	"github.com/open-policy-agent/opa-control-plane/libraries"
 )
 
 var log *logging.Logger

@@ -21,11 +21,11 @@ import (
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib" // database/sql compatible driver for pgx
-	"github.com/styrainc/opa-control-plane/internal/authz"
-	"github.com/styrainc/opa-control-plane/internal/aws"
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/logging"
-	"github.com/styrainc/opa-control-plane/internal/progress"
+	"github.com/open-policy-agent/opa-control-plane/internal/authz"
+	"github.com/open-policy-agent/opa-control-plane/internal/aws"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	_ "modernc.org/sqlite"
 )
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
-	"github.com/styrainc/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
 )
 
 func TestS3(t *testing.T) {

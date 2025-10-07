@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"strings"
 
-	"github.com/styrainc/opa-control-plane/internal/util"
+	"github.com/open-policy-agent/opa-control-plane/internal/util"
 )
 
 func Migrations(dialect string) (fs.FS, error) {

@@ -10,7 +10,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/mysql"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"github.com/styrainc/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
 )
 
 type Setup struct {

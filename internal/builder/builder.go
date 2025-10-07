@@ -17,8 +17,8 @@ import (
 	"github.com/open-policy-agent/opa/compile" // nolint:staticcheck
 	"github.com/open-policy-agent/opa/rego"    // nolint:staticcheck
 
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/util"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/util"
 )
 
 type Source struct {

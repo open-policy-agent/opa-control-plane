@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/database"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/database"
 )
 
 func BenchmarkPaginationFinalPageLatency(b *testing.B) {

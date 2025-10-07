@@ -19,8 +19,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	internal_aws "github.com/styrainc/opa-control-plane/internal/aws"
-	"github.com/styrainc/opa-control-plane/internal/config"
+	internal_aws "github.com/open-policy-agent/opa-control-plane/internal/aws"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"google.golang.org/api/option"
 )
 

@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/test/tempfs"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/test/tempfs"
 	"gopkg.in/yaml.v3"
 )
 

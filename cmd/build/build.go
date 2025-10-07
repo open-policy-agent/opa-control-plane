@@ -9,15 +9,15 @@ import (
 	"sort"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/open-policy-agent/opa-control-plane/cmd"
+	"github.com/open-policy-agent/opa-control-plane/cmd/internal/flags"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
+	"github.com/open-policy-agent/opa-control-plane/internal/progress"
+	"github.com/open-policy-agent/opa-control-plane/internal/service"
+	"github.com/open-policy-agent/opa-control-plane/libraries"
 	"github.com/spf13/cobra"
-	"github.com/styrainc/opa-control-plane/cmd"
-	"github.com/styrainc/opa-control-plane/cmd/internal/flags"
-	"github.com/styrainc/opa-control-plane/internal/config"
-	"github.com/styrainc/opa-control-plane/internal/logging"
-	"github.com/styrainc/opa-control-plane/internal/migrations"
-	"github.com/styrainc/opa-control-plane/internal/progress"
-	"github.com/styrainc/opa-control-plane/internal/service"
-	"github.com/styrainc/opa-control-plane/libraries"
 )
 
 type buildParams struct {

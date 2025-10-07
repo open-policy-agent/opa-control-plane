@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"runtime/debug"
 
+	"github.com/open-policy-agent/opa-control-plane/cmd"
 	"github.com/spf13/cobra"
-	"github.com/styrainc/opa-control-plane/cmd"
 )
 
 var Version = "0.1.0-dev"

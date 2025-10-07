@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/styrainc/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"gopkg.in/yaml.v3"
 )
 

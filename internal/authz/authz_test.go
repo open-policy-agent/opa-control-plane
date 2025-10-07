@@ -7,7 +7,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	_ "modernc.org/sqlite"
 
-	"github.com/styrainc/opa-control-plane/internal/test/dbs"
+	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
 )
 
 func TestPartialStringArgs(t *testing.T) {
