@@ -39,9 +39,7 @@ jobs:
         - macos-latest
     steps:
       - name: Setup OPA
-        uses: open-policy-agent/setup-opa@34a30e8a924d1b03ce2cf7abe97250bbb1f332b5 # v2.2.0
-        with:
-          static: ${{runner.os == 'macOS'}}
+        uses: open-policy-agent/setup-opa@950f159a49aa91f9323f36f1de81c7f6b5de9576 # v2.3.0
       - name: tweak git config for long file names
         run: git config --system core.longpaths true
         if: matrix.run == 'windows-latest'
