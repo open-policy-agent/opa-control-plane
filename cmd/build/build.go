@@ -17,7 +17,6 @@ import (
 	"github.com/styrainc/opa-control-plane/internal/migrations"
 	"github.com/styrainc/opa-control-plane/internal/progress"
 	"github.com/styrainc/opa-control-plane/internal/service"
-	"github.com/styrainc/opa-control-plane/internal/util"
 	"github.com/styrainc/opa-control-plane/libraries"
 )
 
@@ -84,7 +83,7 @@ func init() {
 			svc := service.New().
 				WithPersistenceDir(params.persistenceDir).
 				WithConfig(config).
-				WithBuiltinFS(util.NewEscapeFS(libraries.FS)).
+				WithBuiltinFS(libraries.FS).
 				WithSingleShot(true).
 				WithLogger(log).
 				WithNoninteractive(params.noninteractive).

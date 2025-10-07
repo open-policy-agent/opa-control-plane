@@ -420,7 +420,7 @@ var baseLibFiles = func() map[string]map[string]string {
 			if fi.IsDir() {
 				return nil
 			}
-			bs, err := libraries.FS.ReadFile(file)
+			bs, err := fs.ReadFile(libraries.FS, file)
 			if err != nil {
 				return err
 			}
@@ -459,7 +459,7 @@ var baseLibPackageIndex = func() map[string]*libraryPackageIndex {
 				if filepath.Ext(file) != ".rego" {
 					return nil
 				}
-				bs, err := libraries.FS.ReadFile(file)
+				bs, err := fs.ReadFile(libraries.FS, file)
 				if err != nil {
 					return err
 				}
@@ -1495,7 +1495,7 @@ func migrateV1Policies(typeLib *config.Source, nsPrefix string, policies []*das.
 			modules := make(map[string]string)
 			for path, str := range p.Modules {
 				path = strings.TrimPrefix(pkg, "/") + "/" + path
-				if !stringSliceContains(gitRoots, path) {
+				if !slices.Contains(gitRoots, path) {
 					modules[path] = str
 				}
 			}
@@ -2553,15 +2553,6 @@ func stringSlicePrefix(prefix []string, s []string) bool {
 		}
 	}
 	return true
-}
-
-func stringSliceContains(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
 }
 
 func strptr(s string) *string { return &s }

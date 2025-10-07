@@ -3,6 +3,7 @@ package migrate
 import (
 	"bytes"
 	"encoding/json"
+	"io/fs"
 	"reflect"
 	"sort"
 	"strconv"
@@ -236,7 +237,7 @@ func TestPruneConfig(t *testing.T) {
 func TestMigrateV1Policies(t *testing.T) {
 
 	libraryFile := func(path string) string {
-		bs, err := libraries.FS.ReadFile(path)
+		bs, err := fs.ReadFile(libraries.FS, path)
 		if err != nil {
 			panic(err)
 		}

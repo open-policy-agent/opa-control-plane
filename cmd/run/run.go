@@ -13,7 +13,6 @@ import (
 	"github.com/styrainc/opa-control-plane/internal/migrations"
 	"github.com/styrainc/opa-control-plane/internal/server"
 	"github.com/styrainc/opa-control-plane/internal/service"
-	"github.com/styrainc/opa-control-plane/internal/util"
 	"github.com/styrainc/opa-control-plane/libraries"
 )
 
@@ -64,7 +63,7 @@ func init() {
 			svc := service.New().
 				WithPersistenceDir(params.persistenceDir).
 				WithConfig(config).
-				WithBuiltinFS(util.NewEscapeFS(libraries.FS)).
+				WithBuiltinFS(libraries.FS).
 				WithLogger(log).
 				WithMigrateDB(params.migrateDB || sqlite) // always run migrations with sqlite
 

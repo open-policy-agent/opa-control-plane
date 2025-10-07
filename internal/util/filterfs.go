@@ -8,8 +8,6 @@ import (
 	"github.com/gobwas/glob"
 )
 
-var _ fs.FS = (*FilterFS)(nil)
-
 type FilterFS struct {
 	fs       fs.FS
 	included []glob.Glob // List of file patterns to include
@@ -34,7 +32,7 @@ type filteredDir struct {
 // Filtering by ReadDir() lets us avoid listing files that we'll not allow access to. When
 // building a bundle using fs.FS, not doing this would give us "file does not exist" errors
 // for excluded files.
-func NewFilterFS(fs fs.FS, include []string, exclude []string) (*FilterFS, error) {
+func NewFilterFS(fs fs.FS, include []string, exclude []string) (fs.FS, error) {
 	ffs := FilterFS{fs: fs}
 
 	for _, pattern := range include {

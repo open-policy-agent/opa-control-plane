@@ -18,7 +18,7 @@ var (
 )
 
 type file struct {
-	f interface{}
+	f any
 }
 
 func (f *file) file() fs.FileInfo {
