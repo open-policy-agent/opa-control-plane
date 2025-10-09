@@ -20,6 +20,7 @@ import (
 
 	"github.com/akedrou/textdiff"
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/open-policy-agent/opa-control-plane/cmd"
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/das"
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/flags"
@@ -239,13 +240,12 @@ func printReport(w io.Writer, root *config.Root, report Report) {
 
 	fmt.Fprintf(w, "%d/%d bundles backtested successfully\n", success, len(root.Bundles))
 
-	table := tablewriter.NewWriter(w)
-	table.SetAutoWrapText(false)
-	table.SetHeader([]string{"Name", "Status", "Message"})
+	table := tablewriter.NewTable(w, tablewriter.WithRowAutoWrap(tw.WrapNone))
+	table.Header("Name", "Status", "Message")
 
 	for _, name := range sorted {
 		sr := report.Bundles[name]
-		table.Append([]string{name, sr.Status.String(), sr.Message})
+		table.Append(name, sr.Status.String(), sr.Message)
 	}
 
 	table.Render()

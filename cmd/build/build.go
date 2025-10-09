@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/open-policy-agent/opa-control-plane/cmd"
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/flags"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
@@ -163,11 +164,10 @@ func collectBuildReport(r *service.Report) *buildReport {
 func printReport(r *buildReport) {
 	fmt.Fprintf(os.Stderr, "%d/%d bundles built and pushed successfully\n", r.successfulBuilds, r.totalBuilds)
 	if !r.allBuildsSuccessful() {
-		table := tablewriter.NewWriter(os.Stderr)
-		table.SetAutoWrapText(false)
-		table.SetHeader([]string{"Bundle", "Status", "Message"})
+		table := tablewriter.NewTable(os.Stderr, tablewriter.WithRowAutoWrap(tw.WrapNone))
+		table.Header("Bundle", "Status", "Message")
 		for _, buildError := range r.buildErrors {
-			table.Append([]string{buildError.bundleName, buildError.buildState.String(), buildError.message})
+			table.Append(buildError.bundleName, buildError.buildState.String(), buildError.message)
 		}
 		table.Render()
 	}
