@@ -20,6 +20,7 @@ import (
 
 	"github.com/akedrou/textdiff"
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/open-policy-agent/opa-control-plane/cmd"
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/das"
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/flags"
@@ -208,13 +209,13 @@ func Run(opts Options) error {
 		fmt.Fprintln(opts.Output, string(bs))
 
 	case OutputFormatPretty:
-		printReport(opts.Output, cfg, report)
+		return printReport(opts.Output, cfg, report)
 	}
 
 	return nil
 }
 
-func printReport(w io.Writer, root *config.Root, report Report) {
+func printReport(w io.Writer, root *config.Root, report Report) error {
 
 	sorted := slices.Collect(maps.Keys(root.Bundles))
 	sort.Slice(sorted, func(i, j int) bool {
@@ -239,16 +240,17 @@ func printReport(w io.Writer, root *config.Root, report Report) {
 
 	fmt.Fprintf(w, "%d/%d bundles backtested successfully\n", success, len(root.Bundles))
 
-	table := tablewriter.NewWriter(w)
-	table.SetAutoWrapText(false)
-	table.SetHeader([]string{"Name", "Status", "Message"})
+	table := tablewriter.NewTable(w, tablewriter.WithRowAutoWrap(tw.WrapNone))
+	table.Header("Name", "Status", "Message")
 
 	for _, name := range sorted {
 		sr := report.Bundles[name]
-		table.Append([]string{name, sr.Status.String(), sr.Message})
+		if err := table.Append(name, sr.Status.String(), sr.Message); err != nil {
+			return err
+		}
 	}
 
-	table.Render()
+	return table.Render()
 }
 
 func backtestBundle(ctx context.Context, opts Options, styra *das.Client, b *config.Bundle, report *Report) error {

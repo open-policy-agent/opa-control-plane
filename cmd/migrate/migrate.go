@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/open-policy-agent/opa/ast" // nolint:staticcheck
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -833,9 +834,8 @@ func Run(params Options) error {
 
 		if !params.Noninteractive {
 
-			table := tablewriter.NewWriter(os.Stderr)
-			table.SetAutoWrapText(false)
-			table.SetHeader([]string{"Name", "Type", "Config", "Status", "Message"})
+			table := tablewriter.NewTable(os.Stderr, tablewriter.WithRowAutoWrap(tw.WrapNone))
+			table.Header("Name", "Type", "Config", "Status", "Message")
 
 			var rows []row
 
@@ -933,11 +933,15 @@ func Run(params Options) error {
 				strings[i] = rows[i].StringSlice()
 			}
 
-			table.AppendBulk(strings)
+			if err := table.Bulk(strings); err != nil {
+				return err
+			}
 			fmt.Fprintf(os.Stderr, "%d/%d systems migrated successfully\n", success[KindSystem], len(state.SystemsById))
 			fmt.Fprintf(os.Stderr, "%d/%d stacks migrated successfully\n", success[KindStack], len(state.StacksById))
 			fmt.Fprintf(os.Stderr, "%d/%d libraries migrated successfully\n", success[KindLibrary], len(state.LibrariesById))
-			table.Render()
+			if err := table.Render(); err != nil {
+				return err
+			}
 		}
 	}
 
