@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,6 +23,10 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/util"
 )
+
+func init() {
+	log.SetFlags(log.Lshortfile)
+}
 
 type Source struct {
 	Name         string
@@ -236,12 +241,7 @@ func (b *Builder) Build(ctx context.Context) error {
 			}
 			prefix = util.Escape(prefix)
 
-			if len(next.mounts) == 0 {
-				// take source (rego and data) as-is
-				buildSources = append(buildSources, build{prefix: prefix, fsys: fs0})
-				paths = append(paths, prefix)
-
-			} else {
+			if len(next.mounts) > 0 {
 				// construct bind mount FS and use that for determing roots
 				ns := util.Namespace()
 
@@ -249,61 +249,80 @@ func (b *Builder) Build(ctx context.Context) error {
 				// rego0 contains only rego files now
 				rego0, err := extractAndTransformRego(fs0, next.mounts)
 				if err != nil {
-					return err
+					return fmt.Errorf("source %s rego: %w", next.src.Name, err)
 				}
-				if err := ns.Bind("rego", rego0); err != nil {
-					return err
+				if rego0 != nil {
+					if err := ns.Bind("rego", rego0); err != nil {
+						return fmt.Errorf("source %s rego bind: %w", next.src.Name, err)
+					}
 				}
-				buildSources = append(buildSources, build{prefix: "rego/" + prefix, fsys: rego0})
-				paths = append(paths, "rego/"+prefix)
 
 				// for processing data files, exclude rego
 				fs1, err := util.NewFilterFS(fs0, nil, []string{"*.rego"})
 				if err != nil {
-					return err
+					return fmt.Errorf("source %s data: %w", next.src.Name, err)
 				}
-				for _, mnt := range next.mounts {
-					subPath, _ := toPath(mnt.Sub)
-					prefPath, prefRef := toPath(mnt.Prefix)
 
-					// check if s exists, could be for rego only
+				// With the data files of this source, for every mount, we'll sub and bind;
+				// carrying along the rest of the content (if any).
+				//
+				// In the next iteration (for the next mount), we'll keep doing that, and
+				// thereby subsequently deal with all the moving we need to deal with.
+
+				for _, mnt := range next.mounts {
+					// we operate on fs1, replace it with ns at the end
+					ns0 := util.Namespace()
+
+					subPath, _ := toPath(mnt.Sub)
+					prefPath, _ := toPath(mnt.Prefix)
+
+					// check if subPath exists, could be for rego only
 					_, err := fs1.Open(subPath)
 					exists := !errors.Is(err, fs.ErrNotExist)
 					if !exists {
 						continue // next mount
 					}
 
-					subFS, err := fs.Sub(fs1, subPath)
+					// We split into `sub` and `rest`, and bind them to `prefix` and `.` accordingly.
+					sub, err := fs.Sub(fs1, subPath)
 					if err != nil {
 						return fmt.Errorf("mount %s:%s: %w", subPath, prefPath, err)
 					}
-					if err := ns.Bind(prefPath, subFS); err != nil {
+					pref := util.PrefixFS(prefPath, sub)
+					if err := ns0.Bind(".", pref); err != nil {
 						return fmt.Errorf("bind mount %s:%s: %w", subPath, prefPath, err)
 					}
 
-					var suffix string
-					if subPath != "." {
-						suffix = "/" + subPath
+					if subPath != "." { // if subPath is ".", we've rebound under the prefix, so there is no rest to deal with
+						rest, err := util.NewFilterFS(fs1, nil, []string{subPath})
+						if err != nil {
+							return fmt.Errorf("mount/filter %s: %w", next.src.Name, err)
+						}
+						if err := ns0.Bind(".", rest); err != nil {
+							return fmt.Errorf("source %s rest bind: %w", next.src.Name, err)
+						}
 					}
-					buildSources = append(buildSources, build{prefix: prefix + suffix, fsys: subFS})
-
-					switch prefRef {
-					case "":
-						paths = append(paths, prefix+suffix)
-					default:
-						paths = append(paths, prefRef+":"+prefix+suffix)
-					}
+					fs1 = ns0
 				}
-				fs0 = ns
+				fs0 = fs1
 			}
+			files, err := util.FSContainsFiles(fs0)
+			if err != nil {
+				return fmt.Errorf("source %s check files: %w", next.src.Name, err)
+			}
+			if !files {
+				continue
+			}
+			buildSources = append(buildSources, build{prefix: prefix, fsys: fs0})
+			paths = append(paths, prefix)
 
 			rs, err := getRegoAndJSONRoots(fs0)
-			if err != nil {
-				return fmt.Errorf("%v: %w", next.src.Name, err)
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("source %s find roots: %w", next.src.Name, err)
 			}
 			newRoots = append(newRoots, rs...)
-
 		}
+
 		for _, root := range newRoots {
 			if overlap := rootsOverlap(existingRoots, root); len(overlap) > 0 {
 				return &PackageConflictErr{
@@ -351,9 +370,12 @@ func (b *Builder) Build(ctx context.Context) error {
 		roots = append(roots, r)
 	}
 
+	walk(ns)
+
 	c := compile.New().
 		WithRoots(roots...).
-		WithFS(ns).
+		// WithFS(ns).
+		WithFS(util.NewTraceFS(ns)).
 		WithPaths(paths...)
 	if err := c.Build(ctx); err != nil {
 		return fmt.Errorf("build: %w", err)
@@ -365,14 +387,19 @@ func (b *Builder) Build(ctx context.Context) error {
 }
 
 func walk(fs_ fs.FS) {
-	fs.WalkDir(fs_, ".", func(path string, d fs.DirEntry, err error) error {
+	if err := fs.WalkDir(fs_, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
 		if d.IsDir() {
 			fmt.Fprintf(os.Stderr, "+ %s/\n", path)
 		} else {
 			fmt.Fprintf(os.Stderr, "- %s\n", path)
 		}
 		return nil
-	})
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+	}
 }
 
 type refSet struct {
@@ -510,6 +537,9 @@ func extractAndTransformRego(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
 		modules[path], err = ast.ParseModule(path, string(bs))
 		return err
 	}, ".rego")); err != nil {
+		if errors.Is(err, fs.ErrNotExist) { // no rego files present
+			return nil, nil
+		}
 		return nil, err
 	}
 

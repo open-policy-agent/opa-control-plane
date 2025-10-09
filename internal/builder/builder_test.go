@@ -2,9 +2,11 @@ package builder_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
+	// "os"
 	"slices"
 	"strings"
 	"testing"
@@ -225,6 +227,43 @@ func TestBuilder(t *testing.T) {
 				"/data.json": `{"imported":{"x":{"y":{"A":7}}}}`,
 			},
 			expRoots: []string{"imported_lib1", "imported_lib2", "imported/x/y", "x"},
+		},
+		{
+			note: "mounts: transitive data moves",
+			sources: []sourceMock{
+				{
+					name: "system",
+					requirements: []reqMock{
+						{
+							name: "lib1",
+							mounts: []mount{
+								{sub: "data.X", prefix: "data.Y"}, // data.X.a.b.c -> data.Y.a.b.c
+							},
+						},
+					},
+				},
+				{
+					name: "lib1",
+					requirements: []reqMock{
+						{
+							name: "lib2",
+							mounts: []mount{
+								{sub: "data", prefix: "data.X"}, // data.a.b.c -> data.X.a.b.c
+							},
+						},
+					},
+				},
+				{
+					name: "lib2",
+					files: map[string]string{
+						"a/b/c/data.json": `{":)":"(:"}`,
+					},
+				},
+			},
+			exp: map[string]string{ // TODO: adjust
+				"/data.json": `{"imported":{"x":{"y":{"A":7}}}}`,
+			},
+			expRoots: []string{"imported_lib1", "imported_lib2", "imported/x/y", "x"}, // TODO: adjust
 		},
 		{
 			note: "package conflict: prefix (fixed via single mount)",
@@ -599,6 +638,7 @@ func TestBuilder(t *testing.T) {
 				} else if tc.expError != nil {
 					t.Fatalf("Build succeeded but expected error: %v", tc.expError)
 				}
+				// _ = os.WriteFile("b0.tgz", buf.Bytes(), 0755)
 
 				bundle, err := bundle.NewReader(buf).Read()
 				if err != nil {
@@ -669,4 +709,28 @@ func trimLeadingWhitespace(input string) string {
 		lines[i] = strings.TrimLeft(line, " \t")
 	}
 	return strings.Join(lines, "\n")
+}
+
+func TestBuilder_Build(t *testing.T) {
+	tests := []struct {
+		name    string // description of this test case
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := builder.New()
+			gotErr := b.Build(context.Background())
+			if gotErr != nil {
+				if !tt.wantErr {
+					t.Errorf("Build() failed: %v", gotErr)
+				}
+				return
+			}
+			if tt.wantErr {
+				t.Fatal("Build() succeeded unexpectedly")
+			}
+		})
+	}
 }

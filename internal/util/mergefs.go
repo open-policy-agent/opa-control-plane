@@ -2,6 +2,7 @@ package util
 
 import (
 	"io/fs"
+	// "log"
 	"path/filepath"
 
 	"github.com/knieriem/fsutil"
@@ -10,6 +11,7 @@ import (
 type NamespaceFS interface {
 	fs.FS
 	Bind(string, fs.FS) error
+	BindAs(string, string, fs.FS) error
 }
 
 type ns struct {
@@ -29,7 +31,15 @@ func Namespace() NamespaceFS {
 }
 
 func (n *ns) Bind(old string, fsys fs.FS) error {
+	// log.Printf("Bind(%s, fs)", old)
+	// if old == "." {
+	// 	panic(old)
+	// }
 	return n.ns.Bind(old, fsys)
+}
+
+func (n *ns) BindAs(old string, as string, fsys fs.FS) error {
+	return n.ns.Bind(old, fsys, fsutil.WithNewOSDir(as))
 }
 
 func (n *ns) Open(p string) (fs.File, error) {
