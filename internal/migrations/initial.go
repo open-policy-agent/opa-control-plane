@@ -5,18 +5,16 @@ import (
 	"io/fs"
 	"strings"
 
+	"github.com/yalue/merged_fs"
+
 	"github.com/open-policy-agent/opa-control-plane/internal/util"
 )
 
 func Migrations(dialect string) (fs.FS, error) {
-	ns := util.Namespace()
-	if err := ns.Bind(".", initialSchemaFS(dialect)); err != nil {
-		return nil, err
-	}
-	if err := ns.Bind(".", addMounts(dialect)); err != nil {
-		return nil, err
-	}
-	return ns, nil
+	return merged_fs.MergeMultiple(
+		initialSchemaFS(dialect),
+		addMounts(dialect),
+	), nil
 }
 
 func addMounts(dialect string) fs.FS {
