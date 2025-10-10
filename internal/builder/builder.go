@@ -365,13 +365,15 @@ func (b *Builder) Build(ctx context.Context) error {
 	roots := make([]string, 0, len(existingRoots))
 	for _, root := range existingRoots {
 		r, _ := root.Ptr()
-		roots = append(roots, r)
+		if !slices.Contains(roots, r) {
+			roots = append(roots, r)
+		}
 	}
 
 	walk(fsBuild)
 
 	c := compile.New().
-		WithRoots(roots...).
+		WithRoots(slices.Compact(roots)...).
 		WithFS(fsBuild).
 		WithPaths(paths...)
 	if err := c.Build(ctx); err != nil {
