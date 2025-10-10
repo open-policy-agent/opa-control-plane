@@ -50,7 +50,7 @@ func (fsys PrefixFS) Open(name string) (fs.File, error) {
 		return &mntDir{path: name, mapFileInfo: mapFileInfo{name: path.Base(name), dir: true}, fsys: fs_}, nil
 	}
 	for fname := range fsys {
-		if strings.HasPrefix(name, fname) {
+		if strings.HasPrefix(name, fname+"/") {
 			name = name[len(fname)+1:]
 			return fsys[fname].Open(name)
 		}
