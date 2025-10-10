@@ -4,7 +4,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
-	"runtime/debug"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -50,11 +50,12 @@ func WithPerm(perm fs.FileMode) PrefixFSOption {
 var _ fs.ReadDirFS = &prefixFS{}
 
 func (fsys *prefixFS) Open(p string) (fs.File, error) {
-	fs, name, err := fsys.lookupFS(p, "open")
+	lfs, name, err := fsys.lookupFS(p, "open")
 	if err != nil {
 		return nil, err
 	}
-	return fs.Open(name)
+	log.Printf("<%T>.Open(%s), name:%s", lfs, p, name)
+	return lfs.Open(name)
 }
 
 func (fsys *prefixFS) ReadDir(p string) ([]fs.DirEntry, error) {
@@ -62,11 +63,13 @@ func (fsys *prefixFS) ReadDir(p string) ([]fs.DirEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("pfs ReadDir(%s), name:%s", p, name)
+	log.Printf("<%T>.ReadDir(%s), name:%s", lfs, p, name)
 	return fs.ReadDir(lfs, name)
 }
 
-func (fsys *prefixFS) lookupFS(name, op string) (fs.FS, string, error) {
+func (fsys *prefixFS) lookupFS(path, op string) (fs.FS, string, error) {
+	log.Printf("prefix<%s>.lookupFS(%s, %s)", fsys.pathPrefix, path, op)
+	name := path
 	if !fs.ValidPath(name) {
 		return nil, "", &fs.PathError{Op: op, Path: name, Err: fs.ErrInvalid}
 	}
@@ -83,10 +86,11 @@ func (fsys *prefixFS) lookupFS(name, op string) (fs.FS, string, error) {
 				return nil, "", newErrNotExist()
 			}
 			name = name[1:]
-		} else {
-			name = "."
+			return fsys.underlying, name, nil
+		} else { // name == "", split point
+			seg := &pathseg{name: filepath.Base(fsys.pathPrefix), fsys: fsys.underlying, baseInfo: &fsys.prefixInfo}
+			return &pathsegFS{mount: true, seg: seg}, name, nil
 		}
-		return fsys.underlying, name, nil
 	}
 	if len(name) >= len(fsys.pathPrefix) {
 		return nil, "", newErrNotExist()
@@ -95,6 +99,8 @@ func (fsys *prefixFS) lookupFS(name, op string) (fs.FS, string, error) {
 		return nil, "", newErrNotExist()
 	}
 	s := fsys.pathPrefix[len(name):]
+	t := fsys.pathPrefix[:len(name)]
+	log.Printf("s: %s, t: %s", s, t)
 	if name != "" {
 		if s[0] != '/' {
 			return nil, "", newErrNotExist()
@@ -104,38 +110,55 @@ func (fsys *prefixFS) lookupFS(name, op string) (fs.FS, string, error) {
 	if op == "open" {
 		if i := strings.LastIndexByte(name, '/'); i != -1 {
 			s = name[i+1:]
+		} else if path == "." { // treat with suspicion
+			s = "."
 		} else {
-			s = ""
+			s = t // heh
 		}
+		log.Printf("~~> s: %s", s)
 	} else {
 		if i := strings.IndexByte(s, '/'); i != -1 {
 			s = s[:i]
 		}
 	}
-	seg := pathseg{name: s, baseInfo: &fsys.prefixInfo}
+
+	seg := pathseg{name: s, fsys: fsys, baseInfo: &fsys.prefixInfo}
 	return &pathsegFS{seg: &seg}, name, nil
 }
 
 type pathsegFS struct {
-	seg *pathseg
+	mount bool
+	seg   *pathseg
 }
 
 func (s *pathsegFS) Open(name string) (fs.File, error) {
-	log.Printf("pathsegFS.Open(%s)", name)
+	log.Printf("Open(%s), s.seg.name: %s", name, s.seg.name)
 	return s.seg, nil
 }
 
 func (s *pathsegFS) ReadDir(name string) ([]fs.DirEntry, error) {
-	log.Printf("pathsegFS.ReadDir(%s)", name)
+	log.Printf("ReadDir(%s), mount %v, s.seg.name: %v", name, s.mount, s.seg.name)
+	if s.mount {
+		return fs.ReadDir(s.seg.fsys, ".")
+	}
 	return []fs.DirEntry{&pathsegInfo{s.seg}}, nil
 }
 
 type pathseg struct {
 	name     string
 	baseInfo *prefixBaseInfo
+	fsys     fs.FS
 }
 
 func (*pathseg) Read([]byte) (int, error) {
+	return 0, io.EOF
+}
+
+func (p *pathseg) ReadDir(int) ([]fs.DirEntry, error) {
+	return fs.ReadDir(p.fsys, ".")
+}
+
+func (*pathseg) ReadFiles([]byte) (int, error) {
 	return 0, io.EOF
 }
 
@@ -152,8 +175,6 @@ type pathsegInfo struct {
 }
 
 func (info *pathsegInfo) Name() string {
-	log.Printf("pathsegInfo.Name() => %s", info.seg.name)
-	debug.PrintStack()
 	return info.seg.name
 }
 
@@ -189,19 +210,3 @@ type prefixBaseInfo struct {
 	modTime time.Time
 	perm    fs.FileMode
 }
-
-// type prefixFile struct {
-// 	fh fs.File
-// }
-
-// func (p *prefixFile) Stat() (fs.FileInfo, error) {
-// 	return p.fh.Read(buf)
-// }
-
-// func (p *prefixFile) Read(buf []byte) (int, error) {
-// 	return p.fh.Read(buf)
-// }
-
-// func (p *prefixFile) Close() error {
-// 	return p.fh.Close()
-// }

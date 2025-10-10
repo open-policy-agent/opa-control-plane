@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yalue/merged_fs"
+
 	"github.com/open-policy-agent/opa/ast"     // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle"  // nolint:staticcheck
 	"github.com/open-policy-agent/opa/compile" // nolint:staticcheck
@@ -22,11 +24,8 @@ import (
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/util"
+	"github.com/open-policy-agent/opa-control-plane/internal/util/prefixfs"
 )
-
-func init() {
-	log.SetFlags(log.Lshortfile)
-}
 
 type Source struct {
 	Name         string
@@ -242,19 +241,11 @@ func (b *Builder) Build(ctx context.Context) error {
 			prefix = util.Escape(prefix)
 
 			if len(next.mounts) > 0 {
-				// construct bind mount FS and use that for determing roots
-				ns := util.Namespace()
-
 				// rewrite policies to match mounts
 				// rego0 contains only rego files now
 				rego0, err := extractAndTransformRego(fs0, next.mounts)
 				if err != nil {
 					return fmt.Errorf("source %s rego: %w", next.src.Name, err)
-				}
-				if rego0 != nil {
-					if err := ns.Bind("rego", rego0); err != nil {
-						return fmt.Errorf("source %s rego bind: %w", next.src.Name, err)
-					}
 				}
 
 				// for processing data files, exclude rego
@@ -271,7 +262,7 @@ func (b *Builder) Build(ctx context.Context) error {
 
 				for _, mnt := range next.mounts {
 					// we operate on fs1, replace it with ns at the end
-					ns0 := util.Namespace()
+					ns := []fs.FS{}
 
 					subPath, _ := toPath(mnt.Sub)
 					prefPath, _ := toPath(mnt.Prefix)
@@ -283,28 +274,36 @@ func (b *Builder) Build(ctx context.Context) error {
 						continue // next mount
 					}
 
+					log.Printf("src<%s>: sub=%s, prefix=%s", next.src.Name, subPath, prefPath)
 					// We split into `sub` and `rest`, and bind them to `prefix` and `.` accordingly.
-					sub, err := fs.Sub(fs1, subPath)
-					if err != nil {
-						return fmt.Errorf("mount %s:%s: %w", subPath, prefPath, err)
-					}
-					pref := util.PrefixFS(prefPath, sub)
-					if err := ns0.Bind(".", pref); err != nil {
-						return fmt.Errorf("bind mount %s:%s: %w", subPath, prefPath, err)
-					}
+					var sub fs.FS
+					if subPath == "." {
+						sub = fs1
+					} else {
+						sub, err = fs.Sub(fs1, subPath)
+						if err != nil {
+							return fmt.Errorf("mount %s:%s: %w", subPath, prefPath, err)
+						}
 
-					if subPath != "." { // if subPath is ".", we've rebound under the prefix, so there is no rest to deal with
 						rest, err := util.NewFilterFS(fs1, nil, []string{subPath})
 						if err != nil {
 							return fmt.Errorf("mount/filter %s: %w", next.src.Name, err)
 						}
-						if err := ns0.Bind(".", rest); err != nil {
-							return fmt.Errorf("source %s rest bind: %w", next.src.Name, err)
-						}
+						ns = append(ns, rest)
 					}
-					fs1 = ns0
+
+					if prefPath != "." {
+						sub = prefixfs.PrefixFS(map[string]fs.FS{prefPath: sub})
+					}
+					ns = append(ns, sub)
+					fs1 = merged_fs.MergeMultiple(ns...)
 				}
-				fs0 = fs1
+
+				if rego0 != nil {
+					fs0 = merged_fs.MergeMultiple(fs1, rego0)
+				} else {
+					fs0 = fs1
+				}
 			}
 			files, err := util.FSContainsFiles(fs0)
 			if err != nil {
@@ -357,12 +356,11 @@ func (b *Builder) Build(ctx context.Context) error {
 		}
 	}
 
-	ns := util.Namespace()
+	pfs := make(map[string]fs.FS, len(buildSources))
 	for _, src := range buildSources {
-		if err := ns.Bind(src.prefix, src.fsys); err != nil {
-			return fmt.Errorf("bind %s: %w", src.prefix, err)
-		}
+		pfs[src.prefix] = src.fsys
 	}
+	fsBuild := prefixfs.PrefixFS(pfs)
 
 	roots := make([]string, 0, len(existingRoots))
 	for _, root := range existingRoots {
@@ -370,12 +368,11 @@ func (b *Builder) Build(ctx context.Context) error {
 		roots = append(roots, r)
 	}
 
-	walk(ns)
+	walk(fsBuild)
 
 	c := compile.New().
 		WithRoots(roots...).
-		// WithFS(ns).
-		WithFS(util.NewTraceFS(ns)).
+		WithFS(fsBuild).
 		WithPaths(paths...)
 	if err := c.Build(ctx); err != nil {
 		return fmt.Errorf("build: %w", err)

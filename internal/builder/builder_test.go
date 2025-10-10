@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	// "os"
+
 	"slices"
 	"strings"
 	"testing"
@@ -217,12 +217,12 @@ func TestBuilder(t *testing.T) {
 			exp: map[string]string{
 				"/system/x.rego": `package x
 				p := data.imported_lib1.q`,
-				"/rego/lib1/lib1.rego": `package imported_lib1
+				"/lib1/lib1.rego": `package imported_lib1
 				p := data.imported_lib1.q
 				r := data.imported_lib2.r`,
-				"/rego/lib2/lib2.rego": `package imported_lib2
+				"/lib2/lib2.rego": `package imported_lib2
 				q := 7`,
-				"/rego/lib2/lib2_other.rego": `package imported.x.y.z
+				"/lib2/lib2_other.rego": `package imported.x.y.z
 				r := 7`,
 				"/data.json": `{"imported":{"x":{"y":{"A":7}}}}`,
 			},
@@ -260,10 +260,10 @@ func TestBuilder(t *testing.T) {
 					},
 				},
 			},
-			exp: map[string]string{ // TODO: adjust
-				"/data.json": `{"imported":{"x":{"y":{"A":7}}}}`,
+			exp: map[string]string{
+				"/data.json": `{"Y":{"a":{"b":{"c":{":)":"(:"}}}}}`,
 			},
-			expRoots: []string{"imported_lib1", "imported_lib2", "imported/x/y", "x"}, // TODO: adjust
+			expRoots: []string{"Y/a/b/c"},
 		},
 		{
 			note: "package conflict: prefix (fixed via single mount)",
@@ -308,12 +308,12 @@ func TestBuilder(t *testing.T) {
 			exp: map[string]string{
 				"/system/x.rego": `package x
 				p := data.imported.lib1.q`,
-				"/rego/lib1/lib1.rego": `package imported.lib1
+				"/lib1/lib1.rego": `package imported.lib1
 				p := data.imported.lib1.q
 				r := data.imported.lib2.r`,
-				"/rego/lib2/lib2.rego": `package imported.lib2
+				"/lib2/lib2.rego": `package imported.lib2
 				q := 7`,
-				"/rego/lib2/lib2_other.rego": `package imported.x.y.z
+				"/lib2/lib2_other.rego": `package imported.x.y.z
 				r := 7`,
 				"/data.json": `{"imported":{"x":{"y":{"A":7}}}}`,
 			},
@@ -365,10 +365,10 @@ func TestBuilder(t *testing.T) {
 			exp: map[string]string{
 				"/system/x.rego": `package x
 				p := data.imported.lib1.q`,
-				"/rego/lib1/lib1.rego": ` package imported.lib1
+				"/lib1/lib1.rego": ` package imported.lib1
 		        p := data.imported.lib1.q
 		        r := data.imported.abc.lib2.r`,
-				"/rego/lib2/lib2.rego": `package imported.abc.lib2
+				"/lib2/lib2.rego": `package imported.abc.lib2
 				q := 7`,
 			},
 			expRoots: []string{"imported/abc/lib2", "imported/lib1", "x"},
