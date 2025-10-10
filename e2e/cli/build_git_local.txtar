@@ -19,10 +19,18 @@ cmp stdout exp/tarball
 exec tar xf bundles/a.tar.gz
 cmp data.json exp/data.json
 cmp .manifest exp/.manifest
+cmp git-local1/nested/policies/authz.rego exp/policy.rego
 
+-- repo/nested/policies/authz.rego --
+package authz
+import rego.v1
+allow if {
+  some user in data.users
+  user.id == input.user
+}
 -- repo/unrelated.yaml --
 ignore: me
--- repo/users/data.json --
+-- repo/deeply/nested/users/data.json --
 [
   {
     "id": "alice"
@@ -38,18 +46,31 @@ bundles:
       filesystem:
         path: bundles/a.tar.gz
     requirements:
-    - source: git-data
+    - source: git-local
+      mounts:
+      - sub: data.deeply.nested
+        prefix: data
+      - sub: data.nested
+        prefix: data.new
 sources:
-  git-data:
+  git-local:
     git:
       repo: ./repo/
       reference: main
-      excluded_files:
-      - unrelated.yaml
 -- exp/tarball --
 /data.json
+/git-local1/nested/policies/authz.rego
 /.manifest
 -- exp/data.json --
 {"users":[{"id":"alice"},{"id":"bob"}]}
 -- exp/.manifest --
-{"revision":"","roots":["users"],"rego_version":0}
+{"revision":"","roots":["authz","users"],"rego_version":0}
+-- exp/policy.rego --
+package authz
+
+import rego.v1
+
+allow if {
+	some user in data.users
+	user.id == input.user
+}

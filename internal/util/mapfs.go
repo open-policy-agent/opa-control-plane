@@ -2,10 +2,13 @@ package util
 
 import (
 	"io/fs"
-
-	"github.com/knieriem/fsutil"
+	"testing/fstest"
 )
 
 func MapFS(m map[string]string) fs.FS {
-	return fsutil.StringMap(m)
+	m0 := make(map[string]*fstest.MapFile, len(m))
+	for p, f := range m {
+		m0[p] = &fstest.MapFile{Data: []byte(f)}
+	}
+	return fstest.MapFS(m0)
 }
