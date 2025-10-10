@@ -3,13 +3,13 @@ stderr '^1/1 bundles built and pushed successfully$'
 ! stdout .
 
 exec tar tf bundles/hello-world/bundle.tar.gz
-# cmp stdout exp/tarball
+cmp stdout exp/tarball
 
 exec tar xf bundles/hello-world/bundle.tar.gz
-# cmp .manifest exp/.manifest
+cmp .manifest exp/.manifest
 cmp data.json exp/data.json
-cmp rego/dir-paths/rules/rules.rego exp/dir-paths/rules.rego
-cmp rego/global-data/rules.rego exp/global-data/rules.rego
+cmp dir-paths/rules/rules.rego exp/dir-paths/rules.rego
+cmp global-data/rules.rego exp/global-data/rules.rego
 
 -- data/common.json --
 { "common": true }
@@ -30,12 +30,12 @@ bundles:
       filesystem:
         path: bundles/hello-world/bundle.tar.gz
     requirements:
-    # - source: dir-paths
-    #   mounts:
-    #   - sub: data.prefix
-    #     prefix: data.new.prefix1
-    #   - sub: data.foo
-    #     prefix: data.fox
+    - source: dir-paths
+      mounts:
+      - sub: data.prefix
+        prefix: data.new.prefix1
+      - sub: data.foo
+        prefix: data.fox
     - source: global-data
       mounts:
       - sub: data # noop
@@ -53,8 +53,8 @@ sources:
     - common.json
 -- exp/tarball --
 /data.json
-/rego/dir-paths/rules/rules.rego
-/rego/global-data/rules.rego
+/dir-paths/rules/rules.rego
+/global-data/rules.rego
 /.manifest
 -- exp/data.json --
 {"nested":{"new":{"common":true}},"new":{"prefix1":{"some":"thing"}}}

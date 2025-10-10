@@ -19,7 +19,7 @@ cmp stdout exp/tarball
 exec tar xf bundles/a.tar.gz
 cmp data.json exp/data.json
 cmp .manifest exp/.manifest
-cmp rego/git-local1/nested/policies/authz.rego exp/policy.rego
+cmp git-local1/nested/policies/authz.rego exp/policy.rego
 
 -- repo/nested/policies/authz.rego --
 package authz
@@ -59,7 +59,7 @@ sources:
       reference: main
 -- exp/tarball --
 /data.json
-/rego/git-local1/nested/policies/authz.rego
+/git-local1/nested/policies/authz.rego
 /.manifest
 -- exp/data.json --
 {"users":[{"id":"alice"},{"id":"bob"}]}
