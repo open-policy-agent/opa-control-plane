@@ -14,31 +14,23 @@ stderr '^1/1 bundles built and pushed successfully$'
 ! stdout .
 
 exec tar tf bundles/a.tar.gz
-cmp stdout exp/tarball
+[!windows] cmp stdout exp/tarball
+[windows]  cmp stdout exp/tarball_windows
 
 exec tar xf bundles/a.tar.gz
 cmp data.json exp/data.json
 cmp .manifest exp/.manifest
-cmp git-local1/nested/policies/authz.rego exp/policy.rego
+cmp git+local/foo/policy.rego exp/policy.rego
+cmp git+local1/foo/policy.rego exp/policy1.rego
 
--- repo/nested/policies/authz.rego --
-package nested.authz
+-- path/foo/policy.rego --
+package foo
 import rego.v1
-allow if {
-  some user in data.users
-  user.id == input.user
-}
--- repo/unrelated.yaml --
-ignore: me
--- repo/deeply/nested/users/data.json --
-[
-  {
-    "id": "alice"
-  },
-  {
-    "id": "bob"
-  }
-]
+allow if true
+-- repo/foo/policy.rego --
+package foo
+import rego.v1
+allow if false
 -- config.d/bundle.yml --
 bundles:
   hello-world:
@@ -46,33 +38,38 @@ bundles:
       filesystem:
         path: bundles/a.tar.gz
     requirements:
-    - source: git-local
-      mounts:
-      - sub: data.deeply.nested
-        prefix: data
-      - sub: data.nested
-        prefix: data.new
+    - source: git+local
 sources:
-  git-local:
+  git+local:
     git:
       repo: ./repo/
       reference: main
-      excluded_files:
-      - unrelated.yaml
+    directory: path/
+    paths:
+    - foo/policy.rego
 -- exp/tarball --
 /data.json
-/git-local1/nested/policies/authz.rego
+/git+local/foo/policy.rego
+/git+local1/foo/policy.rego
+/.manifest
+-- exp/tarball_windows --
+/data.json
+/git+local1/foo/policy.rego
+/git+local/foo/policy.rego
 /.manifest
 -- exp/data.json --
-{"users":[{"id":"alice"},{"id":"bob"}]}
+{}
 -- exp/.manifest --
-{"revision":"","roots":["new/authz","users"],"rego_version":0}
+{"revision":"","roots":["foo"],"rego_version":0}
 -- exp/policy.rego --
-package new.authz
+package foo
 
 import rego.v1
 
-allow if {
-	some user in data.users
-	user.id == input.user
-}
+allow := true
+-- exp/policy1.rego --
+package foo
+
+import rego.v1
+
+allow if false

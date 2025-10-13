@@ -5,15 +5,30 @@ import (
 	"io/fs"
 	"strings"
 
+	"github.com/yalue/merged_fs"
+
 	"github.com/open-policy-agent/opa-control-plane/internal/util"
 )
 
 func Migrations(dialect string) (fs.FS, error) {
-	ns := util.Namespace()
-	if err := ns.Bind(".", initialSchemaFS(dialect)); err != nil {
-		return nil, err
+	return merged_fs.MergeMultiple(
+		initialSchemaFS(dialect),
+		addMounts(dialect),
+	), nil
+}
+
+func addMounts(dialect string) fs.FS {
+	var stmt string
+	switch dialect {
+	case "postgresql", "sqlite":
+		stmt = `ALTER TABLE bundles_requirements ADD COLUMN mounts TEXT`
+	case "mysql":
+		stmt = `ALTER TABLE bundles_requirements ADD COLUMN mounts VARCHAR(255)`
 	}
-	return ns, nil
+
+	return util.MapFS(map[string]string{
+		"014_add_mounts.up.sql": stmt,
+	})
 }
 
 func initialSchemaFS(dialect string) fs.FS {
