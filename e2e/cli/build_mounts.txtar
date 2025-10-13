@@ -1,0 +1,74 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --apply-migrations
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/hello-world/bundle.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/hello-world/bundle.tar.gz
+cmp .manifest exp/.manifest
+cmp data.json exp/data.json
+cmp dir-paths/rules/rules.rego exp/dir-paths/rules.rego
+cmp global-data/rules.rego exp/global-data/rules.rego
+
+-- data/common.json --
+{ "common": true }
+-- data/rules.rego --
+package rules
+import rego.v1
+result if data.foo.common != "uncommon"
+-- files/sources/hello-world/prefix/data.json --
+{ "some": "thing" }
+-- files/sources/hello-world/rules/rules.rego --
+package foo.bar.rules
+import rego.v1
+result if data.prefix.common != "uncommon"
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: dir-paths
+      mounts:
+      - sub: data.prefix
+        prefix: data.new.prefix1
+      - sub: data.foo
+        prefix: data.fox
+    - source: global-data
+      mounts:
+      - sub: data # noop
+        prefix: data.nested.new
+sources:
+  dir-paths:
+    directory: files/sources/hello-world
+    paths:
+    - prefix/data.json
+    - rules/rules.rego
+  global-data:
+    directory: data/
+    paths:
+    - rules.rego
+    - common.json
+-- exp/tarball --
+/data.json
+/dir-paths/rules/rules.rego
+/global-data/rules.rego
+/.manifest
+-- exp/data.json --
+{"nested":{"new":{"common":true}},"new":{"prefix1":{"some":"thing"}}}
+-- exp/.manifest --
+{"revision":"","roots":["fox/bar/rules","new/prefix1","nested/new"],"rego_version":0}
+-- exp/dir-paths/rules.rego --
+package fox.bar.rules
+
+import rego.v1
+
+result if data.new.prefix1.common != "uncommon"
+-- exp/global-data/rules.rego --
+package nested.new.rules
+
+import rego.v1
+
+result if data.nested.new.foo.common != "uncommon"

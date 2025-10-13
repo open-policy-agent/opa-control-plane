@@ -2,6 +2,7 @@ package builder_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
 
@@ -20,10 +23,18 @@ import (
 
 func TestBuilder(t *testing.T) {
 
+	type mount struct {
+		prefix, sub string
+	}
+	type reqMock struct {
+		name   string
+		mounts []mount
+	}
+
 	type sourceMock struct {
 		name          string
 		files         map[string]string
-		requirements  []string
+		requirements  []reqMock
 		includedFiles []string
 		excludedFiles []string
 	}
@@ -87,7 +98,7 @@ func TestBuilder(t *testing.T) {
 						import rego.v1
 						p if data.lib1.q`,
 					},
-					requirements: []string{"lib1"},
+					requirements: []reqMock{{name: "lib1"}},
 				},
 				{
 					name: "lib1",
@@ -96,7 +107,7 @@ func TestBuilder(t *testing.T) {
 						import rego.v1
 						q if data.lib2.r`,
 					},
-					requirements: []string{"lib2"},
+					requirements: []reqMock{{name: "lib2"}},
 				},
 				{
 					name: "lib2",
@@ -136,7 +147,7 @@ func TestBuilder(t *testing.T) {
 						"x.rego": `package x
 						p := data.lib1.q`,
 					},
-					requirements: []string{"lib1"},
+					requirements: []reqMock{{name: "lib1"}},
 				},
 				{
 					name: "lib1",
@@ -144,7 +155,7 @@ func TestBuilder(t *testing.T) {
 						"lib1.rego": `package lib1
 						p := data.lib1.q`,
 					},
-					requirements: []string{"lib2"},
+					requirements: []reqMock{{name: "lib2"}},
 				},
 				{
 					name: "lib2",
@@ -161,6 +172,312 @@ func TestBuilder(t *testing.T) {
 			expError: errors.New("requirement \"lib2\" contains conflicting package x\n- package x from \"system\""),
 		},
 		{
+			note: "package conflict: prefix (fixed via separate mounts)",
+			sources: []sourceMock{
+				{
+					name: "system",
+					files: map[string]string{
+						"x.rego": `package x
+						p := data.imported_lib1.q`, // NB: This isn't rewritten! It needs to what we rewrite its requirements to.
+					},
+					requirements: []reqMock{
+						{
+							name: "lib1",
+							mounts: []mount{
+								{sub: "data.lib1", prefix: "data.imported_lib1"},
+								{sub: "data.lib2", prefix: "data.imported_lib2"},
+								{sub: "data.x", prefix: "data.imported.x"},
+							},
+						},
+					},
+				},
+				{
+					name: "lib1",
+					files: map[string]string{
+						"lib1.rego": `package lib1
+						p := data.lib1.q
+						r := data.lib2.r`,
+					},
+					requirements: []reqMock{{name: "lib2"}},
+				},
+				{
+					name: "lib2",
+					files: map[string]string{
+						"lib2.rego": `package lib2
+						q := 7`,
+						"lib2_other.rego": `package x.y.z
+						r := 7`,
+						"/x/y/data.json": `{"A": 7}`,
+						"/x/z/data.json": `{"A": 8}`,
+					},
+				},
+			},
+			excluded: []string{"x/z/data.json"},
+			exp: map[string]string{
+				"/system/x.rego": `package x
+				p := data.imported_lib1.q`,
+				"/lib1/lib1.rego": `package imported_lib1
+				p := data.imported_lib1.q
+				r := data.imported_lib2.r`,
+				"/lib2/lib2.rego": `package imported_lib2
+				q := 7`,
+				"/lib2/lib2_other.rego": `package imported.x.y.z
+				r := 7`,
+				"/data.json": `{"imported":{"x":{"y":{"A":7}}}}`,
+			},
+			expRoots: []string{"imported_lib1", "imported_lib2", "imported/x/y", "x"},
+		},
+		{
+			note: "mounts: transitive data moves",
+			sources: []sourceMock{
+				{
+					name: "system",
+					requirements: []reqMock{
+						{
+							name: "lib1",
+							mounts: []mount{
+								{sub: "data.X", prefix: "data.Y"}, // data.X.a.b.c -> data.Y.a.b.c
+							},
+						},
+					},
+				},
+				{
+					name: "lib1",
+					requirements: []reqMock{
+						{
+							name: "lib2",
+							mounts: []mount{
+								{sub: "data", prefix: "data.X"}, // data.a.b.c -> data.X.a.b.c
+							},
+						},
+					},
+				},
+				{
+					name: "lib2",
+					files: map[string]string{
+						"a/b/c/data.json": `{":)":"(:"}`,
+					},
+				},
+			},
+			exp: map[string]string{
+				"/data.json": `{"Y":{"a":{"b":{"c":{":)":"(:"}}}}}`,
+			},
+			expRoots: []string{"Y/a/b/c"},
+		},
+		{
+			note: "package conflict: prefix (fixed via single mount)",
+			sources: []sourceMock{
+				{
+					name: "system",
+					files: map[string]string{
+						"x.rego": `package x
+						p := data.imported.lib1.q`, // NB: This isn't rewritten! It needs to what we rewrite its requirements to.
+					},
+					requirements: []reqMock{
+						{
+							name: "lib1",
+							mounts: []mount{
+								{sub: "data", prefix: "data.imported"},
+							},
+						},
+					},
+				},
+				{
+					name: "lib1",
+					files: map[string]string{
+						"lib1.rego": `package lib1
+						p := data.lib1.q
+						r := data.lib2.r`,
+					},
+					requirements: []reqMock{{name: "lib2"}},
+				},
+				{
+					name: "lib2",
+					files: map[string]string{
+						"lib2.rego": `package lib2
+						q := 7`,
+						"lib2_other.rego": `package x.y.z
+						r := 7`,
+						"/x/y/data.json": `{"A": 7}`,
+						"/x/z/data.json": `{"A": 8}`,
+					},
+				},
+			},
+			excluded: []string{"x/z/data.json"},
+			exp: map[string]string{
+				"/system/x.rego": `package x
+				p := data.imported.lib1.q`,
+				"/lib1/lib1.rego": `package imported.lib1
+				p := data.imported.lib1.q
+				r := data.imported.lib2.r`,
+				"/lib2/lib2.rego": `package imported.lib2
+				q := 7`,
+				"/lib2/lib2_other.rego": `package imported.x.y.z
+				r := 7`,
+				"/data.json": `{"imported":{"x":{"y":{"A":7}}}}`,
+			},
+			expRoots: []string{"imported/lib1", "imported/lib2", "imported/x/y", "x"},
+		},
+		{
+			note: "requirements mounts: processing source twice with different mounts",
+			sources: []sourceMock{
+				{
+					name: "system",
+					files: map[string]string{
+						"x.rego": `package x
+						p := data.imported.lib1.q`, // NB: This isn't rewritten! It needs to what we rewrite its requirements to.
+					},
+					requirements: []reqMock{
+						{
+							name: "lib1",
+							mounts: []mount{
+								{sub: "data", prefix: "data.imported"},
+							},
+						},
+					},
+				},
+				{
+					name: "lib1",
+					files: map[string]string{
+						"lib1.rego": `package lib1
+						p := data.lib1.q
+						r := data.abc.lib2.r`, // matches mount below
+					},
+					requirements: []reqMock{
+						{
+							name: "lib2",
+							mounts: []mount{
+								{sub: "data", prefix: "data.abc"},
+							},
+						},
+					},
+				},
+				{
+					name: "lib2",
+					files: map[string]string{
+						"lib2.rego": `package lib2
+						q := 7`,
+					},
+				},
+			},
+			excluded: []string{"x/z/data.json"},
+			exp: map[string]string{
+				"/system/x.rego": `package x
+				p := data.imported.lib1.q`,
+				"/lib1/lib1.rego": ` package imported.lib1
+		        p := data.imported.lib1.q
+		        r := data.imported.abc.lib2.r`,
+				"/lib2/lib2.rego": `package imported.abc.lib2
+				q := 7`,
+			},
+			expRoots: []string{"imported/abc/lib2", "imported/lib1", "x"},
+		},
+		{
+			note: "requirements mounts: prefix only",
+			sources: []sourceMock{
+				{
+					name: "system",
+					files: map[string]string{
+						"x.rego": `package x
+						p := data.imported.lib1.q`,
+					},
+					requirements: []reqMock{
+						{
+							name: "lib1",
+							mounts: []mount{
+								{prefix: "data.imported"},
+							},
+						},
+					},
+				},
+				{
+					name: "lib1",
+					files: map[string]string{
+						"lib1.rego": `package lib1
+						p := true`,
+					},
+				},
+			},
+			excluded: []string{"x/z/data.json"},
+			exp: map[string]string{
+				"/system/x.rego": `package x
+				p := data.imported.lib1.q`,
+				"/lib1/lib1.rego": ` package imported.lib1
+		        p := true`,
+			},
+			expRoots: []string{"imported/lib1", "x"},
+		},
+		{
+			note: "requirements mounts: short sub+prefix",
+			sources: []sourceMock{
+				{
+					name: "system",
+					files: map[string]string{
+						"x.rego": `package x
+						p := data.imported.lib1.q`,
+					},
+					requirements: []reqMock{
+						{
+							name: "lib1",
+							mounts: []mount{
+								{sub: "lib1", prefix: "imported"},
+							},
+						},
+					},
+				},
+				{
+					name: "lib1",
+					files: map[string]string{
+						"lib1.rego": `package lib1
+						p := true`,
+					},
+				},
+			},
+			excluded: []string{"x/z/data.json"},
+			exp: map[string]string{
+				"/system/x.rego": `package x
+				p := data.imported.lib1.q`,
+				"/lib1/lib1.rego": ` package imported
+		        p := true`,
+			},
+			expRoots: []string{"imported", "x"},
+		},
+		{
+			note: "requirements mounts: sub only",
+			sources: []sourceMock{
+				{
+					name: "system",
+					files: map[string]string{
+						"x.rego": `package x
+						p := data.imported.lib1.q`,
+					},
+					requirements: []reqMock{
+						{
+							name: "lib1",
+							mounts: []mount{
+								{sub: "data.lib1"},
+							},
+						},
+					},
+				},
+				{
+					name: "lib1",
+					files: map[string]string{
+						"lib1.rego": `package lib1.authz
+						p := true`,
+					},
+				},
+			},
+			excluded: []string{"x/z/data.json"},
+			exp: map[string]string{
+				"/system/x.rego": `package x
+				p := data.imported.lib1.q`,
+				"/lib1/lib1.rego": ` package authz
+		        p := true`,
+			},
+			expRoots: []string{"authz", "x"},
+		},
+		{
 			note: "package conflict: prefix",
 			sources: []sourceMock{
 				{
@@ -169,7 +486,7 @@ func TestBuilder(t *testing.T) {
 						"x.rego": `package x
 						p := data.lib1.q`,
 					},
-					requirements: []string{"lib1"},
+					requirements: []reqMock{{name: "lib1"}},
 				},
 				{
 					name: "lib1",
@@ -177,7 +494,7 @@ func TestBuilder(t *testing.T) {
 						"lib1.rego": `package lib1
 						p := data.lib1.q`,
 					},
-					requirements: []string{"lib2"},
+					requirements: []reqMock{{name: "lib2"}},
 				},
 				{
 					name: "lib2",
@@ -202,7 +519,7 @@ func TestBuilder(t *testing.T) {
 						"x.rego": `package x.y
 						p := data.lib1.q`,
 					},
-					requirements: []string{"lib1"},
+					requirements: []reqMock{{name: "lib1"}},
 				},
 				{
 					name: "lib1",
@@ -210,7 +527,7 @@ func TestBuilder(t *testing.T) {
 						"lib1.rego": `package lib1
 						p := data.lib1.q`,
 					},
-					requirements: []string{"lib2"},
+					requirements: []reqMock{{name: "lib2"}},
 				},
 				{
 					name: "lib2",
@@ -235,7 +552,7 @@ func TestBuilder(t *testing.T) {
 						"x.rego": `package x.y
 						p := data.x.y.z.w`,
 					},
-					requirements: []string{"lib1"},
+					requirements: []reqMock{{name: "lib1"}},
 				},
 				{
 					name: "lib1",
@@ -254,7 +571,7 @@ func TestBuilder(t *testing.T) {
 						"x.rego": `package x
 						p := data.lib1.q`,
 					},
-					requirements: []string{"libX"},
+					requirements: []reqMock{{name: "libX"}},
 				},
 				{
 					name: "lib1",
@@ -275,7 +592,7 @@ func TestBuilder(t *testing.T) {
 						"x.rego": `package x
 						p := data.y.q+data.z.r`,
 					},
-					requirements: []string{"lib1", "lib2"},
+					requirements: []reqMock{{name: "lib1"}, {name: "lib2"}},
 				},
 				{
 					name: "lib1",
@@ -283,7 +600,7 @@ func TestBuilder(t *testing.T) {
 						"lib1.rego": `package y
 						p := data.z.r`,
 					},
-					requirements: []string{"lib2"},
+					requirements: []reqMock{{name: "lib2"}},
 				},
 				{
 					name: "lib2",
@@ -313,7 +630,7 @@ func TestBuilder(t *testing.T) {
 						"y/y.rego": "package y\nq := 8",
 					},
 					includedFiles: []string{"x/*"},
-					requirements:  []string{"lib"},
+					requirements:  []reqMock{{name: "lib"}},
 				},
 				{
 					name: "lib",
@@ -339,7 +656,7 @@ func TestBuilder(t *testing.T) {
 				{
 					name:         "sys",
 					files:        map[string]string{"x.rego": "package x\np { data.lib.y.q }"},
-					requirements: []string{"lib"},
+					requirements: []reqMock{{name: "lib"}},
 				},
 				{
 					name: "lib",
@@ -389,8 +706,14 @@ func TestBuilder(t *testing.T) {
 				var srcs []*builder.Source
 				for i, src := range tc.sources {
 					var rs []config.Requirement
-					for i := range src.requirements {
-						rs = append(rs, config.Requirement{Source: &src.requirements[i]})
+					for _, r := range src.requirements {
+						req := config.Requirement{
+							Source: &r.name,
+						}
+						for i := range r.mounts {
+							req.Mounts = append(req.Mounts, config.Mount{Sub: r.mounts[i].sub, Prefix: r.mounts[i].prefix})
+						}
+						rs = append(rs, req)
 					}
 					s := builder.NewSource(src.name)
 					s.Requirements = rs
@@ -470,6 +793,13 @@ func TestBuilder(t *testing.T) {
 						t.Fatalf("Expected %v:\n%v", path, src)
 					}
 				}
+
+				{
+					act, exp := *bundle.Manifest.Roots, tc.expRoots
+					if diff := cmp.Diff(exp, act, cmpopts.SortSlices(strings.Compare)); diff != "" {
+						t.Errorf("roots: (-want,+got)\n%s", diff)
+					}
+				}
 			})
 		})
 	}
@@ -482,4 +812,28 @@ func trimLeadingWhitespace(input string) string {
 		lines[i] = strings.TrimLeft(line, " \t")
 	}
 	return strings.Join(lines, "\n")
+}
+
+func TestBuilder_Build(t *testing.T) {
+	tests := []struct {
+		name    string // description of this test case
+		wantErr bool
+	}{
+		// TODO: Add test cases.
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := builder.New()
+			gotErr := b.Build(context.Background())
+			if gotErr != nil {
+				if !tt.wantErr {
+					t.Errorf("Build() failed: %v", gotErr)
+				}
+				return
+			}
+			if tt.wantErr {
+				t.Fatal("Build() succeeded unexpectedly")
+			}
+		})
+	}
 }

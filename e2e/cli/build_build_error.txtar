@@ -5,7 +5,7 @@ stderr '^.\s+hello-world\s+.\s+BUILD_FAILED\s+.\s+invalid-rego: 1 error occurred
 
 ! exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --non-interactive
 ! stderr '^0/1 bundles built and pushed successfully$'
-stderr 'failed to build a bundle \\"hello-world\\": invalid-rego: 1 error occurred'
+stderr 'failed to build a bundle \\"hello-world\\":.*invalid-rego.*1 error occurred'
 ! stdout .
 
 -- files/sources/invalid-rego/rules/rules.rego --
