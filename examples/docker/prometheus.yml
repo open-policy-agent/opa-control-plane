@@ -1,0 +1,8 @@
+scrape_configs:
+- job_name: 'opa-control-plane'
+  scrape_interval: 5s
+
+  static_configs:
+  - targets: ['ocp:8282']
+    labels:
+      group: 'production'
