@@ -1,3 +1,17 @@
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: git-policies
+sources:
+  git-policies:
+    git:
+      repo: https://github.com/open-policy-agent/contrib
+      commit: 0f81d9a0018451d98dcd3f4bb885ee676f49f6fe
+      included_files:
+      - k8s_authorization/policy/policy.rego
 tokens:
   admin:
     api_key: sesame

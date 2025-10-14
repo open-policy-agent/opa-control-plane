@@ -19,14 +19,14 @@ services:
     environment:
       POSTGRES_PASSWORD: sesame
     volumes:
-      - pgdata:/var/lib/postgresql/data 
- 
-  # use username 'postgres', password 'sesame' on http://127.0.0.1:8080
-  adminer:
-    image: adminer
-    restart: always
+      - pgdata:/var/lib/postgresql/data
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
-      - 8080:8080
- 
+      - 9090:9090 # http://localhost:9090
+
 volumes:
   pgdata:
