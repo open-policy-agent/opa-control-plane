@@ -1,10 +1,19 @@
 bundles:
   hello-world:
     object_storage:
-      filesystem:
-        path: bundles/hello-world/bundle.tar.gz
+      aws:
+        bucket: bundles
+        key: hello-world
+        region: us-east-1
+        url: http://localstack:4566
+        credentials: s3-creds
     requirements:
     - source: git-policies
+secrets:
+  s3-creds:
+    type: aws_auth
+    access_key_id: doesnotmatter
+    secret_access_key: doesnotmatter
 sources:
   git-policies:
     git:

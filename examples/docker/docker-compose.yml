@@ -13,6 +13,28 @@ services:
     ports:
       - 8282:8282
 
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - 4566:4566
+    volumes:
+      - ./initaws.d:/docker-entrypoint-initaws.d
+    environment:
+      - SERVICES=s3
+      - AWS_DEFAULT_REGION=us-east-1
+
+  localstack-init:
+    image: localstack/localstack:latest
+    volumes:
+      - ./init-s3.sh:/init-s3.sh
+    environment:
+      - AWS_DEFAULT_REGION=us-east-1
+    entrypoint: /bin/sh
+    command: ["/init-s3.sh"]
+    depends_on:
+      - localstack
+    restart: "no"
+
   db:
     image: postgres:latest
     restart: always
@@ -27,6 +49,23 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - 9090:9090 # http://localhost:9090
+
+  opa:
+    image: openpolicyagent/opa:latest-static
+    volumes:
+      - ./opa.yml:/opa.yml
+    ports:
+      - 8181:8181
+    command:
+      - run
+      - --server
+      - --addr=:8181
+      - --log-level=debug
+      - --config-file=/opa.yml
+    environment:
+      AWS_ACCESS_KEY_ID: doesntmatter
+      AWS_SECRET_ACCESS_KEY: doesntmatter
+      AWS_REGION: us-east-1
 
 volumes:
   pgdata:

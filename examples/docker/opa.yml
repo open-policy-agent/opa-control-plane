@@ -1,0 +1,7 @@
+services:
+  s3:
+    url: http://localstack:4566
+bundles:
+  hello-world:
+    service: s3
+    resource: bundles/hello-world
