@@ -18,16 +18,19 @@ func Migrations(dialect string) (fs.FS, error) {
 }
 
 func addMounts(dialect string) fs.FS {
-	var stmt string
+	var stmtBundles, stmtStacks string
 	switch dialect {
 	case "postgresql", "sqlite":
-		stmt = `ALTER TABLE bundles_requirements ADD COLUMN mounts TEXT`
+		stmtBundles = `ALTER TABLE bundles_requirements ADD COLUMN mounts TEXT`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD COLUMN mounts TEXT`
 	case "mysql":
-		stmt = `ALTER TABLE bundles_requirements ADD COLUMN mounts VARCHAR(255)`
+		stmtBundles = `ALTER TABLE bundles_requirements ADD COLUMN mounts VARCHAR(255)`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD COLUMN mounts VARCHAR(255)`
 	}
 
 	return util.MapFS(map[string]string{
-		"014_add_mounts.up.sql": stmt,
+		"014_add_mounts_bundles.up.sql": stmtBundles,
+		"015_add_mounts_stacks.up.sql":  stmtStacks,
 	})
 }
 
