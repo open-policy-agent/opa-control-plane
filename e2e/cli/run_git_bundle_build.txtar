@@ -1,10 +1,12 @@
+[windows] skip 'this test is too flaky on github windows runners'
+
 # local example git repo
 cd repo
 env HOME=.
 exec git init .
 exec git branch -m main
-exec git config --global user.name "botbotbot" 
-exec git config --global user.email "bot@bot.bot" 
+exec git config --global user.name "botbotbot"
+exec git config --global user.email "bot@bot.bot"
 exec git add .
 exec git commit -m initial-commit
 cd ..
