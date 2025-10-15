@@ -1151,7 +1151,8 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
         stacks.selector,
 		stacks.exclude_selector,
         stacks_requirements.source_name,
-		stacks_requirements.gitcommit
+		stacks_requirements.gitcommit,
+		stacks_requirements.mounts
     FROM
         stacks
     LEFT JOIN
@@ -1185,6 +1186,7 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 			selector                 string
 			excludeSelector          *string
 			sourceName, sourceCommit *string
+			mounts                   *string
 		}
 
 		stacksMap := map[string]*config.Stack{}
@@ -1193,7 +1195,7 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 
 		for rows.Next() {
 			var row stackRow
-			if err := rows.Scan(&row.id, &row.stackName, &row.selector, &row.excludeSelector, &row.sourceName, &row.sourceCommit); err != nil {
+			if err := rows.Scan(&row.id, &row.stackName, &row.selector, &row.excludeSelector, &row.sourceName, &row.sourceCommit, &row.mounts); err != nil {
 				return nil, "", err
 			}
 
@@ -1220,10 +1222,16 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 			}
 
 			if row.sourceName != nil {
-				stack.Requirements = append(stack.Requirements, config.Requirement{
+				req := config.Requirement{
 					Source: row.sourceName,
 					Git:    config.GitRequirement{Commit: row.sourceCommit},
-				})
+				}
+				if row.mounts != nil {
+					if err := json.Unmarshal([]byte(*row.mounts), &req.Mounts); err != nil {
+						return nil, "", fmt.Errorf("failed to unmarshal mounts for %q/%q: %w", stack.Name, *req.Source, err)
+					}
+				}
+				stack.Requirements = append(stack.Requirements, req)
 			}
 
 			if row.id > lastId {
@@ -1490,8 +1498,12 @@ func (d *Database) UpsertStack(ctx context.Context, principal string, stack *con
 
 		for _, r := range stack.Requirements {
 			if r.Source != nil {
-				// TODO: add support for mounts on requirements; currently that is only used internally for stacks.
-				if err := d.upsert(ctx, tx, "stacks_requirements", []string{"stack_name", "source_name", "gitcommit"}, []string{"stack_name", "source_name"}, stack.Name, r.Source, r.Git.Commit); err != nil {
+				mounts, err := json.Marshal(r.Mounts)
+				if err != nil {
+					return err
+				}
+				if err := d.upsert(ctx, tx, "stacks_requirements", []string{"stack_name", "source_name", "gitcommit", "mounts"}, []string{"stack_name", "source_name"},
+					stack.Name, r.Source, r.Git.Commit, string(mounts)); err != nil {
 					return err
 				}
 			}

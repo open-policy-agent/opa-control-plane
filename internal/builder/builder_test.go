@@ -2,7 +2,6 @@ package builder_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -812,28 +811,4 @@ func trimLeadingWhitespace(input string) string {
 		lines[i] = strings.TrimLeft(line, " \t")
 	}
 	return strings.Join(lines, "\n")
-}
-
-func TestBuilder_Build(t *testing.T) {
-	tests := []struct {
-		name    string // description of this test case
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			b := builder.New()
-			gotErr := b.Build(context.Background())
-			if gotErr != nil {
-				if !tt.wantErr {
-					t.Errorf("Build() failed: %v", gotErr)
-				}
-				return
-			}
-			if tt.wantErr {
-				t.Fatal("Build() succeeded unexpectedly")
-			}
-		})
-	}
 }

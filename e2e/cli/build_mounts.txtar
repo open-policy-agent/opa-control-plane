@@ -1,4 +1,4 @@
-exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --apply-migrations
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
 stderr '^1/1 bundles built and pushed successfully$'
 ! stdout .
 
