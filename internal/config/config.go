@@ -228,7 +228,7 @@ func (r *Root) Validate() error {
 		return err
 	}
 
-	var config interface{}
+	var config any
 	if err := json.Unmarshal(data, &config); err != nil {
 		return err
 	}
@@ -236,11 +236,11 @@ func (r *Root) Validate() error {
 	return rootSchema.Validate(config)
 }
 
-// Bundle defines the configuration for a OPA Control Plane Bundle.
+// Bundle defines the configuration for an OPA Control Plane Bundle.
 type Bundle struct {
 	Name          string        `json:"name" yaml:"-"`
 	Labels        Labels        `json:"labels,omitempty" yaml:"labels,omitempty"`
-	ObjectStorage ObjectStorage `json:"object_storage,omitempty" yaml:"object_storage,omitempty"`
+	ObjectStorage ObjectStorage `json:"object_storage,omitzero" yaml:"object_storage,omitempty"`
 	Requirements  Requirements  `json:"requirements,omitempty" yaml:"requirements,omitempty"`
 	ExcludedFiles StringSet     `json:"excluded_files,omitempty" yaml:"excluded_files,omitempty"`
 }
@@ -249,7 +249,7 @@ type Labels map[string]string
 
 type Requirement struct {
 	Source *string        `json:"source,omitempty" yaml:"source,omitempty"`
-	Git    GitRequirement `json:"git,omitempty" yaml:"git,omitempty"`
+	Git    GitRequirement `json:"git,omitzero" yaml:"git,omitempty"`
 }
 
 type GitRequirement struct {
@@ -294,7 +294,7 @@ func (f Files) Equal(other Files) bool {
 	return maps.Equal(f, other)
 }
 
-func (f Files) MarshalYAML() (interface{}, error) {
+func (f Files) MarshalYAML() (any, error) {
 	encodedMap := make(map[string]string)
 	for key, value := range f {
 		encodedMap[key] = base64.StdEncoding.EncodeToString([]byte(value))
@@ -386,11 +386,11 @@ func (s *Bundle) Equal(other *Bundle) bool {
 	})
 }
 
-// Source defines the configuration for a OPA Control Plane Source.
+// Source defines the configuration for an OPA Control Plane Source.
 type Source struct {
 	Name          string       `json:"name" yaml:"-"`
 	Builtin       *string      `json:"builtin,omitempty" yaml:"builtin,omitempty"`
-	Git           Git          `json:"git,omitempty" yaml:"git,omitempty"`
+	Git           Git          `json:"git,omitzero" yaml:"git,omitempty"`
 	Datasources   Datasources  `json:"datasources,omitempty" yaml:"datasources,omitempty"`
 	EmbeddedFiles Files        `json:"files,omitempty" yaml:"files,omitempty"`
 	Directory     string       `json:"directory,omitempty" yaml:"directory,omitempty"` // Root directory for the source files, used to resolve file paths below.
@@ -461,7 +461,7 @@ func (a Sources) Equal(b Sources) bool {
 	return setEqual(a, b, func(s *Source) string { return s.Name }, func(a, b *Source) bool { return a.Equal(b) })
 }
 
-// Stack defines the configuration for a OPA Control Plane Stack.
+// Stack defines the configuration for an OPA Control Plane Stack.
 type Stack struct {
 	Name            string       `json:"name" yaml:"-"`
 	Selector        Selector     `json:"selector" yaml:"selector"` // Schema validation overrides Selector to object of string array values.
@@ -543,7 +543,7 @@ func (s *Selector) PtrEqual(other *Selector) bool {
 	return s.Equal(*other)
 }
 
-func (s Selector) MarshalYAML() (interface{}, error) {
+func (s Selector) MarshalYAML() (any, error) {
 	return maps.Clone(s.s), nil
 }
 
@@ -675,7 +675,7 @@ func (*SecretRef) PrepareJSONSchema(schema *jsonschema.Schema) error {
 
 // Resolve retrieves the secret value from the secret store. If the secret is not found, an error is returned.
 // If the secret is found, it returns the value as an interface{} which can be further typed as needed.
-func (s *SecretRef) Resolve(ctx context.Context) (interface{}, error) {
+func (s *SecretRef) Resolve(ctx context.Context) (any, error) {
 	if s.value == nil {
 		return nil, fmt.Errorf("secret %q not found", s.Name)
 	}
@@ -683,7 +683,7 @@ func (s *SecretRef) Resolve(ctx context.Context) (interface{}, error) {
 	return s.value.Typed(ctx)
 }
 
-func (s *SecretRef) MarshalYAML() (interface{}, error) {
+func (s *SecretRef) MarshalYAML() (any, error) {
 	if s.Name == "" {
 		return nil, nil
 	}
@@ -941,12 +941,12 @@ func (f *FileSystemStorage) validate() error {
 }
 
 type Datasource struct {
-	Name           string                 `json:"name" yaml:"name"`
-	Path           string                 `json:"path" yaml:"path"`
-	Type           string                 `json:"type" yaml:"type"`
-	TransformQuery string                 `json:"transform_query,omitempty" yaml:"transform_query,omitempty"`
-	Config         map[string]interface{} `json:"config,omitempty" yaml:"config,omitempty"`
-	Credentials    *SecretRef             `json:"credentials,omitempty" yaml:"credentials,omitempty"`
+	Name           string         `json:"name" yaml:"name"`
+	Path           string         `json:"path" yaml:"path"`
+	Type           string         `json:"type" yaml:"type"`
+	TransformQuery string         `json:"transform_query,omitempty" yaml:"transform_query,omitempty"`
+	Config         map[string]any `json:"config,omitempty" yaml:"config,omitempty"`
+	Credentials    *SecretRef     `json:"credentials,omitempty" yaml:"credentials,omitempty"`
 }
 
 func (d *Datasource) Equal(other *Datasource) bool {
