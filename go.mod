@@ -1,6 +1,6 @@
 module github.com/open-policy-agent/opa-control-plane
 
-go 1.24.6
+go 1.25.2
 
 require github.com/spf13/cobra v1.9.1
 
