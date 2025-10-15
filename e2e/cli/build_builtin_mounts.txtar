@@ -1,0 +1,36 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/hello-world/bundle.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/hello-world/bundle.tar.gz
+cmp .manifest exp/.manifest
+cmp data.json exp/data.json
+cmp builtinsrc/transform/newinput/transform.rego exp/transform.rego
+
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: builtinsrc
+      mounts:
+      - sub: data.transform
+        prefix: data.imported
+sources:
+  builtinsrc:
+    builtin: entitlements-v1/transform
+-- exp/tarball --
+/data.json
+/builtinsrc/transform/newinput/transform.rego
+/.manifest
+-- exp/data.json --
+{}
+-- exp/.manifest --
+{"revision":"","roots":["imported/newinput"],"rego_version":0}
+-- exp/transform.rego --
+package imported.newinput
