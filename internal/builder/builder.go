@@ -210,6 +210,45 @@ func (m mntSrc) Equal(other mntSrc) bool {
 		m.mounts.Equal(other.mounts)
 }
 
+type buildSources struct {
+	fsys map[string][]fs.FS
+}
+
+func newBuildSources() *buildSources {
+	return &buildSources{fsys: make(map[string][]fs.FS)}
+}
+
+func (bs *buildSources) len() int {
+	i := 0
+	for j := range bs.fsys {
+		i += len(bs.fsys[j])
+	}
+	return i
+}
+
+func (bs *buildSources) fs() map[string]fs.FS {
+	fses := make(map[string]fs.FS, bs.len())
+	for prefix := range bs.fsys {
+		for j, fs_ := range bs.fsys[prefix] {
+			mnt := prefix
+			if j > 0 || mnt == "" {
+				mnt += strconv.Itoa(j)
+			}
+			fses[mnt] = fs_
+		}
+	}
+	return fses
+}
+
+func (bs *buildSources) add(prefix string, fsys fs.FS) {
+	prefix = util.Escape(prefix)
+	_, ok := bs.fsys[prefix]
+	if !ok {
+		bs.fsys[prefix] = []fs.FS{}
+	}
+	bs.fsys[prefix] = append(bs.fsys[prefix], fsys)
+}
+
 func (b *Builder) Build(ctx context.Context) error {
 
 	sourceMap := make(map[string]*Source, len(b.sources))
@@ -223,7 +262,7 @@ func (b *Builder) Build(ctx context.Context) error {
 	// and mount options on data and policy; and they can have an effect on the roots.
 	toProcess := []mntSrc{{src: b.sources[0]}}
 
-	buildSources := map[string]fs.FS{} // key is prefix
+	buildSources := newBuildSources()
 	alreadyProcessed := []mntSrc{}
 	rootMap := map[string]*Source{}
 
@@ -232,7 +271,7 @@ func (b *Builder) Build(ctx context.Context) error {
 		next, toProcess = toProcess[0], toProcess[1:]
 		var newRoots refSet
 
-		for i, fs_ := range next.src.fses {
+		for _, fs_ := range next.src.fses {
 			fs0, err := util.NewFilterFS(fs_, nil, b.excluded)
 			if err != nil {
 				return err
@@ -261,12 +300,7 @@ func (b *Builder) Build(ctx context.Context) error {
 				continue
 			}
 
-			prefix := next.src.Name
-			if prefix == "" || i > 0 {
-				prefix += strconv.Itoa(i)
-			}
-			prefix = util.Escape(prefix)
-			buildSources[prefix] = fs0
+			buildSources.add(next.src.Name, fs0)
 
 			rs, err := getRegoAndJSONRoots(fs0)
 			if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -312,8 +346,8 @@ func (b *Builder) Build(ctx context.Context) error {
 		roots = append(roots, r)
 	}
 
-	fsBuild := prefixfs.PrefixFS(buildSources)
-	paths := slices.Collect(maps.Keys(buildSources))
+	fsBuild := prefixfs.PrefixFS(buildSources.fs())
+	paths := slices.Collect(maps.Keys(fsBuild))
 
 	c := compile.New().
 		WithRoots(roots...).

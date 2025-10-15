@@ -1,0 +1,80 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/hello-world/bundle.tar.gz
+[!windows] cmp stdout exp/tarball
+[windows]  cmp stdout exp/tarball_windows
+
+exec tar xf bundles/hello-world/bundle.tar.gz
+cmp .manifest exp/.manifest
+cmp data.json exp/data.json
+cmp global-data/rules.rego exp/global-data/rules.rego
+cmp global-data1/rules.rego exp/global-data1/rules.rego
+
+-- data/common/foo/foo.json --
+{ "foo": true }
+-- data/rules.rego --
+package common.rules
+import rego.v1
+result if data.foo.common != "uncommon"
+-- files/sources/hello-world/prefix/data.json --
+{ "some": "thing" }
+-- files/sources/hello-world/rules/rules.rego --
+package foo.bar.rules
+import rego.v1
+result if data.prefix.common != "uncommon"
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    labels:
+      env: production
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: global-data
+      mounts:
+      - prefix: data.bundle.req
+stacks:
+  stack-with-mount:
+    selector:
+      env:
+      - production
+    requirements:
+    - source: global-data
+      mounts:
+      - sub: data.common
+        prefix: data.stack.req.new
+sources:
+  global-data:
+    directory: data/
+    paths:
+    - rules.rego
+    - common/foo/foo.json
+-- exp/tarball --
+/data.json
+/global-data/rules.rego
+/global-data1/rules.rego
+/.manifest
+-- exp/tarball_windows --
+/data.json
+/global-data1/rules.rego
+/global-data/rules.rego
+/.manifest
+-- exp/data.json --
+{"bundle":{"req":{"common":{"foo":{"foo":true}}}},"stack":{"req":{"new":{"foo":{"foo":true}}}}}
+-- exp/.manifest --
+{"revision":"","roots":["bundle/req/common/rules","bundle/req/common/foo","stack/req/new/rules","stack/req/new/foo"],"rego_version":0}
+-- exp/global-data/rules.rego --
+package bundle.req.common.rules
+
+import rego.v1
+
+result if data.bundle.req.foo.common != "uncommon"
+-- exp/global-data1/rules.rego --
+package stack.req.new.rules
+
+import rego.v1
+
+result if data.foo.common != "uncommon"

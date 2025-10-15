@@ -62,7 +62,7 @@ func TestDatabase(t *testing.T) {
 							},
 						},
 						Requirements: config.Requirements{
-							config.Requirement{Source: newString("system1")},
+							config.Requirement{Source: newString("system1"), Mounts: []config.Mount{{Sub: "data", Prefix: " data.imported"}}},
 						},
 						ExcludedFiles: config.StringSet{"excluded-file1.txt", "excluded-file2.txt"},
 					},
@@ -153,7 +153,7 @@ func TestDatabase(t *testing.T) {
 						Requirements: config.Requirements{
 							config.Requirement{Source: newString("system1")},
 							config.Requirement{Source: newString("system2")},
-							config.Requirement{Source: newString("source-b")},
+							config.Requirement{Source: newString("source-b"), Mounts: []config.Mount{{Sub: "data", Prefix: "data.b"}}},
 						},
 					},
 				},
