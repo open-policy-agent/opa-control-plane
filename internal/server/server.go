@@ -15,6 +15,7 @@ import (
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
+	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/chain"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/types"
@@ -47,6 +48,7 @@ func (s *Server) Init() *Server {
 	setup("POST", "/v1/sources/{source}/data/{path...}", s.v1SourcesDataPut)
 	setup("PUT", "/v1/sources/{source}/data/{path...}", s.v1SourcesDataPut)
 	setup("DELETE", "/v1/sources/{source}/data/{path...}", s.v1SourcesDataDelete)
+	setup("PATCH", "/v1/sources/{source}/data/{path...}", s.v1SourcesDataPatch)
 
 	setup("GET", "/v1/sources", s.v1SourcesList)
 	setup("GET", "/v1/sources/{source}", s.v1SourcesGet)
@@ -314,6 +316,34 @@ func (s *Server) v1SourcesDataPut(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := types.SourcesPutDataResponseV1{}
+	JSONOK(w, resp, pretty(r))
+}
+
+func (s *Server) v1SourcesDataPatch(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	name, err := url.PathUnescape(r.PathValue("source"))
+	if err != nil {
+		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	var patch types.SourcesPatchDataRequestV1
+	if err := newJSONDecoder(r.Body).Decode(&patch); err != nil {
+		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	if err := s.db.SourcesDataPatch(ctx, name, path.Join(r.PathValue("path"), "data.json"), s.auth(r), patch); err != nil {
+		if pe := (&jsonpatch.PatchError{}); errors.As(err, &pe) {
+			writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		} else {
+			errorAuto(w, err)
+		}
+		return
+	}
+
+	resp := types.SourcesPatchDataResponseV1{}
 	JSONOK(w, resp, pretty(r))
 }
 

@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/testcontainers/testcontainers-go"
+
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
-	"github.com/testcontainers/testcontainers-go"
 )
 
 func TestDatabase(t *testing.T) {
@@ -257,7 +258,7 @@ func TestDatabase(t *testing.T) {
 					GetStack("stack1", nil),
 
 				// source data operations:
-				newTestCase("source/get non-existing  data").SourcesGetData("system1", "foo", nil),
+				newTestCase("source/get non-existing data").SourcesGetData("system1", "foo", nil),
 				newTestCase("source/put source data").SourcesPutData("system1", "foo", data1).SourcesGetData("system1", "foo", data1),
 				newTestCase("source/update data foo").SourcesPutData("system1", "foo", data2).SourcesGetData("system1", "foo", data2),
 				newTestCase("source/update data bar").SourcesPutData("system1", "bar", data1).SourcesGetData("system1", "bar", data1),
