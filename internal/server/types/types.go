@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
 )
 
 const (
@@ -19,6 +20,10 @@ const (
 
 type HealthResponse struct {
 }
+
+type SourcesPatchDataRequestV1 = jsonpatch.Patch
+
+type SourcesPatchDataResponseV1 struct{}
 
 type SourcesGetDataResponseV1 struct {
 	Result *any `json:"result,omitempty"`

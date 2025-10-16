@@ -214,6 +214,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.84
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.88.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
+	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/go-sql-driver/mysql v1.9.3

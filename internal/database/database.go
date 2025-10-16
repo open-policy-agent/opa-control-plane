@@ -25,6 +25,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/authz"
 	"github.com/open-policy-agent/opa-control-plane/internal/aws"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	_ "modernc.org/sqlite"
@@ -343,11 +344,36 @@ func (d *Database) CloseDB() {
 	d.db.Close()
 }
 
-func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, principal string) (interface{}, bool, error) {
+func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, principal string) (any, bool, error) {
 	path = filepath.ToSlash(path)
-	return tx3(ctx, d, func(tx *sql.Tx) (interface{}, bool, error) {
+	return tx3(ctx, d, sourcesDataGet(ctx, d, sourceName, path, principal,
+		func(bs []byte) (data any, err error) {
+			return data, json.Unmarshal(bs, &data)
+		}))
+}
+
+func (d *Database) SourcesDataPatch(ctx context.Context, sourceName, path string, principal string, patch jsonpatch.Patch) error {
+	path = filepath.ToSlash(path)
+	return tx1(ctx, d, func(tx *sql.Tx) error {
+		previous, _, err := sourcesDataGet(ctx, d, sourceName, path, principal, func(bs []byte) ([]byte, error) { return bs, nil })(tx)
+		if err != nil {
+			return err
+		}
+		patched, err := jsonpatch.Apply(patch, previous)
+		if err != nil {
+			return err
+		}
+		return d.sourcesDataPut(ctx, sourceName, path, patched, principal)(tx)
+	})
+}
+
+func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path string, principal string,
+	f func([]byte) (T, error),
+) func(*sql.Tx) (T, bool, error) {
+	return func(tx *sql.Tx) (T, bool, error) {
+		var zero T
 		if err := d.resourceExists(ctx, tx, "sources", sourceName); err != nil {
-			return nil, false, err
+			return zero, false, err
 		}
 
 		expr, err := authz.Partial(ctx, authz.Access{
@@ -357,7 +383,7 @@ func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, 
 			Name:       sourceName,
 		}, nil)
 		if err != nil {
-			return nil, false, err
+			return zero, false, err
 		}
 
 		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
@@ -368,31 +394,34 @@ FROM
 	sources_data
 WHERE source_name = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
 		if err != nil {
-			return nil, false, err
+			return zero, false, err
 		}
 		defer rows.Close()
 
 		if !rows.Next() {
-			return nil, false, nil
+			return zero, false, nil
 		}
 
 		var bs []byte
 		if err := rows.Scan(&bs); err != nil {
-			return nil, false, err
+			return zero, false, err
 		}
 
-		var data interface{}
-		if err := json.Unmarshal(bs, &data); err != nil {
-			return nil, false, err
+		data, err := f(bs)
+		if err != nil {
+			return zero, false, err
 		}
-
 		return data, true, nil
-	})
+	}
 }
 
-func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, data interface{}, principal string) error {
+func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, data any, principal string) error {
 	path = filepath.ToSlash(path)
-	return tx1(ctx, d, func(tx *sql.Tx) error {
+	return tx1(ctx, d, d.sourcesDataPut(ctx, sourceName, path, data, principal))
+}
+
+func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, data any, principal string) func(*sql.Tx) error {
+	return func(tx *sql.Tx) error {
 		if err := d.resourceExists(ctx, tx, "sources", sourceName); err != nil {
 			return err
 		}
@@ -413,7 +442,7 @@ func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, 
 		}
 
 		return d.upsert(ctx, tx, "sources_data", []string{"source_name", "path", "data"}, []string{"source_name", "path"}, sourceName, path, bs)
-	})
+	}
 }
 
 func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path string, principal string) error {
