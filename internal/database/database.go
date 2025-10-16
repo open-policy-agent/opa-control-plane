@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -343,6 +344,7 @@ func (d *Database) CloseDB() {
 }
 
 func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, principal string) (interface{}, bool, error) {
+	path = filepath.ToSlash(path)
 	return tx3(ctx, d, func(tx *sql.Tx) (interface{}, bool, error) {
 		if err := d.resourceExists(ctx, tx, "sources", sourceName); err != nil {
 			return nil, false, err
@@ -389,6 +391,7 @@ WHERE source_name = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)),
 }
 
 func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, data interface{}, principal string) error {
+	path = filepath.ToSlash(path)
 	return tx1(ctx, d, func(tx *sql.Tx) error {
 		if err := d.resourceExists(ctx, tx, "sources", sourceName); err != nil {
 			return err
@@ -414,6 +417,7 @@ func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, 
 }
 
 func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path string, principal string) error {
+	path = filepath.ToSlash(path)
 	return tx1(ctx, d, func(tx *sql.Tx) error {
 		if err := d.resourceExists(ctx, tx, "sources", sourceName); err != nil {
 			return err
