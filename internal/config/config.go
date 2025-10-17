@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"time"
 
 	"github.com/gobwas/glob"
 	"github.com/pkg/errors"
@@ -40,6 +41,7 @@ type Root struct {
 	Secrets  map[string]*Secret `json:"secrets,omitempty" yaml:"secrets,omitempty"` // Schema validation overrides Secret to object type.
 	Tokens   map[string]*Token  `json:"tokens,omitempty" yaml:"tokens,omitempty"`
 	Database *Database          `json:"database,omitempty" yaml:"database,omitempty"`
+	Service  *Service           `json:"service,omitempty" yaml:"service,omitempty"`
 }
 
 // SetSQLitePersistentByDefault sets the database configuration to use a SQLite
@@ -734,7 +736,7 @@ func (t *Token) Equal(other *Token) bool {
 }
 
 type Scope struct {
-	Role string `json:"role" yaml:"role" enum:"administrator,viewer,owner,stack_owner"`
+	Role string `json:"role" yaml:"role" enum:"administrator,viewer,owner,stack_owner,automation"`
 }
 
 func scopesEqual(a, b []Scope) bool {
@@ -964,6 +966,18 @@ type Datasources []Datasource
 
 func (a Datasources) Equal(b Datasources) bool {
 	return setEqual(a, b, func(ds Datasource) string { return ds.Name }, func(a, b Datasource) bool { return a.Equal(&b) })
+}
+
+type Service struct {
+	// ReconfigurationInterval is the duration between configuration checks, i.e. when a change
+	// to a bundle/stack/source will have an effect on the internal bundle workers.
+	// String of a duration, e.g. "1m". Defaults to "15s".
+	ReconfigurationInterval *time.Duration `json:"reconfiguration_interval,omitempty" yaml:"reconfiguration_interval,omitempty"`
+
+	// BundleRebuildInterval is the time between bundle builds: After a bundle build as finished,
+	// OCP will wait _this long_ until it's build again (unless the bundle build is triggered by
+	// other means). String duration, e.g. "90s". Defaults to "30s".
+	BundleRebuildInterval *time.Duration `json:"bundle_rebuild_interval,omitempty" yaml:"bundle_rebuild_interval,omitempty"`
 }
 
 type Database struct {
