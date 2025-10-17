@@ -7,7 +7,7 @@ import (
 
 	"github.com/yalue/merged_fs"
 
-	"github.com/open-policy-agent/opa-control-plane/internal/util"
+	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 )
 
 func Migrations(dialect string) (fs.FS, error) {
@@ -28,7 +28,7 @@ func addMounts(dialect string) fs.FS {
 		stmtStacks = `ALTER TABLE stacks_requirements ADD COLUMN mounts VARCHAR(255)`
 	}
 
-	return util.MapFS(map[string]string{
+	return ocp_fs.MapFS(map[string]string{
 		"014_add_mounts_bundles.up.sql": stmtBundles,
 		"015_add_mounts_stacks.up.sql":  stmtStacks,
 	})
@@ -49,7 +49,7 @@ func initialSchemaFS(dialect string) fs.FS {
 		f := fmt.Sprintf("%03d_%s.up.sql", i, tbl.name)
 		m[f] = tbl.SQL(kind)
 	}
-	return util.MapFS(m)
+	return ocp_fs.MapFS(m)
 }
 
 // schema holds the initial set of database tables, dating back to when database

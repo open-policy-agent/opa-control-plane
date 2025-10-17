@@ -15,9 +15,12 @@ import (
 	"sync"
 	"time"
 
+	_ "modernc.org/sqlite"
+
 	"github.com/open-policy-agent/opa-control-plane/internal/builder"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
+	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/gitsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/httpsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
@@ -26,8 +29,6 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
 	"github.com/open-policy-agent/opa-control-plane/internal/sqlsync"
-	"github.com/open-policy-agent/opa-control-plane/internal/util"
-	_ "modernc.org/sqlite"
 )
 
 const internalPrincipal = "internal"
@@ -332,7 +333,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 		for _, dep := range deps {
 			// NB(sr): dep.Name could contain a `:` which cause build errors in OPA's bundle build machinery
-			srcDir := join(bundleDir, "sources", util.Escape(dep.Name))
+			srcDir := join(bundleDir, "sources", ocp_fs.Escape(dep.Name))
 
 			src := newSource(dep.Name).
 				SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
