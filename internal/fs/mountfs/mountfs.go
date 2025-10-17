@@ -1,7 +1,10 @@
-// based on testing/fstest, go1.25.2:
+// This is based on testing/fstest, go1.25.2:
 // Copyright 2020 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+//
+// Altered to take a map of prefixes to fs.FS instances,
+// allowing us to simplify the code a little.
 
 package mountfs
 
@@ -50,7 +53,7 @@ func (fsys MountFS) Open(name string) (fs.File, error) {
 	name = filepath.ToSlash(name)
 	fs_ := fsys[name]
 	if fs_ != nil {
-		return &mntDir{path: name, mapFileInfo: mapFileInfo{name: path.Base(name), dir: true}, fsys: fs_}, nil
+		return &mntDir{path: name, mapFileInfo: mapFileInfo{name: path.Base(name), f: &MapFile{Mode: fs.ModeDir | 0555}}, fsys: fs_}, nil
 	}
 	for fname := range fsys {
 		if strings.HasPrefix(name, fname+"/") {
@@ -60,20 +63,16 @@ func (fsys MountFS) Open(name string) (fs.File, error) {
 	}
 
 	// Directory, possibly synthesized.
-	// Note that file can be nil here: the map need not contain explicit parent directories for all its files.
-	// But file can also be non-nil, in case the user wants to set metadata for the directory explicitly.
-	// Either way, we need to construct the list of children of this directory.
-	var list []mapFileInfo //nolint:prealloc
-	var need = make(map[string]bool)
+	var synthesize = make(map[string]bool)
 	if name == "." {
 		for fname := range fsys {
 			i := strings.Index(fname, "/")
 			if i < 0 {
 				if fname != "." {
-					list = append(list, mapFileInfo{name: fname, dir: true})
+					synthesize[fname] = true
 				}
 			} else {
-				need[fname[:i]] = true
+				synthesize[fname[:i]] = true
 			}
 		}
 	} else {
@@ -83,23 +82,21 @@ func (fsys MountFS) Open(name string) (fs.File, error) {
 				felem := fname[len(prefix):]
 				i := strings.Index(felem, "/")
 				if i < 0 {
-					list = append(list, mapFileInfo{name: felem, dir: true})
+					synthesize[felem] = true
 				} else {
-					need[fname[len(prefix):len(prefix)+i]] = true
+					synthesize[fname[len(prefix):len(prefix)+i]] = true
 				}
 			}
 		}
 		// If the directory name is not in the map,
 		// and there are no children of the name in the map,
 		// then the directory is treated as not existing.
-		if list == nil && len(need) == 0 {
+		if len(synthesize) == 0 {
 			return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 		}
 	}
-	for _, fi := range list {
-		delete(need, fi.name)
-	}
-	for name := range need {
+	list := make([]mapFileInfo, 0, len(synthesize))
+	for name := range synthesize {
 		list = append(list, mapFileInfo{name: name, f: &MapFile{Mode: fs.ModeDir | 0555}})
 	}
 	slices.SortFunc(list, func(a, b mapFileInfo) int {
@@ -119,7 +116,6 @@ func (fsys MountFS) Open(name string) (fs.File, error) {
 // A mapFileInfo implements fs.FileInfo and fs.DirEntry for a given map file.
 type mapFileInfo struct {
 	name string
-	dir  bool
 	f    *MapFile
 }
 
@@ -128,7 +124,7 @@ func (i *mapFileInfo) Size() int64                { return int64(len(i.f.Data)) 
 func (i *mapFileInfo) Mode() fs.FileMode          { return i.f.Mode }
 func (i *mapFileInfo) Type() fs.FileMode          { return i.f.Mode.Type() }
 func (i *mapFileInfo) ModTime() time.Time         { return i.f.ModTime }
-func (i *mapFileInfo) IsDir() bool                { return i.dir || i.f.Mode&fs.ModeDir != 0 }
+func (i *mapFileInfo) IsDir() bool                { return i.f.Mode&fs.ModeDir != 0 }
 func (i *mapFileInfo) Sys() any                   { return i.f.Sys }
 func (i *mapFileInfo) Info() (fs.FileInfo, error) { return i, nil }
 
@@ -178,6 +174,6 @@ func (d *mntDir) Read(b []byte) (int, error) {
 	return 0, &fs.PathError{Op: "read", Path: d.path, Err: fs.ErrInvalid}
 }
 
-func (d *mntDir) ReadDir(_ int) ([]fs.DirEntry, error) {
+func (d *mntDir) ReadDir(int) ([]fs.DirEntry, error) {
 	return fs.ReadDir(d.fsys, ".") // NB(sr): We're ignoring the count, for our usage, that's OK.
 }
