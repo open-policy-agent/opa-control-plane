@@ -266,17 +266,10 @@ func (a Mount) Equal(b Mount) bool {
 }
 
 func (a Mount) Compare(b Mount) int {
-	switch {
-	case a.Sub <= b.Sub:
-		return -1
-	case a.Sub > b.Sub:
-		return 1
-	case a.Prefix <= b.Prefix:
-		return -1
-	case a.Prefix > b.Prefix:
-		return 1
-	}
-	return 0
+	return cmp.Or(
+		cmp.Compare(a.Sub, b.Sub),
+		cmp.Compare(a.Prefix, b.Prefix),
+	)
 }
 
 func (r Mounts) Equal(s Mounts) bool {
