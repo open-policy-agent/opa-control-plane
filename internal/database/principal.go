@@ -26,7 +26,7 @@ func (db *Database) UpsertPrincipalTx(ctx context.Context, tx *sql.Tx, principal
 	return nil
 }
 
-func (db *Database) GetPrincipalId(ctx context.Context, apiKey string) (string, error) {
+func (db *Database) GetPrincipalID(ctx context.Context, apiKey string) (string, error) {
 	query := `SELECT principals.id FROM principals JOIN tokens ON tokens.name = principals.id WHERE tokens.api_key = ` + db.arg(0)
 	row := db.db.QueryRowContext(ctx, query, apiKey)
 	var principalId string

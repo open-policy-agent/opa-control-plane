@@ -27,7 +27,7 @@ sources:
       path: users
       transform_query: '{user.id: object.remove(user, {"id"}) | user := input.users[_]}'
       config:
-        url: http://127.0.0.1:9991/users
+        url: http://${HTTP_ENDPOINT}/users
 -- exp/tarball --
 /data.json
 /.manifest

@@ -149,10 +149,6 @@ func (r *Root) SortedSecrets() iter.Seq2[int, *Secret] {
 	return iterator(r.Secrets, func(s *Secret) string { return s.Name })
 }
 
-func (r *Root) SortedSources() iter.Seq2[int, *Source] {
-	return iterator(r.Sources, func(s *Source) string { return s.Name })
-}
-
 // Returns sources from the configuration ordered by requirements. Cycles are
 // treated as errors. Missing requirements are ignored.
 func (r *Root) TopologicalSortedSources() ([]*Source, error) {

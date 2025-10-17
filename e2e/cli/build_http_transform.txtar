@@ -27,14 +27,14 @@ sources:
       path: headers
       transform_query: data.transform.rule
       config:
-        url: http://127.0.0.1:9991/headers
+        url: http://${HTTP_ENDPOINT}/headers
       credentials: api-token
     - type: http
       name: world
       path: basicauth
       transform_query: data.transform.rule
       config:
-        url: http://127.0.0.1:9991/headers
+        url: http://${HTTP_ENDPOINT}/headers
       credentials: basic-auth
     directory: aux/
     paths:

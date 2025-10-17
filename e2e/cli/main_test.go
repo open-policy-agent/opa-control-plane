@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -17,7 +18,7 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
-func testServer() {
+func testServer() *httptest.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /headers", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("content-type", "application/json")
@@ -43,17 +44,22 @@ func testServer() {
 		}
 	})
 
-	http.ListenAndServe(":9991", mux)
+	return httptest.NewServer(mux)
 }
 
 func TestScript(t *testing.T) {
 	opactl := cmp.Or(os.Getenv("OPACTL"), "opactl")
-	go testServer()
+	srv := testServer()
+	t.Cleanup(srv.Close)
+	endpoint := srv.Listener.Addr().String()
 
 	testscript.Run(t, testscript.Params{
 		Dir: ".",
 		Setup: func(e *testscript.Env) error {
-			e.Vars = append(e.Vars, "OPACTL="+opactl)
+			e.Vars = append(e.Vars,
+				"HTTP_ENDPOINT="+endpoint,
+				"OPACTL="+opactl,
+			)
 			for _, kv := range os.Environ() {
 				if strings.HasPrefix(kv, "E2E_") {
 					e.Vars = append(e.Vars, kv)

@@ -15,8 +15,8 @@ import (
 )
 
 func TestDatabase(t *testing.T) {
-
 	ctx := t.Context()
+	t.Setenv("API_TOKEN", "sesame")
 
 	for databaseType, databaseConfig := range dbs.Configs(t) {
 		t.Run(databaseType, func(t *testing.T) {
@@ -42,6 +42,14 @@ func TestDatabase(t *testing.T) {
 			data2 := map[string]any{"key": "value2"}
 
 			root := config.Root{
+				Tokens: map[string]*config.Token{
+					"api-token": {
+						APIKey: "${API_TOKEN}",
+						Scopes: []config.Scope{
+							{Role: "viewer"},
+						},
+					},
+				},
 				Bundles: map[string]*config.Bundle{
 					"system1": {
 						Name: "system1",
@@ -227,7 +235,7 @@ func TestDatabase(t *testing.T) {
 			tests := []*testCase{
 				// bootstrap operations:
 				newTestCase("load config").LoadConfig(root),
-
+				newTestCase("check token expansion").GetPrincipalByToken("sesame", "api-token"),
 				// source operations:
 				newTestCase("list sources").ListSources([]*config.Source{
 					root.Sources["source-a"], root.Sources["source-b"], root.Sources["source-z"], root.Sources["source-y"], root.Sources["source-x"],
@@ -377,6 +385,19 @@ func newTestCase(note string) *testCase {
 		note:       note,
 		operations: nil,
 	}
+}
+
+func (tc *testCase) GetPrincipalByToken(token, exp string) *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		act, err := db.GetPrincipalID(ctx, token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if act != exp {
+			t.Errorf("expecited %q, got %q", exp, act)
+		}
+	})
+	return tc
 }
 
 func (tc *testCase) SourcesGetData(srcID, dataID string, expected any) *testCase {

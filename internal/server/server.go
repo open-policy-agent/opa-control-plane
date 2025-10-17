@@ -640,7 +640,7 @@ func authenticationMiddleware(db *database.Database) func(http.Handler) http.Han
 				return
 			}
 
-			principalId, err := db.GetPrincipalId(r.Context(), apiKey)
+			principalId, err := db.GetPrincipalID(r.Context(), apiKey)
 			if err != nil {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
