@@ -57,8 +57,8 @@ var wellknownFingerprints = []string{
 //   - "ssh_key" for SSH private key authentication. Value for key "key" (private key) is expected. "fingerprints" (string array) and "passphrase" are optional.
 //   - "token_auth" for HTTP bearer token authentication. Value for a key "token" is expected.
 type Secret struct {
-	Name  string                 `json:"-" yaml:"-"`
-	Value map[string]interface{} `json:"-" yaml:"-"`
+	Name  string         `json:"-" yaml:"-"`
+	Value map[string]any `json:"-" yaml:"-"`
 }
 
 func (s *Secret) Ref() *SecretRef {
@@ -71,9 +71,9 @@ func (*Secret) PrepareJSONSchema(schema *jsonschema.Schema) error {
 	return nil
 }
 
-func (s *Secret) MarshalYAML() (interface{}, error) {
+func (s *Secret) MarshalYAML() (any, error) {
 	if len(s.Value) == 0 {
-		return map[string]interface{}{}, nil
+		return map[string]any{}, nil
 	}
 	return s.Value, nil
 }
@@ -105,21 +105,23 @@ func (s *Secret) Equal(other *Secret) bool {
 }
 
 // get retrieves the values from any external source as necessary.
-func (s *Secret) get() (map[string]interface{}, error) {
-	value := make(map[string]interface{}, len(s.Value))
+// NB(sr): "external sources" (plural) is aspirational: we support env vars only, so far.
+func (s *Secret) get() (map[string]any, error) {
+	value := make(map[string]any, len(s.Value))
 
 	for k, v := range s.Value {
-		if str, ok := v.(string); ok && str != "" {
-			value[k] = os.ExpandEnv(str)
-		} else {
-			value[k] = v // Keep non-string values as is
+		switch v := v.(type) {
+		case string:
+			value[k] = os.ExpandEnv(v)
+		default: // Keep non-string values as is
+			value[k] = v
 		}
 	}
 
 	return value, nil
 }
 
-func (s *Secret) Typed(ctx context.Context) (interface{}, error) {
+func (s *Secret) Typed(context.Context) (any, error) {
 	m, err := s.get() // Ensure values are resolved
 	if err != nil {
 		return nil, err
@@ -133,7 +135,7 @@ func (s *Secret) Typed(ctx context.Context) (interface{}, error) {
 	case "aws_auth":
 		var value SecretAWS
 
-		if err := mapstructure.Decode(m, &value); err != nil {
+		if err := decode(m, &value); err != nil {
 			return nil, err
 		} else if value.AccessKeyID == "" || value.SecretAccessKey == "" {
 			return nil, errors.New("missing access_key_id or secret_access_key in AWS secret")
@@ -144,7 +146,7 @@ func (s *Secret) Typed(ctx context.Context) (interface{}, error) {
 	case "azure_auth":
 		var value SecretAzure
 
-		if err := mapstructure.Decode(m, &value); err != nil {
+		if err := decode(m, &value); err != nil {
 			return nil, err
 		} else if value.AccountName == "" || value.AccountKey == "" {
 			return nil, errors.New("missing account_name or account_key in Azure secret")
@@ -155,7 +157,7 @@ func (s *Secret) Typed(ctx context.Context) (interface{}, error) {
 	case "gcp_auth":
 		var value SecretGCP
 
-		if err := mapstructure.Decode(m, &value); err != nil {
+		if err := decode(m, &value); err != nil {
 			return nil, err
 		} else if value.APIKey == "" && value.Credentials == "" {
 			return nil, errors.New("missing api_key or credentials in GCP secret")
@@ -166,7 +168,7 @@ func (s *Secret) Typed(ctx context.Context) (interface{}, error) {
 	case "github_app_auth":
 		var value SecretGitHubApp
 
-		if err := mapstructure.Decode(m, &value); err != nil {
+		if err := decode(m, &value); err != nil {
 			return nil, err
 		}
 
@@ -174,7 +176,7 @@ func (s *Secret) Typed(ctx context.Context) (interface{}, error) {
 
 	case "ssh_key":
 		var value SecretSSHKey
-		if err := mapstructure.Decode(m, &value); err != nil {
+		if err := decode(m, &value); err != nil {
 			return nil, err
 		} else if value.Key == "" {
 			return nil, errors.New("missing key in SSH secret")
@@ -189,7 +191,7 @@ func (s *Secret) Typed(ctx context.Context) (interface{}, error) {
 
 	case "basic_auth":
 		var value SecretBasicAuth
-		if err := mapstructure.Decode(m, &value); err != nil {
+		if err := decode(m, &value); err != nil {
 			return nil, err
 		}
 
@@ -197,7 +199,7 @@ func (s *Secret) Typed(ctx context.Context) (interface{}, error) {
 
 	case "token_auth":
 		var value SecretTokenAuth
-		if err := mapstructure.Decode(m, &value); err != nil {
+		if err := decode(m, &value); err != nil {
 			return nil, err
 		}
 
@@ -205,7 +207,7 @@ func (s *Secret) Typed(ctx context.Context) (interface{}, error) {
 
 	case "password":
 		var value SecretPassword
-		if err := mapstructure.Decode(m, &value); err != nil {
+		if err := decode(m, &value); err != nil {
 			return nil, err
 		}
 
@@ -217,43 +219,59 @@ func (s *Secret) Typed(ctx context.Context) (interface{}, error) {
 }
 
 type SecretAWS struct {
-	AccessKeyID     string `json:"access_key_id" yaml:"access_key_id" mapstructure:"access_key_id"`
-	SecretAccessKey string `json:"secret_access_key" yaml:"secret_access_key" mapstructure:"secret_access_key"`
-	SessionToken    string `json:"session_token" yaml:"session_token" mapstructure:"session_token"`
+	AccessKeyID     string `json:"access_key_id" yaml:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key" yaml:"secret_access_key"`
+	SessionToken    string `json:"session_token" yaml:"session_token"`
 }
 
 type SecretGCP struct {
-	APIKey      string `json:"api_key" yaml:"api_key" mapstructure:"api_key"`
-	Credentials string `json:"credentials" yaml:"credentials" mapstructure:"credentials"` // Credentials file as JSON.
+	APIKey      string `json:"api_key" yaml:"api_key"`
+	Credentials string `json:"credentials" yaml:"credentials"` // Credentials file as JSON.
 }
 
 type SecretAzure struct {
-	AccountName string `json:"account_name" yaml:"account_name" mapstructure:"account_name"`
-	AccountKey  string `json:"account_key" yaml:"account_key" mapstructure:"account_key"`
+	AccountName string `json:"account_name" yaml:"account_name"`
+	AccountKey  string `json:"account_key" yaml:"account_key"`
 }
 
 type SecretGitHubApp struct {
-	IntegrationID  int64  `json:"integration_id" yaml:"integration_id" mapstructure:"integration_id"`
-	InstallationID int64  `json:"installation_id" yaml:"installation_id" mapstructure:"installation_id"`
-	PrivateKey     string `json:"private_key" yaml:"private_key" mapstructure:"private_key"` // Private key as PEM.
+	IntegrationID  int64  `json:"integration_id" yaml:"integration_id"`
+	InstallationID int64  `json:"installation_id" yaml:"installation_id"`
+	PrivateKey     string `json:"private_key" yaml:"private_key"` // Private key as PEM.
 }
 
 type SecretSSHKey struct {
-	Key          string   `json:"key" yaml:"key" mapstructure:"key"`                                                          // Private key as PEM.
-	Passphrase   string   `json:"passphrase,omitempty" yaml:"passphrase,omitempty" mapstructure:"passphrase,omitempty"`       // Optional passphrase for the private key.
-	Fingerprints []string `json:"fingerprints,omitempty" yaml:"fingerprints,omitempty" mapstructure:"fingerprints,omitempty"` // Optional SSH key fingerprints.
+	Key          string   `json:"key" yaml:"key"`                                       // Private key as PEM.
+	Passphrase   string   `json:"passphrase,omitempty" yaml:"passphrase,omitempty"`     // Optional passphrase for the private key.
+	Fingerprints []string `json:"fingerprints,omitempty" yaml:"fingerprints,omitempty"` // Optional SSH key fingerprints.
 }
 
 type SecretBasicAuth struct {
-	Username string   `json:"username" yaml:"username" mapstructure:"username"`
-	Password string   `json:"password" yaml:"password" mapstructure:"password"`
-	Headers  []string `json:"headers,omitempty" yaml:"headers,omitempty" mapstructure:"headers,omitempty"` // Optional additional headers for HTTP requests.
+	Username string   `json:"username" yaml:"username"`
+	Password string   `json:"password" yaml:"password"`
+	Headers  []string `json:"headers,omitempty" yaml:"headers,omitempty"` // Optional additional headers for HTTP requests.
 }
 
 type SecretTokenAuth struct {
-	Token string `json:"token" yaml:"token" mapstructure:"token"` // Bearer token for HTTP authentication.
+	Token string `json:"token" yaml:"token"` // Bearer token for HTTP authentication.
 }
 
 type SecretPassword struct {
-	Password string `json:"password" yaml:"password" mapstructure:"password"` // Password for authentication.
+	Password string `json:"password" yaml:"password"` // Password for authentication.
+}
+
+// we use this one so we don't need duplicate tags on every struct
+func decode(input any, output any) error {
+	config := &mapstructure.DecoderConfig{
+		TagName:  "json",
+		Metadata: nil,
+		Result:   output,
+	}
+
+	decoder, err := mapstructure.NewDecoder(config)
+	if err != nil {
+		return err
+	}
+
+	return decoder.Decode(input)
 }
