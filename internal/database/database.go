@@ -127,7 +127,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 		dbName := c.DatabaseName
 		rootCertificates := c.RootCertificates
 
-		var authCallback func(ctx context.Context) (string, error)
+		var authCallback func(context.Context) (string, error)
 
 		if d.config.AWSRDS.Credentials != nil {
 			// Authentication options 1 and 2:
@@ -470,10 +470,15 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 }
 
 // LoadConfig loads the configuration from the configuration file into the database.
+// Env vars for valures are getting resolved at this point. We don't store "${ADMIN_TOKEN}"
+// in the DB, but lookup the current field. Failing lookups are treated as errors!
+// Secrets are the exception: they are stored as-is, so if their value refers to an
+// env var, it's replaced on use.
 func (d *Database) LoadConfig(ctx context.Context, bar *progress.Bar, principal string, root *config.Root) error {
 
 	bar.AddMax(len(root.Sources) + len(root.Stacks) + len(root.Secrets) + len(root.Tokens))
 
+	// Secrets have env lookups done on access, without the secret value persisted in the databse.
 	for _, secret := range root.SortedSecrets() {
 		if err := d.UpsertSecret(ctx, principal, secret); err != nil {
 			return fmt.Errorf("upsert secret %q failed: %w", secret.Name, err)
@@ -507,6 +512,13 @@ func (d *Database) LoadConfig(ctx context.Context, bar *progress.Bar, principal 
 		bar.Add(1)
 	}
 	for _, token := range root.Tokens {
+		if token.APIKey == "" {
+			return fmt.Errorf("token %q: no API key", token.Name)
+		}
+		token.APIKey = os.ExpandEnv(token.APIKey)
+		if token.APIKey == "" {
+			return fmt.Errorf("token %q: no API key (after env expansion)", token.Name)
+		}
 		if err := d.UpsertToken(ctx, principal, token); err != nil {
 			return fmt.Errorf("upsert token %q failed: %w", token.Name, err)
 		}
