@@ -3,7 +3,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package prefixfs
+package mountfs
 
 import (
 	"io"
@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// A PrefixFS is a simple in-memory filesystem for creating new [fs.FS]
+// A MountFS is a simple in-memory filesystem for creating new [fs.FS]
 // from existing ones, under specific prefixes.
 //
 // The map need not include parent directories for files contained
@@ -24,11 +24,15 @@ import (
 // File system operations must not run concurrently with changes to the
 // map, which would be a race.
 // Another implication is that opening or reading a directory requires
-// iterating over the entire map, so a PrefixFS should typically be
+// iterating over the entire map, so a MountFS should typically be
 // used with not more than a few hundred entries or directory reads.
-type PrefixFS map[string]fs.FS
+type MountFS map[string]fs.FS
 
-// A MapFile describes a single file in a [PrefixFS].
+func New(m map[string]fs.FS) MountFS {
+	return m
+}
+
+// A MapFile describes a single file in a [MountFS].
 type MapFile struct {
 	Data    []byte      // file content or symlink destination
 	Mode    fs.FileMode // fs.FileInfo.Mode
@@ -36,10 +40,10 @@ type MapFile struct {
 	Sys     any         // fs.FileInfo.Sys
 }
 
-var _ fs.FS = PrefixFS(nil)
+var _ fs.FS = MountFS(nil)
 
 // Open opens the named file after following any symbolic links.
-func (fsys PrefixFS) Open(name string) (fs.File, error) {
+func (fsys MountFS) Open(name string) (fs.File, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
