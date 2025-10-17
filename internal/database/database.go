@@ -581,6 +581,7 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
         secrets.name AS secret_name,
         secrets.value AS secret_value,
 		bundles_requirements.source_name AS req_src,
+		bundles_requirements.mounts AS req_mounts,
 		bundles_requirements.gitcommit AS req_commit
     FROM
         bundles
@@ -622,7 +623,7 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 			filepath                                   *string // File system storage
 			excluded                                   *string
 			secretName, secretValue                    *string
-			reqSrc, reqCommit                          *string
+			reqSrc, reqMounts, reqCommit               *string
 		}
 		bundleMap := make(map[string]*config.Bundle)
 		idMap := make(map[string]int64)
@@ -635,7 +636,8 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 				&row.gcpProject, &row.gcpObject, // GCP
 				&row.azureAccountURL, &row.azureContainer, &row.azurePath, // Azure
 				&row.filepath,
-				&row.excluded, &row.secretName, &row.secretValue, &row.reqSrc, &row.reqCommit); err != nil {
+				&row.excluded, &row.secretName, &row.secretValue,
+				&row.reqSrc, &row.reqMounts, &row.reqCommit); err != nil {
 				return nil, "", err
 			}
 
@@ -712,7 +714,16 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 			}
 
 			if row.reqSrc != nil {
-				bundle.Requirements = append(bundle.Requirements, config.Requirement{Source: row.reqSrc, Git: config.GitRequirement{Commit: row.reqCommit}})
+				req := config.Requirement{
+					Source: row.reqSrc,
+					Git:    config.GitRequirement{Commit: row.reqCommit},
+				}
+				if row.reqMounts != nil {
+					if err := json.Unmarshal([]byte(*row.reqMounts), &req.Mounts); err != nil {
+						return nil, "", fmt.Errorf("failed to unmarshal mounts for %q/%q: %w", bundle.Name, *req.Source, err)
+					}
+				}
+				bundle.Requirements = append(bundle.Requirements, req)
 			}
 
 			if row.id > lastId {
@@ -1131,7 +1142,8 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
         stacks.selector,
 		stacks.exclude_selector,
         stacks_requirements.source_name,
-		stacks_requirements.gitcommit
+		stacks_requirements.gitcommit,
+		stacks_requirements.mounts
     FROM
         stacks
     LEFT JOIN
@@ -1165,6 +1177,7 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 			selector                 string
 			excludeSelector          *string
 			sourceName, sourceCommit *string
+			mounts                   *string
 		}
 
 		stacksMap := map[string]*config.Stack{}
@@ -1173,7 +1186,7 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 
 		for rows.Next() {
 			var row stackRow
-			if err := rows.Scan(&row.id, &row.stackName, &row.selector, &row.excludeSelector, &row.sourceName, &row.sourceCommit); err != nil {
+			if err := rows.Scan(&row.id, &row.stackName, &row.selector, &row.excludeSelector, &row.sourceName, &row.sourceCommit, &row.mounts); err != nil {
 				return nil, "", err
 			}
 
@@ -1200,10 +1213,16 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 			}
 
 			if row.sourceName != nil {
-				stack.Requirements = append(stack.Requirements, config.Requirement{
+				req := config.Requirement{
 					Source: row.sourceName,
 					Git:    config.GitRequirement{Commit: row.sourceCommit},
-				})
+				}
+				if row.mounts != nil {
+					if err := json.Unmarshal([]byte(*row.mounts), &req.Mounts); err != nil {
+						return nil, "", fmt.Errorf("failed to unmarshal mounts for %q/%q: %w", stack.Name, *req.Source, err)
+					}
+				}
+				stack.Requirements = append(stack.Requirements, req)
 			}
 
 			if row.id > lastId {
@@ -1345,9 +1364,12 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 		sources := []string{}
 		for _, req := range bundle.Requirements {
 			if req.Source != nil {
-				// TODO: add support for mounts on requirements; currently that is only used internally for stacks.
-				if err := d.upsert(ctx, tx, "bundles_requirements", []string{"bundle_name", "source_name", "gitcommit"}, []string{"bundle_name", "source_name"},
-					bundle.Name, req.Source, req.Git.Commit); err != nil {
+				mounts, err := json.Marshal(req.Mounts)
+				if err != nil {
+					return err
+				}
+				if err := d.upsert(ctx, tx, "bundles_requirements", []string{"bundle_name", "source_name", "gitcommit", "mounts"}, []string{"bundle_name", "source_name"},
+					bundle.Name, req.Source, req.Git.Commit, string(mounts)); err != nil {
 					return err
 				}
 				sources = append(sources, *req.Source)
@@ -1490,8 +1512,12 @@ func (d *Database) UpsertStack(ctx context.Context, principal string, stack *con
 
 		for _, r := range stack.Requirements {
 			if r.Source != nil {
-				// TODO: add support for mounts on requirements; currently that is only used internally for stacks.
-				if err := d.upsert(ctx, tx, "stacks_requirements", []string{"stack_name", "source_name", "gitcommit"}, []string{"stack_name", "source_name"}, stack.Name, r.Source, r.Git.Commit); err != nil {
+				mounts, err := json.Marshal(r.Mounts)
+				if err != nil {
+					return err
+				}
+				if err := d.upsert(ctx, tx, "stacks_requirements", []string{"stack_name", "source_name", "gitcommit", "mounts"}, []string{"stack_name", "source_name"},
+					stack.Name, r.Source, r.Git.Commit, string(mounts)); err != nil {
 					return err
 				}
 			}
