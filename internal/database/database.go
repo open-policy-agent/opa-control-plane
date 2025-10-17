@@ -102,6 +102,7 @@ func (d *Database) WithLogger(log *logging.Logger) *Database {
 }
 
 func (d *Database) InitDB(ctx context.Context) error {
+	var err error
 	switch {
 	case d.config != nil && d.config.AWSRDS != nil:
 		// There are three options for authentication to Amazon RDS:
@@ -121,10 +122,11 @@ func (d *Database) InitDB(ctx context.Context) error {
 
 		c := d.config.AWSRDS
 		drv := c.Driver
-		endpoint := c.Endpoint
-		region := c.Region
-		dbUser := c.DatabaseUser
-		dbName := c.DatabaseName
+		endpoint := os.ExpandEnv(c.Endpoint)
+		region := os.ExpandEnv(c.Region)
+		dbUser := os.ExpandEnv(c.DatabaseUser)
+		dbName := os.ExpandEnv(c.DatabaseName)
+		dsn := os.ExpandEnv(c.DSN)
 		rootCertificates := c.RootCertificates
 
 		var authCallback func(context.Context) (string, error)
@@ -164,7 +166,6 @@ func (d *Database) InitDB(ctx context.Context) error {
 
 		} else {
 			// Authentication option 3: no explicit credentials configured, use AWS default credential provider chain.
-
 			awsCfg, err := aws.Config(ctx, region, nil)
 			if err != nil {
 				return err
@@ -178,6 +179,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 		}
 
 		var connector driver.Connector
+		var err error
 
 		switch drv {
 		case "postgres":
@@ -199,8 +201,8 @@ func (d *Database) InitDB(ctx context.Context) error {
 			}
 
 			var cfg *pgx.ConnConfig
-			if c.DSN != "" {
-				cfg, err = pgx.ParseConfig(c.DSN)
+			if dsn != "" {
+				cfg, err = pgx.ParseConfig(dsn)
 				if err != nil {
 					return err
 				}
@@ -244,20 +246,14 @@ func (d *Database) InitDB(ctx context.Context) error {
 			}
 
 			var cfg *mysqldriver.Config
-			var err error
-
-			if c.DSN != "" {
-				cfg, err = mysqldriver.ParseDSN(c.DSN)
-			} else {
-				var password string
-				password, err = authCallback(ctx)
+			if dsn != "" {
+				cfg, err = mysqldriver.ParseDSN(dsn)
 				if err != nil {
 					return err
 				}
-
+			} else {
 				cfg = &mysqldriver.Config{
 					User:                    dbUser,
-					Passwd:                  password,
 					Net:                     "tcp",
 					Addr:                    endpoint,
 					DBName:                  dbName,
@@ -267,21 +263,16 @@ func (d *Database) InitDB(ctx context.Context) error {
 					TLSConfig:               tlsConfigName,
 				}
 
-				err = cfg.Apply(mysqldriver.BeforeConnect(func(ctx context.Context, config *mysqldriver.Config) (err error) {
+				_ = cfg.Apply(mysqldriver.BeforeConnect(func(ctx context.Context, config *mysqldriver.Config) error {
 					config.Passwd, err = authCallback(ctx)
 					return err
 				}))
-			}
-
-			if err != nil {
-				return err
 			}
 
 			connector, err = mysqldriver.NewConnector(cfg)
 			if err != nil {
 				return err
 			}
-
 			d.kind = mysql
 		default:
 			return fmt.Errorf("unsupported AWS RDS driver: %s", drv)
@@ -297,37 +288,30 @@ func (d *Database) InitDB(ctx context.Context) error {
 	case d.config != nil && d.config.SQL != nil && (d.config.SQL.Driver == "sqlite3" || d.config.SQL.Driver == "sqlite"):
 		var dsn string
 		if d.config != nil && d.config.SQL != nil && d.config.SQL.DSN != "" {
-			dsn = d.config.SQL.DSN
+			dsn = os.ExpandEnv(d.config.SQL.DSN)
 		} else {
 			dsn = SQLiteMemoryOnlyDSN
 		}
-
 		d.kind = sqlite
-
-		var err error
 		d.db, err = sql.Open("sqlite", dsn)
 		if err != nil {
 			return err
 		}
-
 		if _, err := d.db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
 			return err
 		}
-	case d.config != nil && d.config.SQL != nil && (d.config.SQL.Driver == "postgres" || d.config.SQL.Driver == "pgx"):
-		dsn := d.config.SQL.DSN
-		d.kind = postgres
 
-		var err error
+	case d.config != nil && d.config.SQL != nil && (d.config.SQL.Driver == "postgres" || d.config.SQL.Driver == "pgx"):
+		dsn := os.ExpandEnv(d.config.SQL.DSN)
+		d.kind = postgres
 		d.db, err = sql.Open("pgx", dsn)
 		if err != nil {
 			return err
 		}
 
 	case d.config != nil && d.config.SQL != nil && d.config.SQL.Driver == "mysql":
-		dsn := d.config.SQL.DSN
+		dsn := os.ExpandEnv(d.config.SQL.DSN)
 		d.kind = mysql
-
-		var err error
 		d.db, err = sql.Open("mysql", dsn)
 		if err != nil {
 			return err
