@@ -21,14 +21,15 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
-	"github.com/open-policy-agent/opa-control-plane/internal/config"
-	"github.com/open-policy-agent/opa-control-plane/internal/logging"
-	"github.com/open-policy-agent/opa-control-plane/internal/service"
-	"github.com/open-policy-agent/opa-control-plane/internal/test/libraries"
-	"github.com/open-policy-agent/opa-control-plane/internal/util"
 	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
 	"gopkg.in/yaml.v3"
+
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
+	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+	"github.com/open-policy-agent/opa-control-plane/internal/service"
+	"github.com/open-policy-agent/opa-control-plane/internal/test/libraries"
 )
 
 // TestCases is a struct that holds a slice of test cases in a YAML file.
@@ -103,7 +104,7 @@ func TestService(t *testing.T) {
 			svc := service.New().
 				WithConfig(root).
 				WithPersistenceDir(persistenceDir).
-				WithBuiltinFS(util.NewEscapeFS(libraries.FS)).
+				WithBuiltinFS(ocp_fs.NewEscapeFS(libraries.FS)).
 				WithSingleShot(true).
 				WithMigrateDB(true).
 				WithLogger(logging.NewLogger(logging.Config{Level: logging.LevelDebug}))

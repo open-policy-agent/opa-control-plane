@@ -25,8 +25,8 @@ import (
 	"github.com/open-policy-agent/opa/v1/topdown"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
-	"github.com/open-policy-agent/opa-control-plane/internal/util"
-	"github.com/open-policy-agent/opa-control-plane/internal/util/prefixfs"
+	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
+	"github.com/open-policy-agent/opa-control-plane/internal/fs/mountfs"
 )
 
 type Source struct {
@@ -76,7 +76,7 @@ func (s *Source) AddDir(d Dir) error {
 	// the underlying OS filesystem via Wipe() or when applying the `Transforms`.
 	s.dirs = append(s.dirs, d)
 
-	f, err := util.NewFilterFS(os.DirFS(d.Path), d.IncludedFiles, d.ExcludedFiles)
+	f, err := ocp_fs.NewFilterFS(os.DirFS(d.Path), d.IncludedFiles, d.ExcludedFiles)
 	if err != nil {
 		return err
 	}
@@ -241,7 +241,7 @@ func (bs *buildSources) fs() map[string]fs.FS {
 }
 
 func (bs *buildSources) add(prefix string, fsys fs.FS) {
-	prefix = util.Escape(prefix)
+	prefix = ocp_fs.Escape(prefix)
 	_, ok := bs.fsys[prefix]
 	if !ok {
 		bs.fsys[prefix] = []fs.FS{}
@@ -272,7 +272,7 @@ func (b *Builder) Build(ctx context.Context) error {
 		var newRoots refSet
 
 		for _, fs_ := range next.src.fses {
-			fs0, err := util.NewFilterFS(fs_, nil, b.excluded)
+			fs0, err := ocp_fs.NewFilterFS(fs_, nil, b.excluded)
 			if err != nil {
 				return err
 			}
@@ -292,7 +292,7 @@ func (b *Builder) Build(ctx context.Context) error {
 				fs0 = merged_fs.MergeMultiple(data0, rego0)
 			}
 
-			files, err := util.FSContainsFiles(fs0)
+			files, err := ocp_fs.FSContainsFiles(fs0)
 			if err != nil {
 				return fmt.Errorf("source %s check files: %w", next.src.Name, err)
 			}
@@ -346,7 +346,7 @@ func (b *Builder) Build(ctx context.Context) error {
 		roots = append(roots, r)
 	}
 
-	fsBuild := prefixfs.PrefixFS(buildSources.fs())
+	fsBuild := mountfs.New(buildSources.fs())
 	paths := slices.Collect(maps.Keys(fsBuild))
 
 	c := compile.New().
@@ -543,12 +543,12 @@ func extractAndTransformRego(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
 		rendered[p] = m.String()
 	}
 
-	return util.MapFS(rendered), nil
+	return ocp_fs.MapFS(rendered), nil
 }
 
 func applyDataMounts(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
 	// for processing data files, exclude rego
-	fs1, err := util.NewFilterFS(fsys, nil, []string{"*.rego"})
+	fs1, err := ocp_fs.NewFilterFS(fsys, nil, []string{"*.rego"})
 	if err != nil {
 		return nil, err
 	}
@@ -585,14 +585,14 @@ func applyDataMounts(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
 				return nil, fmt.Errorf("mount %s:%s: %w", subPath, prefPath, err)
 			}
 
-			rest, err = util.NewFilterFS(fs1, nil, []string{subPath})
+			rest, err = ocp_fs.NewFilterFS(fs1, nil, []string{subPath})
 			if err != nil {
 				return nil, fmt.Errorf("filter %s:%s: %w", subPath, prefPath, err)
 			}
 		}
 
 		if prefPath != "." {
-			sub = prefixfs.PrefixFS(map[string]fs.FS{prefPath: sub})
+			sub = mountfs.New(map[string]fs.FS{prefPath: sub})
 		}
 		if rest != nil {
 			fs1 = merged_fs.NewMergedFS(sub, rest)
