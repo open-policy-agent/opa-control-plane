@@ -1,14 +1,14 @@
 env API_TOKEN=sesame
 env SQLITE_FILE=sqlite123.db
 env
-! exec $OPACTL run --config config.d/bundle.yml &opactl&
+! exec $OPACTL run --addr :8383 --config config.d/bundle.yml &opactl&
 
-exec curl --retry 5 --retry-all-errors http://127.0.0.1:8282/health
-exec curl -H 'Authorization: bearer sesame' http://127.0.0.1:8282/v1/bundles
+exec curl --retry 5 --retry-all-errors http://127.0.0.1:8383/health
+exec curl -H 'Authorization: bearer sesame' http://127.0.0.1:8383/v1/bundles
 
 kill opactl
 wait opactl
-exec ls sqlite123.db # sqlite this dir, this means the dsn env var got replaced
+exec ls sqlite123.db # sqlite file in this dir, this means the dsn env var got replaced
 
 -- config.d/bundle.yml --
 tokens:

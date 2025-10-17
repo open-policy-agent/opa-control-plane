@@ -476,6 +476,21 @@ func (d *Database) LoadConfig(ctx context.Context, bar *progress.Bar, principal 
 	}
 
 	for _, src := range sources {
+		for i, ds := range src.Datasources {
+			if ds.Config != nil {
+				replaced := make(map[string]any, len(ds.Config))
+				for k, v := range ds.Config {
+					switch v0 := v.(type) {
+					case string:
+						v = os.ExpandEnv(v0)
+					default:
+						v = v0
+					}
+					replaced[k] = v
+				}
+				src.Datasources[i].Config = replaced
+			}
+		}
 		if err := d.UpsertSource(ctx, principal, src); err != nil {
 			return fmt.Errorf("upsert source %q failed: %w", src.Name, err)
 		}
