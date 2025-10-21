@@ -454,7 +454,7 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 }
 
 // LoadConfig loads the configuration from the configuration file into the database.
-// Env vars for valures are getting resolved at this point. We don't store "${ADMIN_TOKEN}"
+// Env vars for values are getting resolved at this point. We don't store "${ADMIN_TOKEN}"
 // in the DB, but lookup the current field. Failing lookups are treated as errors!
 // Secrets are the exception: they are stored as-is, so if their value refers to an
 // env var, it's replaced on use.
