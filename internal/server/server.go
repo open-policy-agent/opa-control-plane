@@ -16,15 +16,18 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
+	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/chain"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/types"
 )
 
 type Server struct {
-	router  *http.ServeMux
-	db      *database.Database
-	readyFn func(context.Context) error
+	router    *http.ServeMux
+	db        *database.Database
+	readyFn   func(context.Context) error
+	apiPrefix string
+	log       *logging.Logger
 }
 
 func New() *Server {
@@ -36,12 +39,16 @@ func (s *Server) Init() *Server {
 		s.router = http.NewServeMux()
 	}
 
-	s.router.Handle("/metrics", metrics.Handler())
-	s.router.HandleFunc("GET /health", s.health)
+	apiPrefix := s.apiPrefix
+
+	s.log.Debugf("Api prefix set to '%s'", apiPrefix)
+
+	s.router.Handle(apiPrefix+"/metrics", metrics.Handler())
+	s.router.HandleFunc("GET "+apiPrefix+"/health", s.health)
 
 	base := chain.New(authenticationMiddleware(s.db))
 	setup := func(method, pattern string, hndl http.HandlerFunc) {
-		s.router.Handle(method+" "+pattern, append(base, metrics.InstrumentHandler(pattern)).ThenFunc(hndl))
+		s.router.Handle(method+" "+apiPrefix+pattern, append(base, metrics.InstrumentHandler(apiPrefix+pattern)).ThenFunc(hndl))
 	}
 
 	setup("GET", "/v1/sources/{source}/data/{path...}", s.v1SourcesDataGet)
@@ -90,6 +97,18 @@ func (s *Server) WithReadiness(fn func(context.Context) error) *Server {
 
 func (s *Server) ListenAndServe(addr string) error {
 	return http.ListenAndServe(addr, s.router)
+}
+
+func (s *Server) WithConfig(config *config.Root) *Server {
+	if config.Service != nil {
+		s.apiPrefix = config.Service.ApiPrefix
+	}
+	return s
+}
+
+func (s *Server) WithLogger(logger *logging.Logger) *Server {
+	s.log = logger
+	return s
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

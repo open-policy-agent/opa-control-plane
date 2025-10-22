@@ -1,0 +1,31 @@
+exec $OPACTL run --addr 127.0.0.1:8284 --config config.d/bundle.yml --data-dir tmp-api-prefix &opactl&
+! stderr .
+! stdout .
+
+exec curl --retry 5 --retry-all-errors http://127.0.0.1:8284/my/api/health
+stdout '\{\}'
+
+exec curl --retry 5 --retry-all-errors -H 'Authorization: Bearer admin-token' http://127.0.0.1:8284/my/api/v1/bundles
+stdout '\{\}'
+
+exec curl --retry 5 --retry-all-errors -H 'Authorization: Bearer admin-token' http://127.0.0.1:8284/my/api/v1/sources
+stdout '\{\}'
+
+exec curl --retry 5 --retry-all-errors -H 'Authorization: Bearer admin-token' http://127.0.0.1:8284/my/api/v1/stacks
+
+exec curl --retry 5 --retry-all-errors http://127.0.0.1:8284/my/api/metrics
+stdout '/my/api'
+
+! exec curl -f --retry 1 --retry-all-errors http://127.0.0.1:8284/health
+! exec curl -f --retry 1 --retry-all-errors -H 'Authorization: Bearer admin-token' http://127.0.0.1:8284/v1/bundles
+
+kill opactl
+
+-- config.d/bundle.yml --
+tokens:
+  admin:
+    api_key: admin-token
+    scopes:
+    - role: administrator
+service:
+  api_prefix: /my/api
