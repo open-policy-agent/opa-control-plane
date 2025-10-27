@@ -251,37 +251,8 @@ type Labels map[string]string
 type Requirement struct {
 	Source *string        `json:"source,omitempty" yaml:"source,omitempty"`
 	Git    GitRequirement `json:"git,omitzero" yaml:"git,omitempty"`
-	Mounts Mounts         `json:"mounts,omitempty" yaml:"mounts,omitempty"`
-}
-
-type Mounts []Mount
-
-type Mount struct {
-	Sub    string `json:"sub" yaml:"sub"`
-	Prefix string `json:"prefix" yaml:"prefix"`
-}
-
-func (a Mount) Equal(b Mount) bool {
-	return a.Sub == b.Sub && a.Prefix == b.Prefix
-}
-
-func (a Mount) Compare(b Mount) int {
-	return cmp.Or(
-		cmp.Compare(a.Sub, b.Sub),
-		cmp.Compare(a.Prefix, b.Prefix),
-	)
-}
-
-func (r Mounts) Equal(s Mounts) bool {
-	return r.Compare(s) == 0
-}
-
-func (r Mounts) Compare(s Mounts) int {
-	r0 := slices.Clone(r)
-	s0 := slices.Clone(s)
-	slices.SortFunc(r0, Mount.Compare)
-	slices.SortFunc(s0, Mount.Compare)
-	return slices.CompareFunc(r0, s0, Mount.Compare)
+	Path   string         `json:"path,omitzero" yaml:"path"`
+	Prefix string         `json:"prefix,omitzero" yaml:"prefix"`
 }
 
 type GitRequirement struct {
@@ -291,7 +262,8 @@ type GitRequirement struct {
 func (a Requirement) Equal(b Requirement) bool {
 	return stringPtrEqual(a.Source, b.Source) &&
 		stringPtrEqual(a.Git.Commit, b.Git.Commit) &&
-		slices.EqualFunc(a.Mounts, b.Mounts, Mount.Equal)
+		a.Path == b.Path &&
+		a.Prefix == b.Prefix
 }
 
 type Requirements []Requirement

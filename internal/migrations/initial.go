@@ -18,19 +18,23 @@ func Migrations(dialect string) (fs.FS, error) {
 }
 
 func addMounts(dialect string) fs.FS {
-	var stmtBundles, stmtStacks string
+	var stmtBundles, stmtSources, stmtStacks string
 	switch dialect {
 	case "postgresql", "sqlite":
-		stmtBundles = `ALTER TABLE bundles_requirements ADD COLUMN mounts TEXT`
-		stmtStacks = `ALTER TABLE stacks_requirements ADD COLUMN mounts TEXT`
+		// NB(sr): sqlite doesn't support adding multiple columns in one statement
+		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix TEXT; ALTER TABLE bundles_requirements ADD COLUMN path TEXT`
+		stmtSources = `ALTER TABLE sources_requirements ADD prefix TEXT; ALTER TABLE sources_requirements ADD COLUMN path TEXT`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix TEXT; ALTER TABLE stacks_requirements ADD COLUMN path TEXT`
 	case "mysql":
-		stmtBundles = `ALTER TABLE bundles_requirements ADD COLUMN mounts VARCHAR(255)`
-		stmtStacks = `ALTER TABLE stacks_requirements ADD COLUMN mounts VARCHAR(255)`
+		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
+		stmtSources = `ALTER TABLE sources_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
 	}
 
 	return ocp_fs.MapFS(map[string]string{
 		"014_add_mounts_bundles.up.sql": stmtBundles,
-		"015_add_mounts_stacks.up.sql":  stmtStacks,
+		"015_add_mounts_sources.up.sql": stmtSources,
+		"016_add_mounts_stacks.up.sql":  stmtStacks,
 	})
 }
 

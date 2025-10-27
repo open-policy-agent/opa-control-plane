@@ -202,12 +202,16 @@ func (err *PackageConflictErr) Error() string {
 
 type mntSrc struct {
 	src    *Source
-	mounts config.Mounts
+	mounts []mount
+}
+
+type mount struct {
+	path, prefix string
 }
 
 func (m mntSrc) Equal(other mntSrc) bool {
 	return m.src.Equal(other.src) &&
-		m.mounts.Equal(other.mounts)
+		slices.Equal(m.mounts, other.mounts)
 }
 
 type buildSources struct {
@@ -284,6 +288,7 @@ func (b *Builder) Build(ctx context.Context) error {
 				if err != nil {
 					return fmt.Errorf("source %s rego: %w", next.src.Name, err)
 				}
+				ocp_fs.Walk(rego0)
 
 				data0, err := applyDataMounts(fs0, next.mounts)
 				if err != nil {
@@ -330,8 +335,15 @@ func (b *Builder) Build(ctx context.Context) error {
 				}
 
 				// add mounts from requirement
-				mounts := append(r.Mounts, next.mounts...)
-				this := mntSrc{src: src, mounts: mounts}
+				this := mntSrc{src: src}
+				if r.Path != "" || r.Prefix != "" {
+					this.mounts = append(this.mounts, mount{path: r.Path, prefix: r.Prefix})
+				}
+				for _, nm := range next.mounts {
+					if !slices.Contains(this.mounts, nm) {
+						this.mounts = append(this.mounts, nm)
+					}
+				}
 				if !slices.ContainsFunc(alreadyProcessed, this.Equal) {
 					toProcess = append(toProcess, this)               // queue it
 					alreadyProcessed = append(alreadyProcessed, this) // record "dealt with this"
@@ -507,7 +519,7 @@ func toRefString(d string) string {
 
 var emptyFS = merged_fs.MergeMultiple()
 
-func extractAndTransformRego(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
+func extractAndTransformRego(fsys fs.FS, mnts []mount) (fs.FS, error) {
 	modules := make(map[string]*ast.Module)
 	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry) error {
 		bs, err := fs.ReadFile(fsys, path)
@@ -524,9 +536,14 @@ func extractAndTransformRego(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
 		return nil, err
 	}
 
-	for _, mnt := range mounts {
-		from, to := toRefString(mnt.Sub), toRefString(mnt.Prefix)
+	for _, mnt := range mnts {
+		from, to := toRefString(mnt.path), toRefString(mnt.prefix)
 		replacements := map[string]string{from: to}
+
+		// Here, we do the "path" selection: discard anything not in the selected subtree
+		maps.DeleteFunc(modules, func(k string, mod *ast.Module) bool {
+			return !mod.Package.Path.HasPrefix(ast.MustParseRef(from))
+		})
 
 		res, err := refactor.New().Move(refactor.MoveQuery{
 			Modules:       modules,
@@ -546,7 +563,7 @@ func extractAndTransformRego(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
 	return ocp_fs.MapFS(rendered), nil
 }
 
-func applyDataMounts(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
+func applyDataMounts(fsys fs.FS, mnts []mount) (fs.FS, error) {
 	// for processing data files, exclude rego
 	fs1, err := ocp_fs.NewFilterFS(fsys, nil, []string{"*.rego"})
 	if err != nil {
@@ -554,16 +571,16 @@ func applyDataMounts(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
 	}
 
 	// With the data files of this source, for every mount, we'll sub and bind;
-	// carrying along the rest of the content (if any).
+	// discarding the rest of the content (if any).
 	//
 	// In the next iteration (for the next mount), we'll keep doing that, and
 	// thereby subsequently deal with all the moving we need.
-	for _, mnt := range mounts {
-		subPath, err := toPath(mnt.Sub)
+	for _, mnt := range mnts {
+		subPath, err := toPath(mnt.path)
 		if err != nil {
 			return nil, err
 		}
-		prefPath, err := toPath(mnt.Prefix)
+		prefPath, err := toPath(mnt.prefix)
 		if err != nil {
 			return nil, err
 		}
@@ -576,7 +593,7 @@ func applyDataMounts(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
 		}
 
 		// We split into `sub` and `rest`, and bind them to `prefix` and `.` accordingly.
-		var sub, rest fs.FS
+		var sub fs.FS
 		if subPath == "." {
 			sub = fs1 // no `rest`, but could have prefPath (handled below)
 		} else {
@@ -584,21 +601,12 @@ func applyDataMounts(fsys fs.FS, mounts config.Mounts) (fs.FS, error) {
 			if err != nil {
 				return nil, fmt.Errorf("mount %s:%s: %w", subPath, prefPath, err)
 			}
-
-			rest, err = ocp_fs.NewFilterFS(fs1, nil, []string{subPath})
-			if err != nil {
-				return nil, fmt.Errorf("filter %s:%s: %w", subPath, prefPath, err)
-			}
 		}
 
 		if prefPath != "." {
 			sub = mountfs.New(map[string]fs.FS{prefPath: sub})
 		}
-		if rest != nil {
-			fs1 = merged_fs.NewMergedFS(sub, rest)
-		} else {
-			fs1 = sub
-		}
+		fs1 = sub
 	}
 	return fs1, nil
 }
