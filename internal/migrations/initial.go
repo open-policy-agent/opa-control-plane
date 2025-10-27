@@ -20,11 +20,14 @@ func Migrations(dialect string) (fs.FS, error) {
 func addMounts(dialect string) fs.FS {
 	var stmtBundles, stmtSources, stmtStacks string
 	switch dialect {
-	case "postgresql", "sqlite":
-		// NB(sr): sqlite doesn't support adding multiple columns in one statement
-		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix TEXT; ALTER TABLE bundles_requirements ADD COLUMN path TEXT`
-		stmtSources = `ALTER TABLE sources_requirements ADD prefix TEXT; ALTER TABLE sources_requirements ADD COLUMN path TEXT`
-		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix TEXT; ALTER TABLE stacks_requirements ADD COLUMN path TEXT`
+	case "sqlite": // NB(sr): sqlite doesn't support adding multiple columns in one statement
+		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix TEXT; ALTER TABLE bundles_requirements ADD path TEXT`
+		stmtSources = `ALTER TABLE sources_requirements ADD prefix TEXT; ALTER TABLE sources_requirements ADD path TEXT`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix TEXT; ALTER TABLE stacks_requirements ADD path TEXT`
+	case "postgresql":
+		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix TEXT, ADD path TEXT`
+		stmtSources = `ALTER TABLE sources_requirements ADD prefix TEXT, ADD path TEXT`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix TEXT, ADD path TEXT`
 	case "mysql":
 		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
 		stmtSources = `ALTER TABLE sources_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`

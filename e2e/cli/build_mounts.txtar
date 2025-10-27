@@ -17,12 +17,14 @@ cmp global-data/rules.rego exp/global-data/rules.rego
 package rules
 import rego.v1
 result if data.foo.common != "uncommon"
--- files/sources/hello-world/prefix/data.json --
+-- files/sources/hello-world/more/data.json --
 { "some": "thing" }
 -- files/sources/hello-world/rules/rules.rego --
-package foo.bar.rules
+package prefix.foo.bar.rules
 import rego.v1
 result if data.prefix.common != "uncommon"
+-- other/data/other.json --
+{ "cdef": "ghji" }
 -- config.d/bundle.yml --
 bundles:
   hello-world:
@@ -31,37 +33,40 @@ bundles:
         path: bundles/hello-world/bundle.tar.gz
     requirements:
     - source: dir-paths
-      mounts:
-      - sub: data.prefix
-        prefix: data.new.prefix1
-      - sub: data.foo
-        prefix: data.fox
+      path: data.prefix
+      prefix: data.new.prefix1
     - source: global-data
-      mounts:
-      - sub: data # noop
-        prefix: data.nested.new
+      prefix: data.nested.new
 sources:
   dir-paths:
     directory: files/sources/hello-world
     paths:
-    - prefix/data.json
+    - more/data.json
     - rules/rules.rego
+    requirements:
+    - source: other-paths
+      # path: data
+      prefix: data.prefix.other
   global-data:
     directory: data/
     paths:
     - rules.rego
     - common.json
+  other-paths:
+    directory: other
+    paths:
+    - data/other.json
 -- exp/tarball --
 /data.json
 /dir-paths/rules/rules.rego
 /global-data/rules.rego
 /.manifest
 -- exp/data.json --
-{"nested":{"new":{"common":true}},"new":{"prefix1":{"some":"thing"}}}
+{"nested":{"new":{"common":true}},"new":{"prefix1":{"other":{"data":{"cdef":"ghji"}}}}}
 -- exp/.manifest --
-{"revision":"","roots":["fox/bar/rules","new/prefix1","nested/new"],"rego_version":0}
+{"revision":"","roots":["new/prefix1/foo/bar/rules","nested/new","new/prefix1/other/data"],"rego_version":0}
 -- exp/dir-paths/rules.rego --
-package fox.bar.rules
+package new.prefix1.foo.bar.rules
 
 import rego.v1
 

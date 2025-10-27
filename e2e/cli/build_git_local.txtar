@@ -23,7 +23,7 @@ cmp git-local/nested/policies/authz.rego exp/policy.rego
 cmp git-local1/other/policies/authz.rego exp/policy2.rego
 
 -- repo/nested/policies/authz.rego --
-package nested.authz
+package deeply.nested.authz
 import rego.v1
 allow if {
   some user in data.users
@@ -48,11 +48,8 @@ bundles:
         path: bundles/a.tar.gz
     requirements:
     - source: git-local
-      mounts:
-      - sub: data.deeply.nested
-        prefix: data
-      - sub: data.nested
-        prefix: data.new
+      path: data.deeply.nested
+      prefix: data
 sources:
   git-local:
     git:
@@ -67,9 +64,9 @@ sources:
 -- exp/data.json --
 {"users":[{"id":"alice"},{"id":"bob"}]}
 -- exp/.manifest --
-{"revision":"","roots":["new/authz","users"],"rego_version":0}
+{"revision":"","roots":["authz","users"],"rego_version":0}
 -- exp/policy.rego --
-package new.authz
+package authz
 
 import rego.v1
 
