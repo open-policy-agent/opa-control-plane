@@ -923,7 +923,6 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 				src.Git.Credentials = s.Ref()
 			}
 
-			// TODO(sr): this is wrong, it won't return more than one requirement
 			if row.requirementName != nil {
 				src.Requirements = append(src.Requirements, config.Requirement{
 					Source: row.requirementName,
@@ -1400,7 +1399,6 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 		}
 
 		// Upsert data sources
-
 		for _, datasource := range source.Datasources {
 			bs, err := json.Marshal(datasource.Config)
 			if err != nil {
@@ -1419,7 +1417,6 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 		}
 
 		// Upsert files
-
 		files, err := source.Files()
 		if err != nil {
 			return err
@@ -1432,11 +1429,13 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 		}
 
 		// Upsert requirements
-
 		var sources []string
 		for _, r := range source.Requirements {
 			if r.Source != nil {
-				if err := d.upsert(ctx, tx, "sources_requirements", []string{"source_name", "requirement_name", "gitcommit"}, []string{"source_name", "requirement_name"}, source.Name, r.Source, r.Git.Commit); err != nil {
+				if err := d.upsert(ctx, tx, "sources_requirements", []string{"source_name", "requirement_name", "gitcommit", "path", "prefix"},
+					[]string{"source_name", "requirement_name"},
+					source.Name, r.Source, r.Git.Commit, r.Path, r.Prefix,
+				); err != nil {
 					return err
 				}
 				sources = append(sources, *r.Source)

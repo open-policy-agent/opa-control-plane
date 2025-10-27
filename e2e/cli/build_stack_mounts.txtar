@@ -34,8 +34,7 @@ bundles:
         path: bundles/hello-world/bundle.tar.gz
     requirements:
     - source: global-data
-      mounts:
-      - prefix: data.bundle.req
+      prefix: data.bundle.req
 stacks:
   stack-with-mount:
     selector:
@@ -44,8 +43,8 @@ stacks:
     requirements:
     - source: global-data
       mounts:
-      - sub: data.common
-        prefix: data.stack.req.new
+      path: data.common
+      prefix: data.stack.req.new
 sources:
   global-data:
     directory: data/

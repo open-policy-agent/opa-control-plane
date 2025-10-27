@@ -18,9 +18,8 @@ bundles:
         path: bundles/hello-world/bundle.tar.gz
     requirements:
     - source: builtinsrc
-      mounts:
-      - sub: data.transform
-        prefix: data.imported
+      path: data.transform
+      prefix: data.imported
 sources:
   builtinsrc:
     builtin: entitlements-v1/transform

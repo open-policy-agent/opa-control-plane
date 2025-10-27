@@ -288,7 +288,6 @@ func (b *Builder) Build(ctx context.Context) error {
 				if err != nil {
 					return fmt.Errorf("source %s rego: %w", next.src.Name, err)
 				}
-				ocp_fs.Walk(rego0)
 
 				data0, err := applyDataMounts(fs0, next.mounts)
 				if err != nil {
@@ -339,11 +338,8 @@ func (b *Builder) Build(ctx context.Context) error {
 				if r.Path != "" || r.Prefix != "" {
 					this.mounts = append(this.mounts, mount{path: r.Path, prefix: r.Prefix})
 				}
-				for _, nm := range next.mounts {
-					if !slices.Contains(this.mounts, nm) {
-						this.mounts = append(this.mounts, nm)
-					}
-				}
+				this.mounts = append(this.mounts, next.mounts...)
+
 				if !slices.ContainsFunc(alreadyProcessed, this.Equal) {
 					toProcess = append(toProcess, this)               // queue it
 					alreadyProcessed = append(alreadyProcessed, this) // record "dealt with this"
@@ -589,6 +585,7 @@ func applyDataMounts(fsys fs.FS, mnts []mount) (fs.FS, error) {
 		_, err = fs1.Open(subPath)
 		exists := !errors.Is(err, fs.ErrNotExist)
 		if !exists {
+			fs1 = emptyFS
 			continue // next mount
 		}
 
