@@ -338,3 +338,74 @@ func TestSetSQLitePersistentByDefault(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceApiPrefixValidation(t *testing.T) {
+	tests := []struct {
+		note      string
+		config    string
+		shouldErr bool
+		errMsg    string
+	}{
+		{
+			note: "valid api_prefix with leading slash",
+			config: `{
+		service: {
+			api_prefix: "/api/v1"
+		}
+	}`,
+			shouldErr: false,
+		},
+		{
+			note: "valid api_prefix with just slash",
+			config: `{
+		service: {
+			api_prefix: "/"
+		}
+	}`,
+			shouldErr: false,
+		},
+		{
+			note: "invalid api_prefix without leading slash",
+			config: `{
+		service: {
+			api_prefix: "api/v1"
+		}
+	}`,
+			shouldErr: true,
+			errMsg:    "does not match pattern",
+		},
+		{
+			note: "valid when api_prefix omitted completely",
+			config: `{
+		service: {}
+	}`,
+			shouldErr: false,
+		},
+		{
+			note: "invalid api_prefix with trailing slash",
+			config: `{
+		service: {
+			api_prefix: "/api/v1/"
+		}
+	}`,
+			shouldErr: true,
+			errMsg:    "does not match pattern",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.note, func(t *testing.T) {
+			_, err := config.Parse(bytes.NewReader([]byte(tt.config)))
+			if tt.shouldErr {
+				if err == nil {
+					t.Fatalf("expected validation error but got none")
+				}
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Fatalf("expected error containing %q but got: %v", tt.errMsg, err)
+				}
+			} else if err != nil {
+				t.Fatalf("expected no error but got: %v", err)
+			}
+		})
+	}
+}

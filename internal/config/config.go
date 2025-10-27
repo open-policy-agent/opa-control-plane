@@ -40,6 +40,7 @@ type Root struct {
 	Secrets  map[string]*Secret `json:"secrets,omitempty" yaml:"secrets,omitempty"` // Schema validation overrides Secret to object type.
 	Tokens   map[string]*Token  `json:"tokens,omitempty" yaml:"tokens,omitempty"`
 	Database *Database          `json:"database,omitempty" yaml:"database,omitempty"`
+	Service  *Service           `json:"service,omitempty" yaml:"service,omitempty"`
 }
 
 // SetSQLitePersistentByDefault sets the database configuration to use a SQLite
@@ -984,6 +985,12 @@ type AmazonRDS struct {
 	// root CA certificates are used. For RDS, you can download the appropriate bundle for your region
 	// from here: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html#UsingWithRDS.SSL.CertificatesAllRegions
 	RootCertificates string `json:"root_certificates,omitempty" yaml:"root_certificates,omitempty"`
+}
+
+type Service struct {
+	// ApiPrefix prefixes all endpoints (including health and metrics) with its value. It is important to start with `/` and not end with `/`.
+	// For example `/my/path` will make health endpoint be accessible under `/my/path/health`
+	ApiPrefix string `json:"api_prefix,omitempty" yaml:"api_prefix,omitempty" pattern:"^/([^/].*[^/])?$"`
 }
 
 func setEqual[K comparable, V any](a, b []V, key func(V) K, eq func(a, b V) bool) bool {
