@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/open-policy-agent/opa/bundle"  // nolint:staticcheck
 	"github.com/open-policy-agent/opa/compile" // nolint:staticcheck
 	"github.com/open-policy-agent/opa/rego"    // nolint:staticcheck
+	"github.com/open-policy-agent/opa/v1/topdown"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/util"
@@ -76,34 +78,38 @@ func (s *Source) AddFS(f fs.FS) {
 
 // Transform applies Rego policies to data, replacing the original content with the
 // transformed content.
-func (s *Source) Transform(ctx context.Context) error {
+func (s *Source) Transform(ctx context.Context) (*bytes.Buffer, error) {
 	paths := make([]string, len(s.dirs))
 	for i, dir := range s.dirs {
 		paths[i] = dir.Path
 	}
+	buf := bytes.Buffer{}
 
 	for _, t := range s.Transforms {
 		content, err := os.ReadFile(t.Path)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		var input any
 		if err := json.Unmarshal(content, &input); err != nil {
-			return fmt.Errorf("failed to unmarshal content: %w", err)
+			return nil, fmt.Errorf("failed to unmarshal content: %w", err)
 		}
 
 		q, err := rego.New(
 			rego.Query(t.Query),
 			rego.Load(paths, nil),
+			rego.Capabilities(offlineCaps),
+			rego.EnablePrintStatements(true),
+			rego.PrintHook(topdown.NewPrintHook(&buf)),
 		).PrepareForEval(ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		rs, err := q.Eval(ctx, rego.EvalInput(input))
 		if err != nil {
-			return err
+			return &buf, err
 		}
 
 		value := make([]any, 0)
@@ -121,15 +127,15 @@ func (s *Source) Transform(ctx context.Context) error {
 			content, err = json.Marshal(value)
 		}
 		if err != nil {
-			return err
+			return &buf, err
 		}
 
 		if err := os.WriteFile(t.Path, content, 0o644); err != nil {
-			return err
+			return &buf, err
 		}
 	}
 
-	return nil
+	return &buf, nil
 }
 
 type Dir struct {
@@ -387,4 +393,12 @@ func removeDir(path string) error {
 	}
 
 	return nil
+}
+
+var offlineCaps = offlineCapabilities()
+
+func offlineCapabilities() *ast.Capabilities {
+	caps := ast.CapabilitiesForThisVersion()
+	caps.AllowNet = []string{} // allow _no_ network access
+	return caps
 }
