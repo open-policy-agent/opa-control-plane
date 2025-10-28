@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
 	"maps"
 	"os"
 	"path/filepath"
@@ -86,11 +87,6 @@ func (opts ListOptions) cursor() int64 {
 func encodeCursor(id int64) string {
 	cursor := strconv.FormatInt(id, 10)
 	return base64.URLEncoding.EncodeToString([]byte(cursor))
-}
-
-type Data struct {
-	Path string
-	Data []byte
 }
 
 func (d *Database) WithConfig(config *config.Database) *Database {
@@ -1241,41 +1237,18 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 	})
 }
 
-func (d *Database) QuerySourceData(ctx context.Context, sourceName string) (*DataCursor, error) {
-	// nolint:perfsprint
-	rows, err := d.db.QueryContext(ctx, fmt.Sprintf(`SELECT
-	path,
-	data
-FROM
-	sources_data
-WHERE
-	source_name = %s`, d.arg(0)), sourceName)
-	if err != nil {
-		return nil, err
+type Data struct {
+	Path string `sql:"path"`
+	Data []byte `sql:"data"`
+}
+
+func (d *Database) QuerySourceData(sourceName string) func(context.Context) iter.Seq2[Data, error] {
+	return func(ctx context.Context) iter.Seq2[Data, error] {
+		return sqlrange.QueryContext[Data](ctx,
+			d.db,
+			`SELECT path, data FROM sources_data WHERE source_name = `+d.arg(0),
+			sourceName)
 	}
-	return &DataCursor{rows: rows}, nil
-}
-
-type DataCursor struct {
-	rows *sql.Rows
-}
-
-func (c *DataCursor) Next() bool {
-	return c.rows.Next()
-}
-
-func (c *DataCursor) Close() error {
-	return c.rows.Close()
-}
-
-func (c *DataCursor) Value() (Data, error) {
-	var path string
-	var data []byte
-	if err := c.rows.Scan(&path, &data); err != nil {
-		return Data{}, err
-	}
-
-	return Data{Path: path, Data: data}, nil
 }
 
 func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *config.Bundle) error {
