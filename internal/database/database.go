@@ -18,17 +18,19 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/achille-roussel/sqlrange"
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib" // database/sql compatible driver for pgx
+	_ "modernc.org/sqlite"
+
 	"github.com/open-policy-agent/opa-control-plane/internal/authz"
 	"github.com/open-policy-agent/opa-control-plane/internal/aws"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
-	_ "modernc.org/sqlite"
 )
 
 const (
@@ -1673,15 +1675,15 @@ func (d *Database) args(n int) []string {
 	return args
 }
 
-func tx1(ctx context.Context, db *Database, f func(tx *sql.Tx) error) error {
+func tx1(ctx context.Context, db *Database, f func(*sql.Tx) error) error {
 	tx, err := db.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	defer func(tx *sql.Tx) {
+	defer func() {
 		_ = tx.Rollback()
-	}(tx)
+	}()
 
 	if err := f(tx); err != nil {
 		return err
@@ -1690,7 +1692,7 @@ func tx1(ctx context.Context, db *Database, f func(tx *sql.Tx) error) error {
 	return tx.Commit()
 }
 
-func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(tx *sql.Tx) (T, U, error)) (T, U, error) {
+func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(*sql.Tx) (T, U, error)) (T, U, error) {
 	tx, err := db.db.BeginTx(ctx, nil)
 	if err != nil {
 		var t T
@@ -1698,9 +1700,9 @@ func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(tx *s
 		return t, u, err
 	}
 
-	defer func(tx *sql.Tx) {
+	defer func() {
 		_ = tx.Rollback()
-	}(tx)
+	}()
 
 	result, result2, err := f(tx)
 	if err != nil {
