@@ -2,7 +2,7 @@ module github.com/open-policy-agent/opa-control-plane
 
 go 1.25.2
 
-require github.com/spf13/cobra v1.9.1
+require github.com/spf13/cobra v1.10.1
 
 require (
 	cel.dev/expr v0.24.0 // indirect
