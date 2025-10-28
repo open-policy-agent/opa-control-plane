@@ -2,6 +2,7 @@ package sqlsync
 
 import (
 	"context"
+	"iter"
 	"os"
 	"path/filepath"
 
@@ -13,12 +14,12 @@ import (
 // dumps files stored in SQL database into a directory used by the builder package to construct a bundle.
 type SQLDataSynchronizer struct {
 	path  string
-	query func(context.Context, string) (*database.DataCursor, error)
+	query func(context.Context) iter.Seq2[database.Data, error]
 	id    string
 }
 
 func NewSQLSourceDataSynchronizer(path string, db *database.Database, id string) *SQLDataSynchronizer {
-	return &SQLDataSynchronizer{path: path, query: db.QuerySourceData, id: id}
+	return &SQLDataSynchronizer{path: path, query: db.QuerySourceData(id), id: id}
 }
 
 func (s *SQLDataSynchronizer) Execute(ctx context.Context) error {
@@ -27,13 +28,7 @@ func (s *SQLDataSynchronizer) Execute(ctx context.Context) error {
 		return err
 	}
 
-	cursor, err := s.query(ctx, s.id)
-	if err != nil {
-		return err
-	}
-	defer cursor.Close()
-	for cursor.Next() {
-		data, err := cursor.Value()
+	for data, err := range s.query(ctx) {
 		if err != nil {
 			return err
 		}
@@ -50,6 +45,4 @@ func (s *SQLDataSynchronizer) Execute(ctx context.Context) error {
 	return nil
 }
 
-func (*SQLDataSynchronizer) Close(_ context.Context) {
-	// No resources to close.
-}
+func (*SQLDataSynchronizer) Close(context.Context) {} // No resources to close.
