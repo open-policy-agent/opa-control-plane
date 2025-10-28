@@ -120,7 +120,11 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	}
 
 	for _, src := range w.sources {
-		if err := src.Transform(ctx); err != nil {
+		buf, err := src.Transform(ctx)
+		if buf != nil && buf.Len() > 0 {
+			w.log.Debugf("transform %q: %s", src.Name, buf.String())
+		}
+		if err != nil {
 			w.log.Warnf("failed to evaluate source %q for bundle %q: %v", src.Name, w.bundleConfig.Name, err)
 			return w.report(ctx, BuildStateTransformFailed, startTime, err)
 		}
