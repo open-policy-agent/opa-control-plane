@@ -265,9 +265,9 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
+func (d *Duration) UnmarshalYAML(bs []byte) error {
 	var s string
-	if err := node.Decode(&s); err != nil {
+	if err := yaml.Unmarshal(bs, &s); err != nil {
 		return err
 	}
 	val, err := time.ParseDuration(s)
@@ -277,6 +277,7 @@ func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 
 func (d Duration) String() string {
 	return time.Duration(d).String()
+}
 
 type Labels map[string]string
 
@@ -819,7 +820,7 @@ func ParseFile(filename string) (root *Root, err error) {
 	return Parse(bs)
 }
 
-func Parse(bs []byte) (root *Root, err error) {
+func Parse(bs []byte) (*Root, error) {
 	if err := Validate(bs); err != nil {
 		return nil, err
 	}
@@ -1053,8 +1054,8 @@ type AmazonRDS struct {
 type Service struct {
 	// ApiPrefix prefixes all endpoints (including health and metrics) with its value. It is important to start with `/` and not end with `/`.
 	// For example `/my/path` will make health endpoint be accessible under `/my/path/health`
-	ApiPrefix string `json:"api_prefix,omitempty" pattern:"^/([^/].*[^/])?$"`
-	noAdditionalProps
+	ApiPrefix string   `json:"api_prefix,omitempty" pattern:"^/([^/].*[^/])?$"`
+	_         struct{} `additionalProperties:"false"`
 }
 
 func setEqual[K comparable, V any](a, b []V, key func(V) K, eq func(a, b V) bool) bool {

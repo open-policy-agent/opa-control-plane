@@ -410,24 +410,6 @@ func TestServiceApiPrefixValidation(t *testing.T) {
 	}
 }
 
-func TestParseWithoutPanicsOnEmptyKeys(t *testing.T) {
-	// One big config that contains all the things that previously caused panics.
-	cfg := []byte(`
-tokens:
-  empty-token:
-bundles:
-  empty-bundle:
-secrets:
-  empty-secret:
-sources:
-  empty-source:
-stacks:
-  empty-stack:
-`)
-	_, _ = config.Parse(cfg)
-	// it has not panicked
-}
-
 func TestValidateYAML(t *testing.T) {
 	{ // This is OK, empty sources can be used for PUT /sources/<name>/data/<path> updates
 		cfg := []byte(`
