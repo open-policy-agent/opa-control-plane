@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goccy/go-yaml"
 	"github.com/google/go-cmp/cmp"
+
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
-	"gopkg.in/yaml.v3"
 )
 
 func TestParseSecretResolve(t *testing.T) {

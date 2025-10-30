@@ -25,6 +25,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
+
 	"golang.org/x/crypto/ssh"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"

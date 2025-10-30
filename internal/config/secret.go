@@ -9,7 +9,7 @@ import (
 	"reflect"
 
 	"github.com/go-viper/mapstructure/v2"
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 )
 
 var wellknownFingerprints = []string{
@@ -80,11 +80,11 @@ func (s *Secret) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func (s *Secret) UnmarshalYAML(n *yaml.Node) error {
-	if n.Kind == yaml.MappingNode {
-		return n.Decode(&s.Value)
+func (s *Secret) UnmarshalYAML(bs []byte) error {
+	if err := yaml.Unmarshal(bs, &s.Value); err != nil {
+		return fmt.Errorf("expected mapping node: %w", err)
 	}
-	return fmt.Errorf("expected mapping node, got %v", n.Kind)
+	return nil
 }
 
 func (s *Secret) UnmarshalJSON(bs []byte) error {

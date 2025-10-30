@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/gobwas/glob"
+	"github.com/goccy/go-yaml"
 	"github.com/swaggest/jsonschema-go"
-	"gopkg.in/yaml.v3"
 )
 
 // Internal configuration data structures for OPA Control Plane.
@@ -77,11 +77,11 @@ func (r *Root) SetSQLitePersistentByDefault(persistenceDir string) bool {
 // where keys are the resource names. It is also used to inject the secret store
 // into each secret reference so that internal callers can resolve secret values
 // as needed.
-func (r *Root) UnmarshalYAML(node *yaml.Node) error {
+func (r *Root) UnmarshalYAML(bs []byte) error {
 	type rawRoot Root // avoid recursive calls to UnmarshalYAML by type aliasing
 	var raw rawRoot
 
-	if err := node.Decode(&raw); err != nil {
+	if err := yaml.Unmarshal(bs, &raw); err != nil {
 		return fmt.Errorf("failed to decode Root: %w", err)
 	}
 
@@ -356,9 +356,9 @@ func (f Files) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func (f *Files) UnmarshalYAML(node *yaml.Node) error {
+func (f *Files) UnmarshalYAML(bs []byte) error {
 	var m map[string]string
-	if err := node.Decode(&m); err != nil {
+	if err := yaml.Unmarshal(bs, &m); err != nil {
 		return err
 	}
 
@@ -400,11 +400,11 @@ func (s *Bundle) UnmarshalJSON(bs []byte) error {
 	return s.validate()
 }
 
-func (s *Bundle) UnmarshalYAML(node *yaml.Node) error {
+func (s *Bundle) UnmarshalYAML(bs []byte) error {
 	type rawBundle Bundle // avoid recursive calls to UnmarshalJSON by type aliasing
 	var raw rawBundle
 
-	if err := node.Decode(&raw); err != nil {
+	if err := yaml.Unmarshal(bs, &raw); err != nil {
 		return fmt.Errorf("failed to decode bundle: %w", err)
 	}
 
@@ -609,9 +609,9 @@ func (s Selector) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x)
 }
 
-func (s *Selector) UnmarshalYAML(node *yaml.Node) error {
+func (s *Selector) UnmarshalYAML(bs []byte) error {
 	raw := make(map[string][]string)
-	if err := node.Decode(&raw); err != nil {
+	if err := yaml.Unmarshal(bs, &raw); err != nil {
 		return err
 	}
 
@@ -749,11 +749,11 @@ func (s *SecretRef) MarshalJSON() ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func (s *SecretRef) UnmarshalYAML(n *yaml.Node) error {
-	if n.Kind == yaml.ScalarNode {
-		return n.Decode(&s.Name)
+func (s *SecretRef) UnmarshalYAML(bs []byte) error {
+	if err := yaml.Unmarshal(bs, &s.Name); err != nil {
+		return fmt.Errorf("expected scalar node: %w", err)
 	}
-	return fmt.Errorf("expected scalar node, got %v", n.Kind)
+	return nil
 }
 
 func (s *SecretRef) UnmarshalJSON(bs []byte) error {
@@ -825,11 +825,12 @@ func Parse(bs []byte) (root *Root, err error) {
 		return nil, err
 	}
 
+	var root Root
 	if err := yaml.Unmarshal(bs, &root); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	return root, nil
+	return &root, nil
 }
 
 type ObjectStorage struct {
