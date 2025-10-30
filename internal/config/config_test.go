@@ -14,7 +14,7 @@ import (
 
 func TestParseSecretResolve(t *testing.T) {
 
-	result, err := config.Parse(bytes.NewReader([]byte(`{
+	result, err := config.Parse([]byte(`{
 		sources: {
 			foo: {
 				git: {
@@ -30,7 +30,7 @@ func TestParseSecretResolve(t *testing.T) {
 				password: '${OPACTL_PASSWORD}'
 			}
 		}
-	}`)))
+	}`))
 
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestParseSecretResolve(t *testing.T) {
 
 func TestFilesMarshallingRoundtrip(t *testing.T) {
 
-	cfg, err := config.Parse(bytes.NewBufferString(`{
+	cfg, err := config.Parse([]byte(`{
 		bundles: {
 			foo: {
 				excluded_files: ["bar.rego","*.json"],
@@ -99,7 +99,7 @@ func TestFilesMarshallingRoundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg2, err := config.Parse(bytes.NewBuffer(bs))
+	cfg2, err := config.Parse(bs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestSelectorMatch(t *testing.T) {
 
 func TestValidateRoleEnum(t *testing.T) {
 
-	_, err := config.Parse(bytes.NewBufferString(`{
+	_, err := config.Parse([]byte(`{
 		tokens: {
 			admin: {
 				api_key: x1234,
@@ -205,7 +205,7 @@ func TestValidateRoleEnum(t *testing.T) {
 
 func TestTopoSortSources(t *testing.T) {
 
-	config, err := config.Parse(bytes.NewBufferString(`{
+	config, err := config.Parse([]byte(`{
 		sources: {
 			A: {
 				requirements: [{source: B}]
@@ -245,7 +245,7 @@ func TestTopoSortSources(t *testing.T) {
 
 func TestTopoSortSourcesCycle(t *testing.T) {
 
-	config, err := config.Parse(bytes.NewBufferString(`{
+	config, err := config.Parse([]byte(`{
 		sources: {
 			A: {
 				requirements: [{source: B}]
@@ -395,7 +395,7 @@ func TestServiceApiPrefixValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.note, func(t *testing.T) {
-			_, err := config.Parse(bytes.NewReader([]byte(tt.config)))
+			_, err := config.Parse([]byte(tt.config))
 			if tt.shouldErr {
 				if err == nil {
 					t.Fatalf("expected validation error but got none")

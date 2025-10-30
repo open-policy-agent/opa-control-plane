@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
 	"maps"
 	"os"
@@ -9,6 +8,8 @@ import (
 	"sort"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/spf13/cobra"
+
 	"github.com/open-policy-agent/opa-control-plane/cmd"
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/flags"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
@@ -17,7 +18,6 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	"github.com/open-policy-agent/opa-control-plane/internal/service"
 	"github.com/open-policy-agent/opa-control-plane/libraries"
-	"github.com/spf13/cobra"
 )
 
 type buildParams struct {
@@ -60,7 +60,7 @@ func init() {
 				log.Fatalf("configuration error: %v", err)
 			}
 
-			config, err := config.Parse(bytes.NewBuffer(bs))
+			config, err := config.Parse(bs)
 			if err != nil {
 				log.Fatalf("configuration error: %v", err)
 			}

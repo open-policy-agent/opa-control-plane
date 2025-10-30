@@ -1,7 +1,6 @@
 package migrate
 
 import (
-	"bytes"
 	"encoding/json"
 	"io/fs"
 	"reflect"
@@ -84,7 +83,7 @@ func TestBaseLibIndex(t *testing.T) {
 
 func TestPruneConfig(t *testing.T) {
 
-	root, err := config.Parse(bytes.NewBufferString(`{
+	root, err := config.Parse([]byte(`{
 		bundles: {
 			sys1: {
 				requirements: [{source: app1}],
@@ -184,7 +183,7 @@ func TestPruneConfig(t *testing.T) {
 		t.Fatalf("expected secrets %v but got %v", expSecrets, gotSecrets)
 	}
 
-	expRoot, err := config.Parse(bytes.NewBufferString(`{
+	expRoot, err := config.Parse([]byte(`{
 		bundles: {
 			sys1: {
 				requirements: [{source: app1}],
