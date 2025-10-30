@@ -150,7 +150,7 @@ func Run(opts Options) error {
 		return err
 	}
 
-	cfg, err := config.Parse(bytes.NewBuffer(bs))
+	cfg, err := config.Parse(bs)
 	if err != nil {
 		return err
 	}

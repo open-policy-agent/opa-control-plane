@@ -32,14 +32,14 @@ func TestUnconfiguredSecretHandling(t *testing.T) {
 		sources: {
 			test_src: {
 				git: {
-					repo: https://example.com/repo.git,  # doesn't matter
+					repo: https://example.com/repo.git, # doesn't matter
 					credentials: test_creds,
 					reference: refs/heads/main,
 				}
 			}
 		},
 		secrets: {
-			test_creds: {}  # not configured
+			test_creds: {} # not configured
 		}
 	}`, filepath.Join(t.TempDir(), "bundles"))
 
@@ -197,7 +197,7 @@ func oneshot(t *testing.T, bs []byte, dir string) *service.Service {
 
 	log := logging.NewLogger(logging.Config{Level: logging.LevelDebug})
 
-	cfg, err := config.Parse(bytes.NewBuffer(bs))
+	cfg, err := config.Parse(bs)
 	if err != nil {
 		t.Fatal(err)
 	}

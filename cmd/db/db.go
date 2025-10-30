@@ -1,8 +1,6 @@
 package db
 
 import (
-	"bytes"
-
 	"github.com/spf13/cobra"
 
 	"github.com/open-policy-agent/opa-control-plane/cmd"
@@ -35,7 +33,7 @@ func init() {
 				log.Fatalf("configuration error: %v", err)
 			}
 
-			config, err := config.Parse(bytes.NewBuffer(bs))
+			config, err := config.Parse(bs)
 			if err != nil {
 				log.Fatalf("configuration error: %v", err)
 			}

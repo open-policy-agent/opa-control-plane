@@ -94,7 +94,7 @@ func TestService(t *testing.T) {
 			writeFile(t, configPath, cfg)
 			writeGitRepo(t, remoteGitDir, test.GitFiles, test.ContentParameters)
 
-			root, err := config.Parse(strings.NewReader(cfg))
+			root, err := config.Parse([]byte(cfg))
 			if err != nil {
 				t.Fatal(err)
 			}

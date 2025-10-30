@@ -1,12 +1,11 @@
 package config
 
 import (
-	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"iter"
 	"maps"
 	"os"
@@ -125,6 +124,7 @@ func (*Root) unmarshal(raw *Root) error {
 	}
 
 	for name, src := range raw.Sources {
+		src = cmp.Or(src, &Source{})
 		src.Name = name
 		if src.Git.Credentials != nil {
 			src.Git.Credentials.value = raw.Secrets[src.Git.Credentials.Name]
@@ -762,15 +762,10 @@ func ParseFile(filename string) (root *Root, err error) {
 		return nil, fmt.Errorf("failed to read config file %s: %w", filename, err)
 	}
 
-	return Parse(bytes.NewReader(bs))
+	return Parse(bs)
 }
 
-func Parse(r io.Reader) (root *Root, err error) {
-	bs, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-
+func Parse(bs []byte) (root *Root, err error) {
 	if err := yaml.Unmarshal(bs, &root); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
