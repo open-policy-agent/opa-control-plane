@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"bytes"
-	"context"
 	"os"
 
 	"github.com/open-policy-agent/opa-control-plane/cmd"
@@ -35,7 +33,7 @@ func init() {
 		Use:   "run",
 		Short: "Run the OPA Control Plane service",
 		Run: func(cmd *cobra.Command, args []string) {
-			ctx := context.Background()
+			ctx := cmd.Context()
 
 			log := logging.NewLogger(params.logging)
 
@@ -53,7 +51,7 @@ func init() {
 				log.Fatalf("configuration error: %v", err)
 			}
 
-			config, err := config.Parse(bytes.NewBuffer(bs))
+			config, err := config.Parse(bs)
 			if err != nil {
 				log.Fatalf("configuration error: %v", err)
 			}

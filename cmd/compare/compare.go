@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,15 +14,17 @@ import (
 	"strings"
 
 	"github.com/akedrou/textdiff"
+	"github.com/spf13/cobra"
+
+	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
+	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
+
 	"github.com/open-policy-agent/opa-control-plane/cmd"
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/das"
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/flags"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
-	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
-	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
-	"github.com/spf13/cobra"
 )
 
 var log *logging.Logger
@@ -125,7 +126,7 @@ func doCompare(params compareParams) error {
 		return err
 	}
 
-	cfg, err := config.Parse(bytes.NewBuffer(bs))
+	cfg, err := config.Parse(bs)
 	if err != nil {
 		return err
 	}
