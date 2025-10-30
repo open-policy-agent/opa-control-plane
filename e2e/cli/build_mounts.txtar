@@ -1,0 +1,79 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/hello-world/bundle.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/hello-world/bundle.tar.gz
+cmp .manifest exp/.manifest
+cmp data.json exp/data.json
+cmp dir-paths/rules/rules.rego exp/dir-paths/rules.rego
+cmp global-data/rules.rego exp/global-data/rules.rego
+
+-- data/common.json --
+{ "common": true }
+-- data/rules.rego --
+package rules
+import rego.v1
+result if data.foo.common != "uncommon"
+-- files/sources/hello-world/more/data.json --
+{ "some": "thing" }
+-- files/sources/hello-world/rules/rules.rego --
+package prefix.foo.bar.rules
+import rego.v1
+result if data.prefix.common != "uncommon"
+-- other/data/other.json --
+{ "cdef": "ghji" }
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: dir-paths
+      path: data.prefix
+      prefix: data.new.prefix1
+    - source: global-data
+      prefix: data.nested.new
+sources:
+  dir-paths:
+    directory: files/sources/hello-world
+    paths:
+    - more/data.json
+    - rules/rules.rego
+    requirements:
+    - source: other-paths
+      # path: data
+      prefix: data.prefix.other
+  global-data:
+    directory: data/
+    paths:
+    - rules.rego
+    - common.json
+  other-paths:
+    directory: other
+    paths:
+    - data/other.json
+-- exp/tarball --
+/data.json
+/dir-paths/rules/rules.rego
+/global-data/rules.rego
+/.manifest
+-- exp/data.json --
+{"nested":{"new":{"common":true}},"new":{"prefix1":{"other":{"data":{"cdef":"ghji"}}}}}
+-- exp/.manifest --
+{"revision":"","roots":["new/prefix1/foo/bar/rules","nested/new","new/prefix1/other/data"],"rego_version":0}
+-- exp/dir-paths/rules.rego --
+package new.prefix1.foo.bar.rules
+
+import rego.v1
+
+result if data.new.prefix1.common != "uncommon"
+-- exp/global-data/rules.rego --
+package nested.new.rules
+
+import rego.v1
+
+result if data.nested.new.foo.common != "uncommon"

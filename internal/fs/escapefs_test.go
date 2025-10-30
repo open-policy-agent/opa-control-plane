@@ -1,16 +1,18 @@
-package util
+package fs_test
 
 import (
 	"embed"
 	"io/fs"
 	"testing"
+
+	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 )
 
 //go:embed *
 var data embed.FS
 
 func TestEscapeFS(t *testing.T) {
-	efs := NewEscapeFS(data)
+	efs := ocp_fs.NewEscapeFS(data)
 	f, _ := efs.Open("testdata/test:dir/test:0.txt")
 	var content = make([]byte, 32)
 	n, _ := f.Read(content)
