@@ -136,6 +136,7 @@ require (
 	github.com/peterh/liner v1.2.2 // indirect
 	github.com/pjbgf/sha1cd v0.4.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
@@ -202,6 +203,7 @@ require (
 	google.golang.org/grpc v1.76.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.66.10 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
@@ -226,6 +228,7 @@ require (
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/gobwas/glob v0.2.3
+	github.com/goccy/go-yaml v1.18.0
 	github.com/golang-migrate/migrate/v4 v4.19.0
 	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/golang-lru v1.0.2
@@ -234,7 +237,6 @@ require (
 	github.com/knieriem/fsutil v0.3.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/open-policy-agent/opa v1.9.0
-	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rogpeppe/go-internal v1.14.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
@@ -248,6 +250,5 @@ require (
 	golang.org/x/crypto v0.43.0
 	golang.org/x/sync v0.17.0
 	google.golang.org/api v0.253.0
-	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.39.1
 )

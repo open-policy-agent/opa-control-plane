@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/olekukonko/tablewriter"
 	"github.com/open-policy-agent/opa/ast" // nolint:staticcheck
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/open-policy-agent/opa-control-plane/cmd"
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/das"

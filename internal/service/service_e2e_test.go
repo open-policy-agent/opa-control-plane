@@ -19,16 +19,18 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/goccy/go-yaml"
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
+
+	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
+	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
+
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/service"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/libraries"
 	"github.com/open-policy-agent/opa-control-plane/internal/util"
-	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
-	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
-	"gopkg.in/yaml.v3"
 )
 
 // TestCases is a struct that holds a slice of test cases in a YAML file.

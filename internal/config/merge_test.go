@@ -5,9 +5,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/goccy/go-yaml"
+
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/tempfs"
-	"gopkg.in/yaml.v3"
 )
 
 func TestMerge(t *testing.T) {
