@@ -57,8 +57,8 @@ var wellknownFingerprints = []string{
 //   - "ssh_key" for SSH private key authentication. Value for key "key" (private key) is expected. "fingerprints" (string array) and "passphrase" are optional.
 //   - "token_auth" for HTTP bearer token authentication. Value for a key "token" is expected.
 type Secret struct {
-	Name  string         `json:"-" yaml:"-"`
-	Value map[string]any `json:"-" yaml:"-"`
+	Name  string         `json:"-"`
+	Value map[string]any `json:"-"`
 }
 
 func (s *Secret) Ref() *SecretRef {
@@ -219,45 +219,45 @@ func (s *Secret) Typed(context.Context) (any, error) {
 }
 
 type SecretAWS struct {
-	AccessKeyID     string `json:"access_key_id" yaml:"access_key_id"`
-	SecretAccessKey string `json:"secret_access_key" yaml:"secret_access_key"`
-	SessionToken    string `json:"session_token" yaml:"session_token"`
+	AccessKeyID     string `json:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key"`
+	SessionToken    string `json:"session_token"`
 }
 
 type SecretGCP struct {
-	APIKey      string `json:"api_key" yaml:"api_key"`
-	Credentials string `json:"credentials" yaml:"credentials"` // Credentials file as JSON.
+	APIKey      string `json:"api_key"`
+	Credentials string `json:"credentials"` // Credentials file as JSON.
 }
 
 type SecretAzure struct {
-	AccountName string `json:"account_name" yaml:"account_name"`
-	AccountKey  string `json:"account_key" yaml:"account_key"`
+	AccountName string `json:"account_name"`
+	AccountKey  string `json:"account_key"`
 }
 
 type SecretGitHubApp struct {
-	IntegrationID  int64  `json:"integration_id" yaml:"integration_id"`
-	InstallationID int64  `json:"installation_id" yaml:"installation_id"`
-	PrivateKey     string `json:"private_key" yaml:"private_key"` // Private key as PEM.
+	IntegrationID  int64  `json:"integration_id"`
+	InstallationID int64  `json:"installation_id"`
+	PrivateKey     string `json:"private_key"` // Private key as PEM.
 }
 
 type SecretSSHKey struct {
-	Key          string   `json:"key" yaml:"key"`                                       // Private key as PEM.
-	Passphrase   string   `json:"passphrase,omitempty" yaml:"passphrase,omitempty"`     // Optional passphrase for the private key.
-	Fingerprints []string `json:"fingerprints,omitempty" yaml:"fingerprints,omitempty"` // Optional SSH key fingerprints.
+	Key          string   `json:"key"`                    // Private key as PEM.
+	Passphrase   string   `json:"passphrase,omitempty"`   // Optional passphrase for the private key.
+	Fingerprints []string `json:"fingerprints,omitempty"` // Optional SSH key fingerprints.
 }
 
 type SecretBasicAuth struct {
-	Username string   `json:"username" yaml:"username"`
-	Password string   `json:"password" yaml:"password"`
-	Headers  []string `json:"headers,omitempty" yaml:"headers,omitempty"` // Optional additional headers for HTTP requests.
+	Username string   `json:"username"`
+	Password string   `json:"password"`
+	Headers  []string `json:"headers,omitempty"` // Optional additional headers for HTTP requests.
 }
 
 type SecretTokenAuth struct {
-	Token string `json:"token" yaml:"token"` // Bearer token for HTTP authentication.
+	Token string `json:"token"` // Bearer token for HTTP authentication.
 }
 
 type SecretPassword struct {
-	Password string `json:"password" yaml:"password"` // Password for authentication.
+	Password string `json:"password"` // Password for authentication.
 }
 
 // we use this one so we don't need duplicate tags on every struct

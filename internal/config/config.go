@@ -26,20 +26,20 @@ import (
 // information is not stored in the database and is only used by the migration
 // tooling.
 type Metadata struct {
-	ExportedFrom string `json:"exported_from" yaml:"exported_from"`
-	ExportedAt   string `json:"exported_at" yaml:"exported_at"`
+	ExportedFrom string `json:"exported_from"`
+	ExportedAt   string `json:"exported_at"`
 }
 
 // Root is the top-level configuration structure used by OPA Control Plane.
 type Root struct {
-	Metadata Metadata           `json:"metadata" yaml:"metadata"`
-	Bundles  map[string]*Bundle `json:"bundles,omitempty" yaml:"bundles,omitempty"`
-	Stacks   map[string]*Stack  `json:"stacks,omitempty" yaml:"stacks,omitempty"`
-	Sources  map[string]*Source `json:"sources,omitempty" yaml:"sources,omitempty"`
-	Secrets  map[string]*Secret `json:"secrets,omitempty" yaml:"secrets,omitempty"` // Schema validation overrides Secret to object type.
-	Tokens   map[string]*Token  `json:"tokens,omitempty" yaml:"tokens,omitempty"`
-	Database *Database          `json:"database,omitempty" yaml:"database,omitempty"`
-	Service  *Service           `json:"service,omitempty" yaml:"service,omitempty"`
+	Metadata Metadata           `json:"metadata"`
+	Bundles  map[string]*Bundle `json:"bundles,omitempty"`
+	Stacks   map[string]*Stack  `json:"stacks,omitempty"`
+	Sources  map[string]*Source `json:"sources,omitempty"`
+	Secrets  map[string]*Secret `json:"secrets,omitempty"` // Schema validation overrides Secret to object type.
+	Tokens   map[string]*Token  `json:"tokens,omitempty"`
+	Database *Database          `json:"database,omitempty"`
+	Service  *Service           `json:"service,omitempty"`
 }
 
 // SetSQLitePersistentByDefault sets the database configuration to use a SQLite
@@ -235,22 +235,22 @@ func (r *Root) Validate() error {
 
 // Bundle defines the configuration for an OPA Control Plane Bundle.
 type Bundle struct {
-	Name          string        `json:"name" yaml:"-"`
-	Labels        Labels        `json:"labels,omitempty" yaml:"labels,omitempty"`
-	ObjectStorage ObjectStorage `json:"object_storage,omitzero" yaml:"object_storage,omitempty"`
-	Requirements  Requirements  `json:"requirements,omitempty" yaml:"requirements,omitempty"`
-	ExcludedFiles StringSet     `json:"excluded_files,omitempty" yaml:"excluded_files,omitempty"`
+	Name          string        `json:"name"`
+	Labels        Labels        `json:"labels,omitempty"`
+	ObjectStorage ObjectStorage `json:"object_storage,omitzero"`
+	Requirements  Requirements  `json:"requirements,omitempty"`
+	ExcludedFiles StringSet     `json:"excluded_files,omitempty"`
 }
 
 type Labels map[string]string
 
 type Requirement struct {
-	Source *string        `json:"source,omitempty" yaml:"source,omitempty"`
-	Git    GitRequirement `json:"git,omitzero" yaml:"git,omitempty"`
+	Source *string        `json:"source,omitempty"`
+	Git    GitRequirement `json:"git,omitzero"`
 }
 
 type GitRequirement struct {
-	Commit *string `json:"commit,omitempty" yaml:"commit,omitempty"`
+	Commit *string `json:"commit,omitempty"`
 }
 
 func (a Requirement) Equal(b Requirement) bool {
@@ -385,14 +385,14 @@ func (s *Bundle) Equal(other *Bundle) bool {
 
 // Source defines the configuration for an OPA Control Plane Source.
 type Source struct {
-	Name          string       `json:"name" yaml:"-"`
-	Builtin       *string      `json:"builtin,omitempty" yaml:"builtin,omitempty"`
-	Git           Git          `json:"git,omitzero" yaml:"git,omitempty"`
-	Datasources   Datasources  `json:"datasources,omitempty" yaml:"datasources,omitempty"`
-	EmbeddedFiles Files        `json:"files,omitempty" yaml:"files,omitempty"`
-	Directory     string       `json:"directory,omitempty" yaml:"directory,omitempty"` // Root directory for the source files, used to resolve file paths below.
-	Paths         StringSet    `json:"paths,omitempty" yaml:"paths,omitempty"`
-	Requirements  Requirements `json:"requirements,omitempty" yaml:"requirements,omitempty"`
+	Name          string       `json:"name"`
+	Builtin       *string      `json:"builtin,omitempty"`
+	Git           Git          `json:"git,omitzero"`
+	Datasources   Datasources  `json:"datasources,omitempty"`
+	EmbeddedFiles Files        `json:"files,omitempty"`
+	Directory     string       `json:"directory,omitempty"` // Root directory for the source files, used to resolve file paths below.
+	Paths         StringSet    `json:"paths,omitempty"`
+	Requirements  Requirements `json:"requirements,omitempty"`
 }
 
 func (s *Source) Equal(other *Source) bool {
@@ -460,10 +460,10 @@ func (a Sources) Equal(b Sources) bool {
 
 // Stack defines the configuration for an OPA Control Plane Stack.
 type Stack struct {
-	Name            string       `json:"name" yaml:"-"`
-	Selector        Selector     `json:"selector" yaml:"selector"` // Schema validation overrides Selector to object of string array values.
-	ExcludeSelector *Selector    `json:"exclude_selector,omitempty" yaml:"exclude_selector,omitempty"`
-	Requirements    Requirements `json:"requirements,omitempty" yaml:"requirements,omitempty"`
+	Name            string       `json:"name"`
+	Selector        Selector     `json:"selector"` // Schema validation overrides Selector to object of string array values.
+	ExcludeSelector *Selector    `json:"exclude_selector,omitempty"`
+	Requirements    Requirements `json:"requirements,omitempty"`
 }
 
 func (a *Stack) Equal(other *Stack) bool {
@@ -638,13 +638,13 @@ func (a StringSet) Add(value string) StringSet {
 
 // Git defines the Git synchronization configuration used by OPA Control Plane Sources.
 type Git struct {
-	Repo          string     `json:"repo" yaml:"repo"`
-	Reference     *string    `json:"reference,omitempty" yaml:"reference,omitempty"`
-	Commit        *string    `json:"commit,omitempty" yaml:"commit,omitempty"`
-	Path          *string    `json:"path,omitempty" yaml:"path,omitempty"`
-	IncludedFiles StringSet  `json:"included_files,omitempty" yaml:"included_files,omitempty"`
-	ExcludedFiles StringSet  `json:"excluded_files,omitempty" yaml:"excluded_files,omitempty"`
-	Credentials   *SecretRef `json:"credentials,omitempty" yaml:"credentials,omitempty"` // If nil, use the default SSH authentication mechanisms available
+	Repo          string     `json:"repo"`
+	Reference     *string    `json:"reference,omitempty"`
+	Commit        *string    `json:"commit,omitempty"`
+	Path          *string    `json:"path,omitempty"`
+	IncludedFiles StringSet  `json:"included_files,omitempty"`
+	ExcludedFiles StringSet  `json:"excluded_files,omitempty"`
+	Credentials   *SecretRef `json:"credentials,omitempty"` // If nil, use the default SSH authentication mechanisms available
 	// or no authentication for public repos. Note, JSON schema validation overrides this to string type.
 }
 
@@ -660,7 +660,7 @@ func (g *Git) Equal(other *Git) bool {
 }
 
 type SecretRef struct {
-	Name  string `json:"-" yaml:"-"`
+	Name  string `json:"-"`
 	value *Secret
 }
 
@@ -719,9 +719,9 @@ func (s *SecretRef) Equal(other *SecretRef) bool {
 
 // Token represents an API token to access the OPA Control Plane APIs.
 type Token struct {
-	Name   string  `json:"-" yaml:"-"`
-	APIKey string  `json:"api_key" yaml:"api_key"`
-	Scopes []Scope `json:"scopes" yaml:"scopes"`
+	Name   string  `json:"-"`
+	APIKey string  `json:"api_key"`
+	Scopes []Scope `json:"scopes"`
 }
 
 func (t *Token) Equal(other *Token) bool {
@@ -731,7 +731,7 @@ func (t *Token) Equal(other *Token) bool {
 }
 
 type Scope struct {
-	Role string `json:"role" yaml:"role" enum:"administrator,viewer,owner,stack_owner"`
+	Role string `json:"role" enum:"administrator,viewer,owner,stack_owner"`
 }
 
 func scopesEqual(a, b []Scope) bool {
@@ -779,10 +779,10 @@ func Parse(bs []byte) (*Root, error) {
 }
 
 type ObjectStorage struct {
-	AmazonS3          *AmazonS3          `json:"aws,omitempty" yaml:"aws,omitempty"`
-	GCPCloudStorage   *GCPCloudStorage   `json:"gcp,omitempty" yaml:"gcp,omitempty"`
-	AzureBlobStorage  *AzureBlobStorage  `json:"azure,omitempty" yaml:"azure,omitempty"`
-	FileSystemStorage *FileSystemStorage `json:"filesystem,omitempty" yaml:"filesystem,omitempty"`
+	AmazonS3          *AmazonS3          `json:"aws,omitempty"`
+	GCPCloudStorage   *GCPCloudStorage   `json:"gcp,omitempty"`
+	AzureBlobStorage  *AzureBlobStorage  `json:"azure,omitempty"`
+	FileSystemStorage *FileSystemStorage `json:"filesystem,omitempty"`
 }
 
 func (o *ObjectStorage) Equal(other *ObjectStorage) bool {
@@ -806,35 +806,35 @@ func (o *ObjectStorage) validate() error {
 
 // AmazonS3 defines the configuration for an Amazon S3-compatible object storage.
 type AmazonS3 struct {
-	Bucket      string     `json:"bucket" yaml:"bucket"`
-	Key         string     `json:"key" yaml:"key"`
-	Region      string     `json:"region,omitempty" yaml:"region,omitempty"`
-	Credentials *SecretRef `json:"credentials,omitempty" yaml:"credentials,omitempty"` // If nil, use default credentials chain: environment variables,
+	Bucket      string     `json:"bucket"`
+	Key         string     `json:"key"`
+	Region      string     `json:"region,omitempty"`
+	Credentials *SecretRef `json:"credentials,omitempty"` // If nil, use default credentials chain: environment variables,
 	// shared credentials file, ECS or EC2 instance role. More details in s3.go.
-	URL string `json:"url,omitempty" yaml:"url,omitempty"` // for test purposes
+	URL string `json:"url,omitempty"` // for test purposes
 }
 
 // GCPCloudStorage defines the configuration for a Google Cloud Storage bucket.
 type GCPCloudStorage struct {
-	Project     string     `json:"project" yaml:"project"`
-	Bucket      string     `json:"bucket" yaml:"bucket"`
-	Object      string     `json:"object" yaml:"object"`
-	Credentials *SecretRef `json:"credentials,omitempty" yaml:"credentials,omitempty"` // If nil, use default credentials chain: environment variables,
+	Project     string     `json:"project"`
+	Bucket      string     `json:"bucket"`
+	Object      string     `json:"object"`
+	Credentials *SecretRef `json:"credentials,omitempty"` // If nil, use default credentials chain: environment variables,
 	// file created by gcloud auth application-default login, GCE/GKE metadata server. More details in s3.go.
 }
 
 // AzureBlobStorage defines the configuration for an Azure Blob Storage container.
 type AzureBlobStorage struct {
-	AccountURL  string     `json:"account_url" yaml:"account_url"`
-	Container   string     `json:"container" yaml:"container"`
-	Path        string     `json:"path" yaml:"path"`
-	Credentials *SecretRef `json:"credentials,omitempty" yaml:"credentials,omitempty"` // If nil, use default credentials chain: environment variables,
+	AccountURL  string     `json:"account_url"`
+	Container   string     `json:"container"`
+	Path        string     `json:"path"`
+	Credentials *SecretRef `json:"credentials,omitempty"` // If nil, use default credentials chain: environment variables,
 	// managed identity, Azure CLI login. More details in s3.go.
 }
 
 // FileSystemStorage defines the configuration for a local filesystem storage.
 type FileSystemStorage struct {
-	Path string `json:"path" yaml:"path"` // Path to the bundle on the local filesystem.
+	Path string `json:"path"` // Path to the bundle on the local filesystem.
 }
 
 func (a *AmazonS3) Equal(other *AmazonS3) bool {
@@ -934,12 +934,12 @@ func (f *FileSystemStorage) validate() error {
 }
 
 type Datasource struct {
-	Name           string         `json:"name" yaml:"name"`
-	Path           string         `json:"path" yaml:"path"`
-	Type           string         `json:"type" yaml:"type"`
-	TransformQuery string         `json:"transform_query,omitempty" yaml:"transform_query,omitempty"`
-	Config         map[string]any `json:"config,omitempty" yaml:"config,omitempty"`
-	Credentials    *SecretRef     `json:"credentials,omitempty" yaml:"credentials,omitempty"`
+	Name           string         `json:"name"`
+	Path           string         `json:"path"`
+	Type           string         `json:"type"`
+	TransformQuery string         `json:"transform_query,omitempty"`
+	Config         map[string]any `json:"config,omitempty"`
+	Credentials    *SecretRef     `json:"credentials,omitempty"`
 }
 
 func (d *Datasource) Equal(other *Datasource) bool {
@@ -960,8 +960,8 @@ func (a Datasources) Equal(b Datasources) bool {
 }
 
 type Database struct {
-	SQL    *SQLDatabase `json:"sql,omitempty" yaml:"sql,omitempty"`
-	AWSRDS *AmazonRDS   `json:"aws_rds,omitempty" yaml:"aws_rds,omitempty"`
+	SQL    *SQLDatabase `json:"sql,omitempty"`
+	AWSRDS *AmazonRDS   `json:"aws_rds,omitempty"`
 }
 
 type SQLDatabase struct {
@@ -970,23 +970,23 @@ type SQLDatabase struct {
 }
 
 type AmazonRDS struct {
-	Region       string     `json:"region" yaml:"region"`
-	Endpoint     string     `json:"endpoint" yaml:"endpoint"` // hostname:port
-	Driver       string     `json:"driver" yaml:"driver"`     // mysql or postgres
-	DatabaseUser string     `json:"database_user" yaml:"database_user"`
-	DatabaseName string     `json:"database_name" yaml:"database_name"`
-	DSN          string     `json:"dsn" yaml:"dsn"`
-	Credentials  *SecretRef `json:"credentials,omitempty" yaml:"credentials,omitempty"`
+	Region       string     `json:"region"`
+	Endpoint     string     `json:"endpoint"` // hostname:port
+	Driver       string     `json:"driver"`   // mysql or postgres
+	DatabaseUser string     `json:"database_user"`
+	DatabaseName string     `json:"database_name"`
+	DSN          string     `json:"dsn"`
+	Credentials  *SecretRef `json:"credentials,omitempty"`
 	// RootCertificates points to PEM-encoded root certificate bundle file. If empty, the default system
 	// root CA certificates are used. For RDS, you can download the appropriate bundle for your region
 	// from here: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html#UsingWithRDS.SSL.CertificatesAllRegions
-	RootCertificates string `json:"root_certificates,omitempty" yaml:"root_certificates,omitempty"`
+	RootCertificates string `json:"root_certificates,omitempty"`
 }
 
 type Service struct {
 	// ApiPrefix prefixes all endpoints (including health and metrics) with its value. It is important to start with `/` and not end with `/`.
 	// For example `/my/path` will make health endpoint be accessible under `/my/path/health`
-	ApiPrefix string `json:"api_prefix,omitempty" yaml:"api_prefix,omitempty" pattern:"^/([^/].*[^/])?$"`
+	ApiPrefix string `json:"api_prefix,omitempty" pattern:"^/([^/].*[^/])?$"`
 }
 
 func setEqual[K comparable, V any](a, b []V, key func(V) K, eq func(a, b V) bool) bool {
