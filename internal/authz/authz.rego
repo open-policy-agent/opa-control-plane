@@ -49,3 +49,9 @@ allow if {
 	data.resource_permissions.principal_id == input.principal
 	data.resource_permissions.permission == input.permission
 }
+
+allow if {
+	data.principals.id == input.principal
+	data.principals.role == "automation"
+	input.permission == "bundles.trigger"
+}
