@@ -102,37 +102,41 @@ func (r *Root) Unmarshal() error {
 }
 
 func (*Root) unmarshal(raw *Root) error {
-	for name, token := range raw.Tokens {
-		token.Name = name
+	for name := range raw.Tokens {
+		raw.Tokens[name] = cmp.Or(raw.Tokens[name], &Token{})
+		raw.Tokens[name].Name = name
 	}
 
-	for name, secret := range raw.Secrets {
-		secret.Name = name
+	for name := range raw.Secrets {
+		raw.Secrets[name] = cmp.Or(raw.Secrets[name], &Secret{})
+		raw.Secrets[name].Name = name
 	}
 
-	for name, bundle := range raw.Bundles {
-		bundle.Name = name
-		if bundle.ObjectStorage.AmazonS3 != nil && bundle.ObjectStorage.AmazonS3.Credentials != nil {
-			bundle.ObjectStorage.AmazonS3.Credentials.value = raw.Secrets[bundle.ObjectStorage.AmazonS3.Credentials.Name]
+	for name := range raw.Bundles {
+		raw.Bundles[name] = cmp.Or(raw.Bundles[name], &Bundle{})
+		raw.Bundles[name].Name = name
+		if raw.Bundles[name].ObjectStorage.AmazonS3 != nil && raw.Bundles[name].ObjectStorage.AmazonS3.Credentials != nil {
+			raw.Bundles[name].ObjectStorage.AmazonS3.Credentials.value = raw.Secrets[raw.Bundles[name].ObjectStorage.AmazonS3.Credentials.Name]
 		}
-		if bundle.ObjectStorage.AzureBlobStorage != nil && bundle.ObjectStorage.AzureBlobStorage.Credentials != nil {
-			bundle.ObjectStorage.AzureBlobStorage.Credentials.value = raw.Secrets[bundle.ObjectStorage.AzureBlobStorage.Credentials.Name]
+		if raw.Bundles[name].ObjectStorage.AzureBlobStorage != nil && raw.Bundles[name].ObjectStorage.AzureBlobStorage.Credentials != nil {
+			raw.Bundles[name].ObjectStorage.AzureBlobStorage.Credentials.value = raw.Secrets[raw.Bundles[name].ObjectStorage.AzureBlobStorage.Credentials.Name]
 		}
-		if bundle.ObjectStorage.GCPCloudStorage != nil && bundle.ObjectStorage.GCPCloudStorage.Credentials != nil {
-			bundle.ObjectStorage.GCPCloudStorage.Credentials.value = raw.Secrets[bundle.ObjectStorage.GCPCloudStorage.Credentials.Name]
-		}
-	}
-
-	for name, src := range raw.Sources {
-		src = cmp.Or(src, &Source{})
-		src.Name = name
-		if src.Git.Credentials != nil {
-			src.Git.Credentials.value = raw.Secrets[src.Git.Credentials.Name]
+		if raw.Bundles[name].ObjectStorage.GCPCloudStorage != nil && raw.Bundles[name].ObjectStorage.GCPCloudStorage.Credentials != nil {
+			raw.Bundles[name].ObjectStorage.GCPCloudStorage.Credentials.value = raw.Secrets[raw.Bundles[name].ObjectStorage.GCPCloudStorage.Credentials.Name]
 		}
 	}
 
-	for name, stack := range raw.Stacks {
-		stack.Name = name
+	for name := range raw.Sources {
+		raw.Sources[name] = cmp.Or(raw.Sources[name], &Source{})
+		raw.Sources[name].Name = name
+		if raw.Sources[name].Git.Credentials != nil {
+			raw.Sources[name].Git.Credentials.value = raw.Secrets[raw.Sources[name].Git.Credentials.Name]
+		}
+	}
+
+	for name := range raw.Stacks {
+		raw.Stacks[name] = cmp.Or(raw.Stacks[name], &Stack{})
+		raw.Stacks[name].Name = name
 	}
 
 	if raw.Database != nil && raw.Database.AWSRDS != nil && raw.Database.AWSRDS.Credentials != nil {
