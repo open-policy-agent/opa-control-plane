@@ -26,9 +26,12 @@ import (
 	"github.com/jackc/pgx/v5/stdlib" // database/sql compatible driver for pgx
 	_ "modernc.org/sqlite"
 
+	"github.com/open-policy-agent/opa/v1/loader"
+
 	"github.com/open-policy-agent/opa-control-plane/internal/authz"
 	"github.com/open-policy-agent/opa-control-plane/internal/aws"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
@@ -415,12 +418,27 @@ func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, 
 			Name:       sourceName,
 		})
 		if !allowed {
-			return errors.New("unauthorized")
+			return ErrNotAuthorized
 		}
 
 		bs, err := json.Marshal(data)
 		if err != nil {
 			return err
+		}
+
+		// Attempt to load, i.e. merge with existing data. If it fails, don't upsert.
+		files := map[string]string{
+			path: string(bs),
+		}
+		for data, err := range d.iterSourceFiles(ctx, tx, sourceName) {
+			if err != nil {
+				return err
+			}
+			files[data.Path] = string(data.Data)
+		}
+		fs0 := fs.MapFS(files)
+		if _, err := loader.NewFileLoader().WithFS(fs0).All([]string{"."}); err != nil {
+			return fmt.Errorf("%w: %w", ErrDataConflict, err)
 		}
 
 		return d.upsert(ctx, tx, "sources_data", []string{"source_name", "path", "data"}, []string{"source_name", "path"}, sourceName, path, bs)
@@ -1266,11 +1284,15 @@ type Data struct {
 
 func (d *Database) QuerySourceData(sourceName string) func(context.Context) iter.Seq2[Data, error] {
 	return func(ctx context.Context) iter.Seq2[Data, error] {
-		return sqlrange.QueryContext[Data](ctx,
-			d.db,
-			`SELECT path, data FROM sources_data WHERE source_name = `+d.arg(0),
-			sourceName)
+		return d.iterSourceFiles(ctx, d.db, sourceName)
 	}
+}
+
+func (d *Database) iterSourceFiles(ctx context.Context, dbish sqlrange.Queryable, sourceName string) iter.Seq2[Data, error] {
+	return sqlrange.QueryContext[Data](ctx,
+		dbish,
+		`SELECT path, data FROM sources_data WHERE source_name = `+d.arg(0),
+		sourceName)
 }
 
 func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *config.Bundle) error {

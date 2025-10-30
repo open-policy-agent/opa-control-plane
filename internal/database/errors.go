@@ -1,8 +1,9 @@
 package database
 
-import (
-	"errors"
-)
+import "errors"
 
-var ErrNotFound = errors.New("not found")
-var ErrNotAuthorized = errors.New("not authorized")
+var (
+	ErrNotFound      = errors.New("not found")
+	ErrNotAuthorized = errors.New("not authorized")
+	ErrDataConflict  = errors.New("data conflict")
+)
