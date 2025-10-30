@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"iter"
 	"maps"
 	"os"
@@ -24,6 +25,7 @@ import (
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib" // database/sql compatible driver for pgx
+	"github.com/yalue/merged_fs"
 	_ "modernc.org/sqlite"
 
 	"github.com/open-policy-agent/opa/v1/loader"
@@ -31,7 +33,9 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/authz"
 	"github.com/open-policy-agent/opa-control-plane/internal/aws"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
-	"github.com/open-policy-agent/opa-control-plane/internal/fs"
+	"github.com/open-policy-agent/opa-control-plane/internal/database/sourcedatafs"
+	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
+	"github.com/open-policy-agent/opa-control-plane/internal/fs/mountfs"
 	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
@@ -427,17 +431,26 @@ func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, 
 		}
 
 		// Attempt to load, i.e. merge with existing data. If it fails, don't upsert.
-		files := map[string]string{
-			path: string(bs),
+		var files []string
+		type Path struct {
+			P string `sql:"path"`
 		}
-		for data, err := range d.iterSourceFiles(ctx, tx, sourceName) {
+		for row, err := range sqlrange.QueryContext[Path](ctx, tx,
+			`SELECT path FROM sources_data WHERE source_name = `+d.arg(0),
+			sourceName) {
 			if err != nil {
 				return err
 			}
-			files[data.Path] = string(data.Data)
+			files = append(files, row.P)
 		}
-		fs0 := fs.MapFS(files)
-		if _, err := loader.NewFileLoader().WithFS(fs0).All([]string{"."}); err != nil {
+
+		fs0 := mountfs.New(map[string]fs.FS{filepath.Dir(path): sourcedatafs.NewSingleFS(ctx, func(context.Context) ([]byte, error) { return bs, nil })})
+		fs1 := sourcedatafs.New(ctx, files, func(file string) func(context.Context) ([]byte, error) {
+			return d.sourceData(tx, sourceName, file)
+		})
+		fs2 := merged_fs.NewMergedFS(fs0, fs1)
+		ocp_fs.Walk(fs2)
+		if _, err := loader.NewFileLoader().WithFS(fs2).All([]string{"."}); err != nil {
 			return fmt.Errorf("%w: %w", ErrDataConflict, err)
 		}
 
@@ -1293,6 +1306,24 @@ func (d *Database) iterSourceFiles(ctx context.Context, dbish sqlrange.Queryable
 		dbish,
 		`SELECT path, data FROM sources_data WHERE source_name = `+d.arg(0),
 		sourceName)
+}
+
+func (d *Database) iterSourceFilenames(ctx context.Context, dbish sqlrange.Queryable, sourceName string) iter.Seq2[Data, error] {
+	return sqlrange.QueryContext[Data](ctx,
+		dbish,
+		`SELECT path FROM sources_data WHERE source_name = `+d.arg(0),
+		sourceName)
+}
+
+func (d *Database) sourceData(tx *sql.Tx, sourceName, path string) func(context.Context) ([]byte, error) {
+	return func(ctx context.Context) ([]byte, error) {
+		var data []byte
+		err := tx.QueryRowContext(ctx,
+			`SELECT data FROM sources_data WHERE source_name = `+d.arg(0)+`AND path = `+d.arg(1),
+			sourceName, path,
+		).Scan(&data)
+		return data, err
+	}
 }
 
 func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *config.Bundle) error {
