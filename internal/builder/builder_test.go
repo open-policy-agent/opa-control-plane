@@ -3,6 +3,7 @@ package builder_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
-	"github.com/pkg/errors"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/builder"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"iter"
 	"maps"
@@ -15,7 +16,6 @@ import (
 	"sort"
 
 	"github.com/gobwas/glob"
-	"github.com/pkg/errors"
 	"github.com/swaggest/jsonschema-go"
 	"gopkg.in/yaml.v3"
 )
