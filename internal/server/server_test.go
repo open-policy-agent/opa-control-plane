@@ -83,7 +83,19 @@ func TestServerSourcesData(t *testing.T) {
 					result:     map[string]any{},
 				},
 				{
-					name:       "GET after PUT",
+					name:       "conflicting PUT",
+					method:     "PUT",
+					path:       "/v1/sources/system1/data/foo/key/baz",
+					body:       `"BAZ"`,
+					apikey:     adminKey,
+					statusCode: 400,
+					result: map[string]any{
+						"code":    "data_conflict",
+						"message": "data conflict: 1 error occurred during loading: foo/key/baz/data.json: merge error",
+					},
+				},
+				{
+					name:       "GET after PUT", // also shows that the previous bad request had no effect
 					method:     "GET",
 					path:       "/v1/sources/system1/data/foo",
 					body:       "",
@@ -117,6 +129,18 @@ func TestServerSourcesData(t *testing.T) {
 					apikey:     adminKey,
 					statusCode: 200,
 					result:     map[string]any{},
+				},
+				{
+					name:       "PATCH conflict",
+					method:     "PATCH",
+					path:       "/v1/sources/system1/data/foo/key2",
+					body:       `[{"op":"add","path":"/a","value":"value5"}]`,
+					apikey:     adminKey,
+					statusCode: 400,
+					result: map[string]any{
+						"code":    "data_conflict",
+						"message": "data conflict: 1 error occurred during loading: foo/key2/data.json: merge error",
+					},
 				},
 				{
 					name:       "GET after PATCH new key",
