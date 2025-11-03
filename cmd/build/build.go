@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/spf13/cobra"
 
 	"github.com/open-policy-agent/opa-control-plane/cmd"
@@ -96,7 +97,9 @@ func init() {
 			buildReport := collectBuildReport(svc.Report())
 
 			if !params.noninteractive {
-				printReport(buildReport)
+				if err := printReport(buildReport); err != nil {
+					log.Fatalf("report: %v", err)
+				}
 			}
 
 			if !buildReport.allBuildsSuccessful() {
@@ -160,15 +163,17 @@ func collectBuildReport(r *service.Report) *buildReport {
 	}
 }
 
-func printReport(r *buildReport) {
+func printReport(r *buildReport) error {
 	fmt.Fprintf(os.Stderr, "%d/%d bundles built and pushed successfully\n", r.successfulBuilds, r.totalBuilds)
 	if !r.allBuildsSuccessful() {
-		table := tablewriter.NewWriter(os.Stderr)
-		table.SetAutoWrapText(false)
-		table.SetHeader([]string{"Bundle", "Status", "Message"})
+		table := tablewriter.NewTable(os.Stderr, tablewriter.WithRowAutoWrap(tw.WrapNone))
+		table.Header("Bundle", "Status", "Message")
 		for _, buildError := range r.buildErrors {
-			table.Append([]string{buildError.bundleName, buildError.buildState.String(), buildError.message})
+			if err := table.Append(buildError.bundleName, buildError.buildState.String(), buildError.message); err != nil {
+				return err
+			}
 		}
-		table.Render()
+		return table.Render()
 	}
+	return nil
 }
