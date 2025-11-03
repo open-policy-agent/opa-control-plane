@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 	"iter"
+	"log"
 	"maps"
 	"os"
 	"path/filepath"
@@ -332,7 +333,7 @@ func (d *Database) CloseDB() {
 	d.db.Close()
 }
 
-func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, principal string) (any, bool, error) {
+func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, principal string) (any, []string, error) {
 	path = filepath.ToSlash(path)
 	return tx3(ctx, d, sourcesDataGet(ctx, d, sourceName, path, principal,
 		func(bs []byte) (data any, err error) {
@@ -357,11 +358,11 @@ func (d *Database) SourcesDataPatch(ctx context.Context, sourceName, path string
 
 func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path string, principal string,
 	f func([]byte) (T, error),
-) func(*sql.Tx) (T, bool, error) {
-	return func(tx *sql.Tx) (T, bool, error) {
+) func(*sql.Tx) (T, []string, error) {
+	return func(tx *sql.Tx) (T, []string, error) {
 		var zero T
 		if err := d.resourceExists(ctx, tx, "sources", sourceName); err != nil {
-			return zero, false, err
+			return zero, nil, err
 		}
 
 		expr, err := authz.Partial(ctx, authz.Access{
@@ -371,35 +372,60 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 			Name:       sourceName,
 		}, nil)
 		if err != nil {
-			return zero, false, err
+			return zero, nil, err
 		}
 
 		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
 
-		rows, err := tx.Query(fmt.Sprintf(`SELECT
-	data
-FROM
-	sources_data
-WHERE source_name = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
+		offset := len(args)
+		upwardsPaths := upwardsPaths(path)
+		if len(upwardsPaths) == 0 {
+			return zero, nil, err
+		}
+		inParams := make([]string, len(upwardsPaths))
+		for i := range upwardsPaths {
+			inParams[i] = d.arg(i + 1 + offset)
+		}
+
+		prefix := filepath.Dir(path)
+
+		values := make([]any, 0, len(args)+3)
+		values = append(values, sourceName, "x")
+		values = append(values, args[2:]...) // conditions
+		values = append(values, prefix+"/%")
+		values = append(values, upwardsPaths...)
+
+		query := fmt.Sprintf(`SELECT path FROM sources_data
+WHERE source_name = %s
+  AND (%s <> '')
+  AND (%s)
+  AND (path LIKE %s OR path in (%s))
+ORDER BY path`,
+			d.arg(0), d.arg(1), conditions, d.arg(offset), strings.Join(inParams, ","))
+
+		log.Println(query, values)
+
+		files, err := queryPaths(ctx, tx, query, values...)
 		if err != nil {
-			return zero, false, err
+			if !errors.Is(err, sql.ErrNoRows) { // no rows, no problem
+				return zero, nil, err
+			}
 		}
-		defer rows.Close()
+		log.Printf("%d files", len(files))
 
-		if !rows.Next() {
-			return zero, false, nil
-		}
-
-		var bs []byte
-		if err := rows.Scan(&bs); err != nil {
-			return zero, false, err
+		if len(files) == 0 {
+			return zero, nil, err
 		}
 
-		data, err := f(bs)
+		fs0 := sourcedatafs.New(ctx, files, func(file string) func(context.Context) ([]byte, error) {
+			return d.sourceData(tx, sourceName, file)
+		})
+		result, err := loader.NewFileLoader().WithFS(fs0).All([]string{"."})
 		if err != nil {
-			return zero, false, err
+			return zero, files, err
 		}
-		return data, true, nil
+		var a any = result.Documents
+		return a.(T), files, nil
 	}
 }
 
@@ -1839,7 +1865,7 @@ func tx1(ctx context.Context, db *Database, f func(*sql.Tx) error) error {
 	return tx.Commit()
 }
 
-func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(*sql.Tx) (T, U, error)) (T, U, error) {
+func tx3[T, U any | string](ctx context.Context, db *Database, f func(*sql.Tx) (T, U, error)) (T, U, error) {
 	tx, err := db.db.BeginTx(ctx, nil)
 	if err != nil {
 		var t T

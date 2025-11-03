@@ -288,7 +288,7 @@ func (s *Server) v1SourcesDataGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, ok, err := s.db.SourcesDataGet(ctx, name, path.Join(r.PathValue("path"), "data.json"), s.auth(r))
+	data, paths, err := s.db.SourcesDataGet(ctx, name, path.Join(r.PathValue("path"), "data.json"), s.auth(r))
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -296,8 +296,11 @@ func (s *Server) v1SourcesDataGet(w http.ResponseWriter, r *http.Request) {
 
 	resp := types.SourcesGetDataResponseV1{}
 
-	if ok {
+	if len(paths) > 0 {
 		resp.Result = &data
+	}
+	if len(paths)> 1 {
+    	resp.Paths = paths
 	}
 
 	JSONOK(w, resp, pretty(r))

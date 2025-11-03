@@ -28,6 +28,7 @@ type SourcesPatchDataResponseV1 struct{}
 
 type SourcesGetDataResponseV1 struct {
 	Result *any `json:"result,omitempty"`
+	Paths []string `json:"paths,omitempty"`
 }
 
 type SourcesListResponseV1 struct {
