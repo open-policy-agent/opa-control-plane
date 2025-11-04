@@ -1,6 +1,6 @@
 ! exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
 stderr '^0/1 bundles built and pushed successfully$'
-stderr '^.\s+hello-world\s+.\s+BUILD_FAILED\s+.\s+invalid-rego: 1 error occurred'
+stderr '^.\s+hello-world\s+.\s+BUILD_FAILED\s+.+source invalid-rego.+1 error occurred.+var cannot be used for rule name'
 ! stdout .
 
 ! exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --non-interactive

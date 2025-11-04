@@ -14,7 +14,8 @@ stderr '^1/1 bundles built and pushed successfully$'
 ! stdout .
 
 exec tar tf bundles/a.tar.gz
-cmp stdout exp/tarball
+[!windows] cmp stdout exp/tarball
+[windows]  cmp stdout exp/tarball_windows
 
 exec tar xf bundles/a.tar.gz
 cmp data.json exp/data.json
@@ -29,6 +30,10 @@ allow if {
   some user in data.users
   user.id == input.user
 }
+-- repo/other/policies/authz.rego --
+package other.nested.authz
+import rego.v1
+allow if true
 -- repo/unrelated.yaml --
 ignore: me
 -- repo/deeply/nested/users/data.json --
@@ -49,7 +54,7 @@ bundles:
     requirements:
     - source: git-local
       path: data.deeply.nested
-      prefix: data
+    - source: intermed
 sources:
   git-local:
     git:
@@ -57,14 +62,25 @@ sources:
       reference: main
       excluded_files:
       - unrelated.yaml
+  intermed:
+    requirements:
+    - source: git-local
+      path: data.other.nested
+      prefix: data.on
 -- exp/tarball --
 /data.json
+/git-local/nested/policies/authz.rego
+/git-local1/other/policies/authz.rego
+/.manifest
+-- exp/tarball_windows --
+/data.json
+/git-local1/other/policies/authz.rego
 /git-local/nested/policies/authz.rego
 /.manifest
 -- exp/data.json --
 {"users":[{"id":"alice"},{"id":"bob"}]}
 -- exp/.manifest --
-{"revision":"","roots":["authz","users"],"rego_version":0}
+{"revision":"","roots":["authz","users","on/authz"],"rego_version":0}
 -- exp/policy.rego --
 package authz
 
@@ -74,3 +90,9 @@ allow if {
 	some user in data.users
 	user.id == input.user
 }
+-- exp/policy2.rego --
+package on.authz
+
+import rego.v1
+
+allow := true
