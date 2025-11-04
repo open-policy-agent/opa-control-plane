@@ -294,13 +294,9 @@ func (s *Server) v1SourcesDataGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := types.SourcesGetDataResponseV1{}
-
-	if len(paths) > 0 {
+	resp := types.SourcesGetDataResponseV1{Paths: paths}
+	if data != nil {
 		resp.Result = &data
-	}
-	if len(paths)> 1 {
-    	resp.Paths = paths
 	}
 
 	JSONOK(w, resp, pretty(r))

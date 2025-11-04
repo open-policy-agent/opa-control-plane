@@ -27,8 +27,8 @@ type SourcesPatchDataRequestV1 = jsonpatch.Patch
 type SourcesPatchDataResponseV1 struct{}
 
 type SourcesGetDataResponseV1 struct {
-	Result *any `json:"result,omitempty"`
-	Paths []string `json:"paths,omitempty"`
+	Result *any     `json:"result,omitempty"`
+	Paths  []string `json:"paths,omitempty"`
 }
 
 type SourcesListResponseV1 struct {

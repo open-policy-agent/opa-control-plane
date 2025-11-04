@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io/fs"
 	"iter"
-	"log"
 	"maps"
 	"os"
 	"path/filepath"
@@ -335,7 +334,7 @@ func (d *Database) CloseDB() {
 
 func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, principal string) (any, []string, error) {
 	path = filepath.ToSlash(path)
-	return tx3(ctx, d, sourcesDataGet(ctx, d, sourceName, path, principal,
+	return tx3(ctx, d, sourcesDataGet(ctx, d, true, sourceName, path, principal,
 		func(bs []byte) (data any, err error) {
 			return data, json.Unmarshal(bs, &data)
 		}))
@@ -344,7 +343,7 @@ func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, 
 func (d *Database) SourcesDataPatch(ctx context.Context, sourceName, path string, principal string, patch jsonpatch.Patch) error {
 	path = filepath.ToSlash(path)
 	return tx1(ctx, d, func(tx *sql.Tx) error {
-		previous, _, err := sourcesDataGet(ctx, d, sourceName, path, principal, func(bs []byte) ([]byte, error) { return bs, nil })(tx)
+		previous, _, err := sourcesDataGet(ctx, d, false, sourceName, path, principal, func(bs []byte) ([]byte, error) { return bs, nil })(tx)
 		if err != nil {
 			return err
 		}
@@ -356,7 +355,7 @@ func (d *Database) SourcesDataPatch(ctx context.Context, sourceName, path string
 	})
 }
 
-func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path string, principal string,
+func sourcesDataGet[T any](ctx context.Context, d *Database, returnFiles bool, sourceName, path string, principal string,
 	f func([]byte) (T, error),
 ) func(*sql.Tx) (T, []string, error) {
 	return func(tx *sql.Tx) (T, []string, error) {
@@ -375,57 +374,58 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 			return zero, nil, err
 		}
 
-		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
-
-		offset := len(args)
-		upwardsPaths := upwardsPaths(path)
-		if len(upwardsPaths) == 0 {
-			return zero, nil, err
-		}
-		inParams := make([]string, len(upwardsPaths))
-		for i := range upwardsPaths {
-			inParams[i] = d.arg(i + 1 + offset)
-		}
-
+		var files []string
 		prefix := filepath.Dir(path)
 
-		values := make([]any, 0, len(args)+3)
-		values = append(values, sourceName, "x")
-		values = append(values, args[2:]...) // conditions
-		values = append(values, prefix+"/%")
-		values = append(values, upwardsPaths...)
+		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
+		if returnFiles { // get "directory" contents
+			offset := len(prefix) + 2
+			query := fmt.Sprintf(`SELECT DISTINCT
+    SUBSTRING(
+        SUBSTRING(path, %[1]d),
+        1,
+        CASE
+            WHEN %[2]s > 0
+            THEN %[2]s - 1
+            ELSE LENGTH(SUBSTRING(path, %[1]d))
+        END
+    ) AS entry
+FROM sources_data
+WHERE source_name = %[3]s
+  AND path <> %[4]s
+  AND (%[5]s)
+  AND path LIKE %[6]s
+LIMIT 25`, // limit 25 is arbitrary: there could be a LOT of entries...
+				offset, d.locate("'/'", fmt.Sprintf("SUBSTRING(path, %d)", offset)),
+				d.arg(0), d.arg(1), conditions, d.arg(len(args)))
 
-		query := fmt.Sprintf(`SELECT path FROM sources_data
-WHERE source_name = %s
-  AND (%s <> '')
-  AND (%s)
-  AND (path LIKE %s OR path in (%s))
-ORDER BY path`,
-			d.arg(0), d.arg(1), conditions, d.arg(offset), strings.Join(inParams, ","))
-
-		log.Println(query, values)
-
-		files, err := queryPaths(ctx, tx, query, values...)
-		if err != nil {
-			if !errors.Is(err, sql.ErrNoRows) { // no rows, no problem
-				return zero, nil, err
+			files, err = queryPaths(ctx, tx, query, append(args, prefix+"/%")...)
+			if err != nil {
+				if !errors.Is(err, sql.ErrNoRows) { // no rows, no nested files to return
+					return zero, nil, err
+				}
 			}
 		}
-		log.Printf("%d files", len(files))
 
-		if len(files) == 0 {
-			return zero, nil, err
-		}
+		// get file content at node
+		args[1] = path
+		query := fmt.Sprintf(`SELECT data FROM sources_data
+WHERE source_name = %s
+  AND path = %s
+  AND (%s)
+ORDER BY path`,
+			d.arg(0), d.arg(1), conditions)
 
-		fs0 := sourcedatafs.New(ctx, files, func(file string) func(context.Context) ([]byte, error) {
-			return d.sourceData(tx, sourceName, file)
-		})
-		result, err := loader.NewFileLoader().WithFS(fs0).All([]string{"."})
-		if err != nil {
+		var bs []byte
+		if err := tx.QueryRowContext(ctx, query, args...).Scan(&bs); err != nil {
+			if errors.Is(err, sql.ErrNoRows) { // no rows, no response data
+				return zero, files, nil
+			}
 			return zero, files, err
 		}
-		var a any = result.Documents
-		return a.(T), files, nil
+
+		ret, err := f(bs)
+		return ret, files, err
 	}
 }
 
@@ -533,6 +533,9 @@ ORDER BY path LIMIT 4`,
 
 		files, err := queryPaths(ctx, tx, query, values...)
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) { // no rows, no conflict
+				return nil
+			}
 			return err
 		}
 		if len(files) == 0 {
@@ -610,7 +613,8 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 
 		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
 
-		_, err = tx.Exec(fmt.Sprintf(`DELETE FROM sources_data WHERE source_name = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
+		query := fmt.Sprintf(`DELETE FROM sources_data WHERE source_name = %s AND path = %s AND (%s)`, d.arg(0), d.arg(1), conditions)
+		_, err = tx.ExecContext(ctx, query, args...)
 		return err
 	})
 }
@@ -781,7 +785,7 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 			args = append(args, opts.Limit)
 		}
 
-		rows, err := txn.Query(query, args...)
+		rows, err := txn.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, "", err
 		}
@@ -1837,6 +1841,16 @@ func (d *Database) arg(i int) string {
 		return "$" + strconv.Itoa(i+1)
 	}
 	return "?"
+}
+
+func (d *Database) locate(needle string, haystack string) string {
+	switch d.kind {
+	case sqlite:
+		return "INSTR(" + haystack + ", " + needle + ")"
+	case postgres:
+		return "POSITION(" + needle + " IN " + haystack + ")"
+	}
+	return "LOCATE(" + needle + ", " + haystack + ")"
 }
 
 func (d *Database) args(n int) []string {
