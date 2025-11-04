@@ -5,15 +5,40 @@ import (
 	"io/fs"
 	"strings"
 
-	"github.com/open-policy-agent/opa-control-plane/internal/util"
+	"github.com/yalue/merged_fs"
+
+	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 )
 
 func Migrations(dialect string) (fs.FS, error) {
-	ns := util.Namespace()
-	if err := ns.Bind(".", initialSchemaFS(dialect)); err != nil {
-		return nil, err
+	return merged_fs.MergeMultiple(
+		initialSchemaFS(dialect),
+		addMounts(dialect),
+	), nil
+}
+
+func addMounts(dialect string) fs.FS {
+	var stmtBundles, stmtSources, stmtStacks string
+	switch dialect {
+	case "sqlite": // NB(sr): sqlite doesn't support adding multiple columns in one statement
+		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix TEXT; ALTER TABLE bundles_requirements ADD path TEXT`
+		stmtSources = `ALTER TABLE sources_requirements ADD prefix TEXT; ALTER TABLE sources_requirements ADD path TEXT`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix TEXT; ALTER TABLE stacks_requirements ADD path TEXT`
+	case "postgresql":
+		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix TEXT, ADD path TEXT`
+		stmtSources = `ALTER TABLE sources_requirements ADD prefix TEXT, ADD path TEXT`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix TEXT, ADD path TEXT`
+	case "mysql":
+		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
+		stmtSources = `ALTER TABLE sources_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
 	}
-	return ns, nil
+
+	return ocp_fs.MapFS(map[string]string{
+		"014_add_mounts_bundles.up.sql": stmtBundles,
+		"015_add_mounts_sources.up.sql": stmtSources,
+		"016_add_mounts_stacks.up.sql":  stmtStacks,
+	})
 }
 
 func initialSchemaFS(dialect string) fs.FS {
@@ -31,7 +56,7 @@ func initialSchemaFS(dialect string) fs.FS {
 		f := fmt.Sprintf("%03d_%s.up.sql", i, tbl.name)
 		m[f] = tbl.SQL(kind)
 	}
-	return util.MapFS(m)
+	return ocp_fs.MapFS(m)
 }
 
 // schema holds the initial set of database tables, dating back to when database

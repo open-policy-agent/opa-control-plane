@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -19,18 +18,19 @@ import (
 
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
+	"github.com/open-policy-agent/opa/bundle"
+	"github.com/open-policy-agent/opa/rego"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/open-policy-agent/opa-control-plane/cmd/backtest"
 	"github.com/open-policy-agent/opa-control-plane/cmd/migrate"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
 	"github.com/open-policy-agent/opa-control-plane/internal/service"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/tempfs"
-	"github.com/open-policy-agent/opa-control-plane/internal/util"
 	"github.com/open-policy-agent/opa-control-plane/libraries"
-	"github.com/open-policy-agent/opa/bundle"
-	"github.com/open-policy-agent/opa/rego"
-	"golang.org/x/sync/errgroup"
 )
 
 func TestMigration(t *testing.T) {
@@ -573,11 +573,11 @@ func TestMigration(t *testing.T) {
 
 				config, err := config.Parse(bytes.NewBuffer(merged))
 				if err != nil {
-					log.Fatalf("configuration error: %v", err)
+					t.Fatalf("configuration error: %v", err)
 				}
 
 				svc := service.New().
-					WithBuiltinFS(util.NewEscapeFS(libraries.FS)).
+					WithBuiltinFS(ocp_fs.NewEscapeFS(libraries.FS)).
 					WithConfig(config).
 					WithPersistenceDir(filepath.Join(dir, "data")).
 					WithLogger(logging.NewLogger(logging.Config{Level: logging.LevelDebug}))

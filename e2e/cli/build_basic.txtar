@@ -45,4 +45,4 @@ sources:
 -- exp/data.json --
 {"data":{"common":true},"prefix":{"some":"thing"}}
 -- exp/.manifest --
-{"revision":"","roots":["prefix","rules","data"],"rego_version":0}
+{"revision":"","roots":["rules","prefix","data"],"rego_version":0}

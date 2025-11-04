@@ -237,7 +237,6 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/johannesboyne/gofakes3 v0.0.0-20250402064820-d479899d8cbe
-	github.com/knieriem/fsutil v0.3.0
 	github.com/olekukonko/tablewriter v1.1.0
 	github.com/open-policy-agent/opa v1.10.0
 	github.com/prometheus/client_golang v1.23.2
@@ -250,6 +249,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/mysql v0.39.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.39.0
 	github.com/thediveo/enumflag/v2 v2.0.7
+	github.com/yalue/merged_fs v1.3.0
 	golang.org/x/crypto v0.43.0
 	golang.org/x/sync v0.17.0
 	google.golang.org/api v0.253.0

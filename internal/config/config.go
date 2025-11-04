@@ -251,6 +251,8 @@ type Labels map[string]string
 type Requirement struct {
 	Source *string        `json:"source,omitempty" yaml:"source,omitempty"`
 	Git    GitRequirement `json:"git,omitzero" yaml:"git,omitempty"`
+	Path   string         `json:"path,omitzero" yaml:"path"`
+	Prefix string         `json:"prefix,omitzero" yaml:"prefix"`
 }
 
 type GitRequirement struct {
@@ -258,7 +260,10 @@ type GitRequirement struct {
 }
 
 func (a Requirement) Equal(b Requirement) bool {
-	return stringPtrEqual(a.Source, b.Source) && stringPtrEqual(a.Git.Commit, b.Git.Commit)
+	return stringPtrEqual(a.Source, b.Source) &&
+		stringPtrEqual(a.Git.Commit, b.Git.Commit) &&
+		a.Path == b.Path &&
+		a.Prefix == b.Prefix
 }
 
 type Requirements []Requirement
