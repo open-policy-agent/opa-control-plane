@@ -1,0 +1,107 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/fruitsrv/bundle.tar.gz
+[!windows] cmp stdout exp/tarball
+
+exec tar xf bundles/fruitsrv/bundle.tar.gz
+cmp .manifest exp/.manifest
+cmp data.json exp/data.json
+cmp fruitsrv/rules.rego exp/fruitsrv/rules.rego
+cmp stack1src/rules.rego exp/stack1src/rules.rego
+cmp entry/rules.rego exp/entry/rules.rego
+
+[exec:opa] exec opa eval -b bundles/fruitsrv/bundle.tar.gz -i input_pass.json data.entrypoint.allow
+
+[exec:opa] exec opa eval --fail-defined -b bundles/fruitsrv/bundle.tar.gz -i input_fail.json data.entrypoint.allow
+
+-- input_pass.json --
+{"request":"GET"}
+-- input_fail.json --
+{"request":"GET","payload":{"fruits":["b_id_13"]}}
+-- entry/rules.rego --
+package entrypoint
+import rego.v1
+allow if {
+	data.rules.allow
+	every stack in data.stacks {
+		not stack.stack.deny
+	}
+}
+-- stack1/stack/data.json --
+{
+  "bad_apples": ["b_id_1", "b_id_13"]
+}
+-- stack1/rules.rego --
+package stack
+import rego.v1
+deny if data.stack.bad_apples[_] in input.payload.fruits
+-- svc/rules.rego --
+package rules
+import rego.v1
+allow if input.request in {"GET", "POST"}
+-- config.d/bundle.yml --
+bundles:
+  fruitsrv:
+    labels:
+      env: production
+    object_storage:
+      filesystem:
+        path: bundles/fruitsrv/bundle.tar.gz
+    requirements:
+    - source: fruitsrv
+    - source: entrypoint
+stacks:
+  stack1:
+    selector:
+      env:
+      - production
+    requirements:
+    - source: stack1src
+      prefix: data.stacks.stack1
+sources:
+  entrypoint:
+    directory: entry/
+    paths:
+    - rules.rego
+  fruitsrv:
+    directory: svc/
+    paths:
+    - rules.rego
+  stack1src:
+    directory: stack1/
+    paths:
+    - rules.rego
+    - stack/data.json 
+-- exp/tarball --
+/data.json
+/entrypoint/rules.rego
+/fruitsrv/rules.rego
+/stack1src/rules.rego
+/.manifest
+-- exp/data.json --
+{"stacks":{"stack1":{"stack":{"bad_apples":["b_id_1","b_id_13"]}}}}
+-- exp/.manifest --
+{"revision":"","roots":["entrypoint","rules","stacks/stack1/stack"],"rego_version":0}
+-- exp/fruitsrv/rules.rego --
+package rules
+
+import rego.v1
+
+allow if input.request in {"GET", "POST"}
+-- exp/stack1src/rules.rego --
+package stacks.stack1.stack
+
+import rego.v1
+
+deny if data.stacks.stack1.stack.bad_apples[_] in input.payload.fruits
+-- exp/entry/rules.rego --
+package entrypoint
+import rego.v1
+allow if {
+	data.rules.allow
+	every stack in data.stacks {
+		not stack.stack.deny
+	}
+}
