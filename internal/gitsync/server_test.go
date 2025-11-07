@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"sync/atomic"
 
 	"github.com/gliderlabs/ssh"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
@@ -23,6 +24,7 @@ type GitSSHServer struct {
 	listener net.Listener // Listener for incoming SSH connections
 	hostKey  ssh.Signer   // auto-generated ssh server host key
 	server   *ssh.Server
+	count    *atomic.Uint32 // number of fetches
 }
 
 func NewGitSSHServer(network string, address string, port int, dir string, authorizedKey ssh.PublicKey) (*GitSSHServer, error) {
@@ -31,11 +33,13 @@ func NewGitSSHServer(network string, address string, port int, dir string, autho
 		return nil, err
 	}
 
-	var s GitSSHServer
-	s.address = address
-	s.port = port
-	s.dir = dir
-	s.listener = l
+	s := GitSSHServer{
+		address:  address,
+		port:     port,
+		dir:      dir,
+		listener: l,
+		count:    &atomic.Uint32{},
+	}
 	s.server = &ssh.Server{
 		Handler: s.handleSSH,
 		PublicKeyHandler: func(ctx ssh.Context, key ssh.PublicKey) bool {
@@ -70,6 +74,14 @@ func (s *GitSSHServer) Fingerprint() string {
 	return crypto_ssh.FingerprintSHA256(s.hostKey.PublicKey())
 }
 
+func (s *GitSSHServer) Fetches() uint32 {
+	return s.count.Load()
+}
+
+func (s *GitSSHServer) ResetFetches() {
+	s.count.Store(0)
+}
+
 func (s *GitSSHServer) Serve() error {
 	return s.server.Serve(s.listener)
 }
@@ -90,6 +102,7 @@ func (s *GitSSHServer) handleSSH(sess ssh.Session) {
 			_ = sess.Exit(128)
 			return
 		}
+		s.count.Add(1)
 
 		_ = sess.Exit(1)
 
