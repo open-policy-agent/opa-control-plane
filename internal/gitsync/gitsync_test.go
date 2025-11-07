@@ -1,7 +1,6 @@
 package gitsync_test
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -59,9 +58,8 @@ func TestGitsyncLocal(t *testing.T) {
 		Commit:    nil,
 	}, "")
 
-	ctx := context.Background()
-	err = s.Execute(ctx)
-	if err != nil {
+	ctx := t.Context()
+	if err := s.Execute(ctx); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
@@ -118,7 +116,6 @@ func TestGitsyncLocal(t *testing.T) {
 // It also tests the SSH key authentication by generating a new SSH key for the server and using it to authenticate the client.
 func TestGitsyncSSH(t *testing.T) {
 	// Create a git repository to use for testing. Note, it's not a bare repository, but it will be used as such by pointing to .git directory.
-
 	tmpRootDir := t.TempDir()
 	testRepositoryPath := tmpRootDir + "/testing"
 
@@ -127,8 +124,7 @@ func TestGitsyncSSH(t *testing.T) {
 		t.Fatalf("expected no error while initializing test repository: %v", err)
 	}
 
-	err = os.WriteFile(testRepositoryPath+"/README", []byte("first commit"), 0644)
-	if err != nil {
+	if err := os.WriteFile(testRepositoryPath+"/README", []byte("first commit"), 0644); err != nil {
 		t.Fatalf("expected no error while creating new file: %v", err)
 	}
 
@@ -141,13 +137,25 @@ func TestGitsyncSSH(t *testing.T) {
 		t.Fatalf("expected no error while adding file to worktree: %v", err)
 	}
 
-	_, err = w.Commit("README", &git.CommitOptions{Author: &object.Signature{}})
+	commitHash, err := w.Commit("README", &git.CommitOptions{Author: &object.Signature{}})
 	if err != nil {
+		t.Fatalf("expected no error while committing changes: %v", err)
+	}
+	// add another commit
+	if err := os.WriteFile(testRepositoryPath+"/README", []byte("second commit"), 0644); err != nil {
+		t.Fatalf("expected no error while creating new file: %v", err)
+	}
+
+	_, err = w.Add("README")
+	if err != nil {
+		t.Fatalf("expected no error while adding file to worktree: %v", err)
+	}
+
+	if _, err := w.Commit("README", &git.CommitOptions{Author: &object.Signature{}}); err != nil {
 		t.Fatalf("expected no error while committing changes: %v", err)
 	}
 
 	// Set up a git SSH server to serve the repository.
-
 	sshKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatalf("expected no error while generating SSH key: %v", err)
@@ -210,31 +218,72 @@ func TestGitsyncSSH(t *testing.T) {
 		Value: value,
 	}
 
-	// Create a new synchronizer with the SSH repository URL and the secret.
+	t.Run("clone remote branch", func(t *testing.T) {
+		// Create a new synchronizer with the SSH repository URL and the secret.
+		clonedRepositoryPath := tmpRootDir + "/test-repo"
+		repoDir := "testing/.git" // point to .git to simulate bare repository
+		repoURL := fmt.Sprintf("ssh://git@%s/%s", srv.Address().String(), repoDir)
+		t.Cleanup(srv.ResetFetches)
 
-	clonedRepositoryPath := tmpRootDir + "/test-repo"
-	repoDir := "testing/.git" // point to .git to simulate bare repository
-	repoURL := fmt.Sprintf("ssh://git@%s/%s", srv.Address().String(), repoDir)
+		ref := "refs/heads/master"
+		s := gitsync.New(clonedRepositoryPath, config.Git{
+			Repo:        repoURL,
+			Reference:   &ref,
+			Credentials: secret2.Ref(),
+		}, "")
 
-	ref := "refs/heads/master"
-	s := gitsync.New(clonedRepositoryPath, config.Git{
-		Repo:        repoURL,
-		Reference:   &ref,
-		Commit:      nil,
-		Credentials: secret2.Ref(),
-	}, "")
+		if err := s.Execute(t.Context()); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
 
-	err = s.Execute(context.Background())
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
+		data, err := os.ReadFile(clonedRepositoryPath + "/README")
+		if err != nil {
+			t.Fatalf("expected no error while reading file, got: %v", err)
+		}
 
-	data, err := os.ReadFile(clonedRepositoryPath + "/README")
-	if err != nil {
-		t.Fatalf("expected no error while reading file, got: %v", err)
-	}
+		if string(data) != "second commit" {
+			t.Fatalf("expected file content to be 'second commit', got: %s", string(data))
+		}
 
-	if string(data) != "first commit" {
-		t.Fatalf("expected file content to be 'first commit', got: %s", string(data))
-	}
+		if exp, act := uint32(1), srv.Fetches(); exp != act {
+			t.Errorf("expected %d fetches, got %d", exp, act)
+		}
+	})
+
+	t.Run("clone remote commit", func(t *testing.T) {
+		// Create a new synchronizer with the SSH repository URL and the secret.
+		clonedRepositoryPath := tmpRootDir + "/test-repo"
+		repoDir := "testing/.git" // point to .git to simulate bare repository
+		repoURL := fmt.Sprintf("ssh://git@%s/%s", srv.Address().String(), repoDir)
+		t.Cleanup(srv.ResetFetches)
+
+		ref := commitHash.String()
+		s := gitsync.New(clonedRepositoryPath, config.Git{
+			Repo:        repoURL,
+			Commit:      &ref,
+			Credentials: secret2.Ref(),
+		}, "")
+
+		if err := s.Execute(t.Context()); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		data, err := os.ReadFile(clonedRepositoryPath + "/README")
+		if err != nil {
+			t.Fatalf("expected no error while reading file, got: %v", err)
+		}
+
+		if string(data) != "first commit" {
+			t.Fatalf("expected file content to be 'first commit', got: %s", string(data))
+		}
+
+		// Run again. Expect no new fetch since we've already got the commit.
+		if err := s.Execute(t.Context()); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if exp, act := uint32(1), srv.Fetches(); exp != act {
+			t.Errorf("expected %d fetches, got %d", exp, act)
+		}
+	})
 }

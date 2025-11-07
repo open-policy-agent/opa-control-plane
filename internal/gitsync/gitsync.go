@@ -24,10 +24,11 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
-	"github.com/open-policy-agent/opa-control-plane/internal/config"
-	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
+
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 )
 
 // configFile is an internal config file used to track if a git repository
@@ -63,21 +64,27 @@ func New(path string, config config.Git, sourceName string) *Synchronizer {
 func (s *Synchronizer) Execute(ctx context.Context) error {
 	startTime := time.Now()
 
-	if err := s.execute(ctx); err != nil {
+	done, err := s.execute(ctx)
+	if err != nil {
 		metrics.GitSyncFailed(s.sourceName, s.config.Repo)
 		return fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
 	}
-
-	metrics.GitSyncSucceeded(s.sourceName, s.config.Repo, startTime)
+	if done {
+		metrics.GitSyncSucceeded(s.sourceName, s.config.Repo, startTime)
+	}
 	return nil
 }
 
-func (s *Synchronizer) execute(ctx context.Context) error {
+func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 	var repository *git.Repository
+	var fetched bool
+	if s.config.Commit == nil && s.config.Reference == nil {
+		return false, errors.New("either reference or commit must be set in git configuration")
+	}
 
 	authMethod, err := s.auth(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	var referenceName plumbing.ReferenceName
@@ -87,21 +94,26 @@ func (s *Synchronizer) execute(ctx context.Context) error {
 
 	// A configuration change may necessitate wiping an earlier clone: in particular, re-cloning
 	// is the easiest option if the repository URL has changed. For simplicity, follow the same
-	// logic with any config change.
+	// logic with any config change EXCEPT for credentials. That's because it's harder to do, the
+	// resolved file alone won't have the secrets, only their names.
 
 	if data, err := os.ReadFile(filepath.Join(s.path, ".git", configFile)); err == nil {
-		var config config.Git
+		config := config.Git{
+			Credentials: s.config.Credentials,
+		}
 		if err := yaml.Unmarshal(data, &config); err != nil || !config.Equal(&s.config) {
 			if err := os.RemoveAll(s.path); err != nil {
-				return err
+				return false, err
 			}
 		}
 	} else if !os.IsNotExist(err) {
-		return err
+		return false, err
 	}
 
-	if _, err := os.Stat(s.path); os.IsNotExist(err) {
-		repository, err = git.PlainClone(s.path, false, &git.CloneOptions{
+	repository, err = git.PlainOpen(s.path)
+	if errors.Is(err, git.ErrRepositoryNotExists) { // does not exist? clone it
+		fetched = true
+		repository, err = git.PlainCloneContext(ctx, s.path, false, &git.CloneOptions{
 			URL:               s.config.Repo,
 			Auth:              authMethod,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
@@ -110,28 +122,42 @@ func (s *Synchronizer) execute(ctx context.Context) error {
 			NoCheckout:        true, // We will checkout later
 		})
 		if err != nil {
-			return err
+			return false, err
 		}
 
 		data, err := yaml.Marshal(s.config)
 		if err != nil {
-			return err
+			return false, err
 		}
-
 		if err := os.WriteFile(filepath.Join(s.path, ".git", configFile), data, 0644); err != nil {
-			return err
+			return false, err
 		}
+	} else if err != nil { // other errors are bubbled up
+		return false, err
+	}
 
-	} else {
-		repository, err = git.PlainOpen(s.path)
-		if err != nil {
-			return err
+	w, err := repository.Worktree()
+	if err != nil {
+		return false, err
+	}
+
+	if s.config.Commit != nil {
+		opts := &git.CheckoutOptions{
+			Force: true,
+			Hash:  plumbing.NewHash(*s.config.Commit),
+		}
+		if w.Checkout(opts) == nil { // success! nothing further to do
+			return fetched, nil
 		}
 	}
 
-	remote := "origin"
+	// If we couldn't check out the hash, we're using a branch or tag reference,
+	// or we have not checked out anything yet. Either way, we'll need to fetch
+	// and checkout.
 
-	err = repository.FetchContext(ctx, &git.FetchOptions{
+	remote := "origin"
+	fetched = true
+	if err := repository.FetchContext(ctx, &git.FetchOptions{
 		RemoteName: remote,
 		Auth:       authMethod,
 		Force:      true,
@@ -139,37 +165,25 @@ func (s *Synchronizer) execute(ctx context.Context) error {
 			gitconfig.RefSpec(fmt.Sprintf("+refs/heads/*:refs/remotes/%s/refs/heads/*", remote)),
 			gitconfig.RefSpec(fmt.Sprintf("+refs/tags/*:refs/remotes/%s/refs/tags/*", remote)),
 		},
-	})
-	if err != nil && err != git.NoErrAlreadyUpToDate {
-		return err
+	}); err != nil && err != git.NoErrAlreadyUpToDate {
+		return false, err
 	}
 
-	w, err := repository.Worktree()
-	if err != nil {
-		return err
+	opts := &git.CheckoutOptions{
+		Force: true, // Discard any local changes
 	}
-
-	var checkoutOpts *git.CheckoutOptions
-
-	if s.config.Commit != nil {
-		checkoutOpts = &git.CheckoutOptions{
-			Force: true, // Discard any local changes
-			Hash:  plumbing.NewHash(*s.config.Commit),
-		}
-	} else if s.config.Reference != nil {
+	switch {
+	case s.config.Reference != nil:
 		ref := fmt.Sprintf("refs/remotes/%s/%s", remote, *s.config.Reference)
-		checkoutOpts = &git.CheckoutOptions{
-			Force:  true, // Discard any local changes
-			Branch: plumbing.ReferenceName(ref),
-		}
-	} else {
-		return errors.New("either reference or commit must be set in git configuration")
+		opts.Branch = plumbing.ReferenceName(ref)
+	case s.config.Commit != nil:
+		opts.Hash = plumbing.NewHash(*s.config.Commit)
 	}
 
-	return w.Checkout(checkoutOpts)
+	return fetched, w.Checkout(opts)
 }
 
-func (*Synchronizer) Close(_ context.Context) {
+func (*Synchronizer) Close(context.Context) {
 	// No resources to close.
 }
 
