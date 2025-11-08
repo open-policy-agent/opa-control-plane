@@ -2340,8 +2340,7 @@ func fetchSystemPolicies(bar *progress.Bar, c *das.Client, state *dasState) erro
 	close(ch)
 
 	for range 10 {
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			for s := range ch {
 				log.Infof("Fetching %d policies for system %v", len(s.Policies), s.Id)
 				ps, err := fetchPolicies(bar, c, s.Policies, nil)
@@ -2352,8 +2351,7 @@ func fetchSystemPolicies(bar *progress.Bar, c *das.Client, state *dasState) erro
 				state.SystemPolicies[s.Id] = ps
 				mu.Unlock()
 			}
-			wg.Done()
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -2373,8 +2371,7 @@ func fetchStackPolicies(bar *progress.Bar, c *das.Client, state *dasState) error
 	close(ch)
 
 	for range 10 {
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			for s := range ch {
 				log.Infof("Fetching %d policies for stack %v", len(s.Policies), s.Id)
 				ps, err := fetchPolicies(bar, c, s.Policies, nil)
@@ -2385,8 +2382,7 @@ func fetchStackPolicies(bar *progress.Bar, c *das.Client, state *dasState) error
 				state.StackPolicies[s.Id] = ps
 				mu.Unlock()
 			}
-			wg.Done()
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -2406,8 +2402,7 @@ func fetchLibraryPolicies(bar *progress.Bar, c *das.Client, state *dasState) err
 	close(ch)
 
 	for range 10 {
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			for l := range ch {
 
 				// Legacy libraries will have had policies fetched, but
@@ -2441,8 +2436,7 @@ func fetchLibraryPolicies(bar *progress.Bar, c *das.Client, state *dasState) err
 				state.LibraryPolicies[l.Id] = ps
 				mu.Unlock()
 			}
-			wg.Done()
-		}()
+		})
 	}
 
 	wg.Wait()
