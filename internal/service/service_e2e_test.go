@@ -183,7 +183,7 @@ func TestService(t *testing.T) {
 				}
 			}
 
-			var expectedData interface{}
+			var expectedData any
 
 			if test.ExpectedBundle.Data != "" {
 				data := formatTemplate(t, test.ExpectedBundle.Data, test.ContentParameters)
@@ -192,7 +192,7 @@ func TestService(t *testing.T) {
 					t.Fatalf("failed to unmarshal expected data: %v", err)
 				}
 			} else {
-				expectedData = map[string]interface{}{}
+				expectedData = map[string]any{}
 			}
 
 			if !reflect.DeepEqual(b.Data, expectedData) {
@@ -208,7 +208,7 @@ func TestService(t *testing.T) {
 
 func formatTemplate(t *testing.T, templateStr string, contentParameters map[string]string) string {
 	buf := bytes.NewBuffer(nil)
-	parameters := map[string]interface{}{}
+	parameters := map[string]any{}
 	for k, v := range contentParameters {
 		parameters[k] = v
 	}

@@ -779,7 +779,7 @@ func Run(params Options) error {
 		if len(output.Bundles) > 0 {
 			output.Secrets["storage-creds"] = &config.Secret{
 				Name: "storage-creds",
-				Value: map[string]interface{}{
+				Value: map[string]any{
 					"type":              "aws_auth",
 					"access_key_id":     "$AWS_ACCESS_KEY_ID",
 					"secret_access_key": "$AWS_SECRET_ACCESS_KEY",
@@ -1424,7 +1424,7 @@ func migrateV1HTTPPullDatasource(nsPrefix string, v1 *das.V1Datasource) (config.
 	ds.Name = v1.Id
 	ds.Type = "http"
 	ds.Path = strings.TrimPrefix(v1.Id, nsPrefix)
-	ds.Config = make(map[string]interface{})
+	ds.Config = make(map[string]any)
 	ds.Config["url"] = v1.URL
 
 	headers := make(map[string]string)
@@ -1442,7 +1442,7 @@ func migrateV1HTTPPullDatasource(nsPrefix string, v1 *das.V1Datasource) (config.
 
 				secret = &config.Secret{
 					Name:  das.Sanitize(*header.SecretId),
-					Value: map[string]interface{}{"type": "token_auth", "token": ""},
+					Value: map[string]any{"type": "token_auth", "token": ""},
 				}
 
 				ds.Credentials = &config.SecretRef{Name: secret.Name}

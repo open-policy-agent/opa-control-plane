@@ -15,11 +15,11 @@ import (
 type HttpDataSynchronizer struct {
 	path        string // The path where the data will be saved
 	url         string
-	headers     map[string]interface{} // Headers to include in the HTTP request
+	headers     map[string]any // Headers to include in the HTTP request
 	credentials *config.SecretRef
 }
 
-func New(path string, url string, headers map[string]interface{}, credentials *config.SecretRef) *HttpDataSynchronizer {
+func New(path string, url string, headers map[string]any, credentials *config.SecretRef) *HttpDataSynchronizer {
 	return &HttpDataSynchronizer{path: path, url: url, headers: headers, credentials: credentials}
 }
 

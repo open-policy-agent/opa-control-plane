@@ -179,7 +179,7 @@ func TestRequirementsWithConflictingOverrides(t *testing.T) {
 
 }
 
-func render(t *testing.T, tmpl string, params interface{}) []byte {
+func render(t *testing.T, tmpl string, params any) []byte {
 
 	var buf bytes.Buffer
 	tpl, err := template.New("config").Parse(tmpl)

@@ -114,9 +114,9 @@ type V1Decision struct {
 	Bundles    map[string]struct {
 		Revision string `json:"revision"`
 	} `json:"bundles"`
-	Path    string       `json:"path"`
-	Input   *interface{} `json:"input"`
-	Result  *interface{} `json:"result"`
+	Path    string `json:"path"`
+	Input   *any   `json:"input"`
+	Result  *any   `json:"result"`
 	Metrics struct {
 		TimerRegoQueryCompileNs int64 `json:"timer_rego_query_compile_ns"`
 		TimerRegoQueryEvalNs    int64 `json:"timer_rego_query_eval_ns"`
@@ -146,7 +146,7 @@ type Response struct {
 	RequestId string          `json:"request_id"`
 }
 
-func (r *Response) Decode(x interface{}) error {
+func (r *Response) Decode(x any) error {
 	buf := bytes.NewBuffer(r.Result)
 	decoder := json.NewDecoder(buf)
 	return decoder.Decode(x)

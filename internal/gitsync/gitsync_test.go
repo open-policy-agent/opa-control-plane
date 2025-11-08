@@ -206,7 +206,7 @@ func TestGitsyncSSH(t *testing.T) {
 		t.Fatalf("expected no error while marshaling secret: %v", err)
 	}
 
-	var value map[string]interface{}
+	var value map[string]any
 	if err := json.Unmarshal(bs, &value); err != nil {
 		t.Fatalf("expected no error while unmarshaling secret: %v", err)
 	}

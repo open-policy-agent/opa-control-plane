@@ -86,7 +86,7 @@ func build(files map[string]string) bundle.Bundle {
 				Raw:  []byte(content),
 			})
 		} else if path == "data.json" {
-			var value map[string]interface{}
+			var value map[string]any
 			err := json.Unmarshal([]byte(content), &value)
 			if err != nil {
 				panic(err)

@@ -58,7 +58,7 @@ func TestMerge(t *testing.T) {
 		}
 
 		// roundtrip the config bytes to make reflect.DeepEqual work below
-		var x interface{}
+		var x any
 		if err := yaml.Unmarshal(bs, &x); err != nil {
 			t.Fatal(err)
 		}
@@ -66,7 +66,7 @@ func TestMerge(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var result map[string]interface{}
+		var result map[string]any
 		if err := json.Unmarshal(roundtrip, &result); err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +88,7 @@ func TestMerge(t *testing.T) {
 			"keep1": 1
 		}`)
 
-		var exp map[string]interface{}
+		var exp map[string]any
 		if err := json.Unmarshal(bs2, &exp); err != nil {
 			t.Fatal(err)
 		}

@@ -20,7 +20,7 @@ type cacheKey struct {
 	Access Access
 	// ExtraColumnMappings is an array of extra column mappings, constructed w/ reflection.
 	// This is to keep the cache key comparable, and thus, usable as a key in the LRU cache.
-	ExtraColumnMappings interface{}
+	ExtraColumnMappings any
 }
 
 // pendingGet tracks the result of a cache miss.
