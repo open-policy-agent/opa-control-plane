@@ -418,7 +418,7 @@ func backtestBundle(ctx context.Context, opts Options, styra *das.Client, b *con
 
 		log.Infof("Evaluating decision %q for system %q", d.DecisionId, b.Name)
 
-		var result *interface{}
+		var result *any
 		var start = time.Now()
 
 		r, err := opa.Decision(ctx, options)
@@ -538,7 +538,7 @@ func latencyInflationErr(msg string) error {
 	return &compareErr{Message: msg, Status: ReportStatusLatencyInflation}
 }
 
-func compareResults(d *das.V1Decision, r *interface{}, t time.Duration, maxEvalInflation int) error {
+func compareResults(d *das.V1Decision, r *any, t time.Duration, maxEvalInflation int) error {
 
 	if d.Result == nil {
 		if r != nil {
