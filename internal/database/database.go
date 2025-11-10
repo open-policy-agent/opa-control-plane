@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"iter"
 	"maps"
 	"os"
@@ -24,11 +25,16 @@ import (
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib" // database/sql compatible driver for pgx
+	"github.com/yalue/merged_fs"
 	_ "modernc.org/sqlite"
+
+	"github.com/open-policy-agent/opa/v1/loader"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/authz"
 	"github.com/open-policy-agent/opa-control-plane/internal/aws"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/database/sourcedatafs"
+	"github.com/open-policy-agent/opa-control-plane/internal/fs/mountfs"
 	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
@@ -326,9 +332,9 @@ func (d *Database) CloseDB() {
 	d.db.Close()
 }
 
-func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, principal string) (any, bool, error) {
+func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, principal string) (any, []string, error) {
 	path = filepath.ToSlash(path)
-	return tx3(ctx, d, sourcesDataGet(ctx, d, sourceName, path, principal,
+	return tx3(ctx, d, sourcesDataGet(ctx, d, true, sourceName, path, principal,
 		func(bs []byte) (data any, err error) {
 			return data, json.Unmarshal(bs, &data)
 		}))
@@ -337,7 +343,7 @@ func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, 
 func (d *Database) SourcesDataPatch(ctx context.Context, sourceName, path string, principal string, patch jsonpatch.Patch) error {
 	path = filepath.ToSlash(path)
 	return tx1(ctx, d, func(tx *sql.Tx) error {
-		previous, _, err := sourcesDataGet(ctx, d, sourceName, path, principal, func(bs []byte) ([]byte, error) { return bs, nil })(tx)
+		previous, _, err := sourcesDataGet(ctx, d, false, sourceName, path, principal, func(bs []byte) ([]byte, error) { return bs, nil })(tx)
 		if err != nil {
 			return err
 		}
@@ -349,13 +355,13 @@ func (d *Database) SourcesDataPatch(ctx context.Context, sourceName, path string
 	})
 }
 
-func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path string, principal string,
+func sourcesDataGet[T any](ctx context.Context, d *Database, returnFiles bool, sourceName, path string, principal string,
 	f func([]byte) (T, error),
-) func(*sql.Tx) (T, bool, error) {
-	return func(tx *sql.Tx) (T, bool, error) {
+) func(*sql.Tx) (T, []string, error) {
+	return func(tx *sql.Tx) (T, []string, error) {
 		var zero T
 		if err := d.resourceExists(ctx, tx, "sources", sourceName); err != nil {
-			return zero, false, err
+			return zero, nil, err
 		}
 
 		expr, err := authz.Partial(ctx, authz.Access{
@@ -365,36 +371,188 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 			Name:       sourceName,
 		}, nil)
 		if err != nil {
-			return zero, false, err
+			return zero, nil, err
 		}
+
+		var files []string
+		prefix := filepath.Dir(path)
 
 		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
+		if returnFiles { // get "directory" contents
+			offset := len(prefix) + 2
+			query := fmt.Sprintf(`SELECT DISTINCT
+    SUBSTRING(
+        SUBSTRING(path, %[1]d),
+        1,
+        CASE
+            WHEN %[2]s > 0
+            THEN %[2]s - 1
+            ELSE LENGTH(SUBSTRING(path, %[1]d))
+        END
+    ) AS entry
+FROM sources_data
+WHERE source_name = %[3]s
+  AND path <> %[4]s
+  AND (%[5]s)
+  AND path LIKE %[6]s
+LIMIT 25`, // limit 25 is arbitrary: there could be a LOT of entries...
+				offset, d.locate("'/'", fmt.Sprintf("SUBSTRING(path, %d)", offset)),
+				d.arg(0), d.arg(1), conditions, d.arg(len(args)))
 
-		rows, err := tx.Query(fmt.Sprintf(`SELECT
-	data
-FROM
-	sources_data
-WHERE source_name = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
-		if err != nil {
-			return zero, false, err
+			files, err = queryPaths(ctx, tx, query, append(args, prefix+"/%")...)
+			if err != nil {
+				if !errors.Is(err, sql.ErrNoRows) { // no rows, no nested files to return
+					return zero, nil, err
+				}
+			}
 		}
-		defer rows.Close()
 
-		if !rows.Next() {
-			return zero, false, nil
-		}
+		// get file content at node
+		args[1] = path
+		query := fmt.Sprintf(`SELECT data FROM sources_data
+WHERE source_name = %s
+  AND path = %s
+  AND (%s)
+ORDER BY path`,
+			d.arg(0), d.arg(1), conditions)
 
 		var bs []byte
-		if err := rows.Scan(&bs); err != nil {
-			return zero, false, err
+		if err := tx.QueryRowContext(ctx, query, args...).Scan(&bs); err != nil {
+			if errors.Is(err, sql.ErrNoRows) { // no rows, no response data
+				return zero, files, nil
+			}
+			return zero, files, err
 		}
 
-		data, err := f(bs)
-		if err != nil {
-			return zero, false, err
-		}
-		return data, true, nil
+		ret, err := f(bs)
+		return ret, files, err
 	}
+}
+
+func (d *Database) checkSourceDataConflict(ctx context.Context, tx *sql.Tx, sourceName, path string, data any, bs []byte, principal string) error {
+	expr, err := authz.Partial(ctx, authz.Access{
+		Principal:  principal,
+		Permission: "sources.data.read",
+		Resource:   "sources",
+		Name:       sourceName,
+	}, nil)
+	if err != nil {
+		return err
+	}
+
+	conditions, args := expr.SQL(d.arg, []any{sourceName, path})
+	offset := len(args)
+	prefixPath := filepath.Dir(path)
+
+	// We're only fetching relevant data "blobs", based on their filesystem location:
+	// 1. anything clashing with the included object/non-object
+	// 2. anything "upwards" the prefixPath.
+	//
+	// For example, to update corp/users/internal/alice/data.json, we'll fetch
+	// 1a. path LIKE corp/users/internal/alice/KEY/% for each KEY in the object (len(keys) > 0)
+	// 1b. path LIKE corp/users/internal/alice/% if data.json is not an object
+	//     --> either non-empty result is a conflict
+	// 2. path IN (corp/users/internal/data.json corp/users/data.json corp/data.json)
+	//    --> these need to be fed into the loader to check
+
+	// deal with (1.), downwards conflicts
+	// NB(sr): We don't need to consult the data itself to determine errors here,
+	// so we only check existing paths.
+	{
+		var keys []string
+		switch d := data.(type) {
+		case map[string]any:
+			keys = slices.Collect(maps.Keys(d))
+			if keys == nil {
+				keys = []string{} // we use keys == nil to signal non-object data
+			}
+		}
+
+		prefixes := make([]any, max(len(keys), 1))
+		if keys == nil { // (1b)
+			prefixes = []any{prefixPath + "/%"} // any prefix path is a conflict
+		} else { // (1a)
+			for i := range keys {
+				prefixes[i] = prefixPath + "/" + keys[i] + "/%"
+			}
+		}
+		prefixArgs := make([]string, len(prefixes))
+		for i := range prefixes {
+			prefixArgs[i] = "path LIKE " + d.arg(offset+i)
+		}
+
+		values := make([]any, 0, len(prefixes)+len(args)+2)
+		values = append(values, sourceName, path)
+		values = append(values, args[2:]...) // conditions
+		values = append(values, prefixes...)
+
+		query := fmt.Sprintf(`SELECT path FROM sources_data
+WHERE source_name = %s
+  AND (path <> %s)
+  AND (%s)
+  AND (%s)
+ORDER BY path LIMIT 4`,
+			d.arg(0), d.arg(1), conditions, strings.Join(prefixArgs, " OR "))
+
+		files, err := queryPaths(ctx, tx, query, values...)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) { // no rows, no conflict
+				return err
+			}
+		}
+
+		if len(files) > 0 {
+			if len(files) == 4 {
+				files[3] = "..."
+			}
+			return fmt.Errorf("%w: conflict with %v", ErrDataConflict, files)
+		}
+	}
+
+	// deal with (2.)
+	{
+		upwardsPaths := upwardsPaths(prefixPath)
+		if len(upwardsPaths) == 0 {
+			return nil
+		}
+		inParams := make([]string, len(upwardsPaths))
+		for i := range upwardsPaths {
+			inParams[i] = d.arg(i + offset)
+		}
+
+		query := fmt.Sprintf(`SELECT path FROM sources_data
+ WHERE source_name = %s
+   AND (%s <> '')
+   AND (%s)
+   AND path in (%s)`,
+			d.arg(0), d.arg(1), conditions, strings.Join(inParams, ","))
+		values := make([]any, 0, 2+len(upwardsPaths)+len(args))
+		values = append(values, sourceName, "x")
+		values = append(values, args[2:]...) // conditions
+		values = append(values, upwardsPaths...)
+
+		files, err := queryPaths(ctx, tx, query, values...)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) { // no rows, no conflict
+				return nil
+			}
+			return err
+		}
+		if len(files) == 0 {
+			return nil
+		}
+
+		// Attempt to load, i.e. merge with existing data. If it fails, don't upsert.
+		fs0 := mountfs.New(map[string]fs.FS{filepath.Dir(path): sourcedatafs.NewSingleFS(ctx, func(context.Context) ([]byte, error) { return bs, nil })})
+		fs1 := sourcedatafs.New(ctx, files, func(file string) func(context.Context) ([]byte, error) {
+			return d.sourceData(tx, sourceName, file)
+		})
+		fs2 := merged_fs.NewMergedFS(fs0, fs1)
+		if _, err := loader.NewFileLoader().WithFS(fs2).All([]string{"."}); err != nil {
+			return fmt.Errorf("%w: %w", ErrDataConflict, err)
+		}
+	}
+	return nil
 }
 
 func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, data any, principal string) error {
@@ -415,11 +573,20 @@ func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, 
 			Name:       sourceName,
 		})
 		if !allowed {
-			return errors.New("unauthorized")
+			return ErrNotAuthorized
 		}
 
 		bs, err := json.Marshal(data)
 		if err != nil {
+			return err
+		}
+
+		// NB: We only check for conflicts if the principal has the right to read source data.
+		// (Otherwise, write access to could be abused to guess the data or its layout? Let's
+		// err on the side of caution.)
+		// This is done implicitly: If the conditions are not satisfiable, none of the file
+		// lookups will yield anything.
+		if err := d.checkSourceDataConflict(ctx, tx, sourceName, path, data, bs, principal); err != nil {
 			return err
 		}
 
@@ -446,7 +613,8 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 
 		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
 
-		_, err = tx.Exec(fmt.Sprintf(`DELETE FROM sources_data WHERE source_name = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
+		query := fmt.Sprintf(`DELETE FROM sources_data WHERE source_name = %s AND path = %s AND (%s)`, d.arg(0), d.arg(1), conditions)
+		_, err = tx.ExecContext(ctx, query, args...)
 		return err
 	})
 }
@@ -617,7 +785,7 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 			args = append(args, opts.Limit)
 		}
 
-		rows, err := txn.Query(query, args...)
+		rows, err := txn.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, "", err
 		}
@@ -1266,10 +1434,25 @@ type Data struct {
 
 func (d *Database) QuerySourceData(sourceName string) func(context.Context) iter.Seq2[Data, error] {
 	return func(ctx context.Context) iter.Seq2[Data, error] {
-		return sqlrange.QueryContext[Data](ctx,
-			d.db,
-			`SELECT path, data FROM sources_data WHERE source_name = `+d.arg(0),
-			sourceName)
+		return d.iterSourceFiles(ctx, d.db, sourceName)
+	}
+}
+
+func (d *Database) iterSourceFiles(ctx context.Context, dbish sqlrange.Queryable, sourceName string) iter.Seq2[Data, error] {
+	return sqlrange.QueryContext[Data](ctx,
+		dbish,
+		`SELECT path, data FROM sources_data WHERE source_name = `+d.arg(0),
+		sourceName)
+}
+
+func (d *Database) sourceData(tx *sql.Tx, sourceName, path string) func(context.Context) ([]byte, error) {
+	return func(ctx context.Context) ([]byte, error) {
+		var data []byte
+		err := tx.QueryRowContext(ctx,
+			`SELECT data FROM sources_data WHERE source_name = `+d.arg(0)+` AND path = `+d.arg(1),
+			sourceName, path,
+		).Scan(&data)
+		return data, err
 	}
 }
 
@@ -1660,6 +1843,16 @@ func (d *Database) arg(i int) string {
 	return "?"
 }
 
+func (d *Database) locate(needle string, haystack string) string {
+	switch d.kind {
+	case sqlite:
+		return "INSTR(" + haystack + ", " + needle + ")"
+	case postgres:
+		return "POSITION(" + needle + " IN " + haystack + ")"
+	}
+	return "LOCATE(" + needle + ", " + haystack + ")"
+}
+
 func (d *Database) args(n int) []string {
 	args := make([]string, n)
 	for i := range n {
@@ -1686,7 +1879,7 @@ func tx1(ctx context.Context, db *Database, f func(*sql.Tx) error) error {
 	return tx.Commit()
 }
 
-func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(*sql.Tx) (T, U, error)) (T, U, error) {
+func tx3[T, U any | string](ctx context.Context, db *Database, f func(*sql.Tx) (T, U, error)) (T, U, error) {
 	tx, err := db.db.BeginTx(ctx, nil)
 	if err != nil {
 		var t T
@@ -1712,4 +1905,42 @@ func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(*sql.
 	}
 
 	return result, result2, nil
+}
+
+func upwardsPaths(basePath string) []any {
+	prefixes := []any{}
+	parts := strings.Split(basePath, "/")
+	currentPath := ""
+
+	for i := 1; i < len(parts); i++ {
+		if i > 0 {
+			currentPath = strings.Join(parts[:i], "/")
+		}
+		prefixes = append(prefixes, currentPath+"/data.json")
+	}
+	return prefixes
+}
+
+func queryPaths(ctx context.Context, tx *sql.Tx, query string, values ...any) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, query, values...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []string
+	for rows.Next() {
+		var file string
+		if err := rows.Scan(&file); err != nil {
+			return nil, err
+		}
+		files = append(files, file)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return files, nil
 }

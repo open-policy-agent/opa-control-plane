@@ -2,7 +2,9 @@ package database_test
 
 import (
 	"context"
+	"path"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -266,15 +268,19 @@ func TestDatabase(t *testing.T) {
 					GetStack("stack1", nil),
 
 				// source data operations:
-				newTestCase("source/get non-existing data").SourcesGetData("system1", "foo", nil),
-				newTestCase("source/put source data").SourcesPutData("system1", "foo", data1).SourcesGetData("system1", "foo", data1),
-				newTestCase("source/update data foo").SourcesPutData("system1", "foo", data2).SourcesGetData("system1", "foo", data2),
-				newTestCase("source/update data bar").SourcesPutData("system1", "bar", data1).SourcesGetData("system1", "bar", data1),
+				newTestCase("source/get non-existing data").SourcesGetData("system1", "foo", nil, nil),
+				newTestCase("source/put source data").SourcesPutData("system1", "foo", data1).SourcesGetData("system1", "foo", data1, nil),
+				newTestCase("source/update data foo").SourcesPutData("system1", "foo", data2).SourcesGetData("system1", "foo", data2, nil),
+				newTestCase("source/update data bar").
+					SourcesPutData("system1", "subtree/a/b", data1).
+					SourcesGetData("system1", "subtree", nil, []string{"a"}).
+					SourcesGetData("system1", "subtree/a", nil, []string{"b"}).
+					SourcesGetData("system1", "subtree/a/b", data1, nil),
 				newTestCase("source/query data").SourcesQueryData("system1", map[string][]byte{
-					"bar": []byte(`{"key":"value1"}`),
-					"foo": []byte(`{"key":"value2"}`),
+					"foo/data.json":         []byte(`{"key":"value2"}`),
+					"subtree/a/b/data.json": []byte(`{"key":"value1"}`),
 				}),
-				newTestCase("source/delete data").SourcesDeleteData("system1", "foo").SourcesGetData("system1", "foo", nil),
+				newTestCase("source/delete data").SourcesDeleteData("system1", "foo").SourcesGetData("system1", "foo", nil, nil),
 				newTestCase("source/put requirements").SourcesPutRequirements("system1", config.Requirements{
 					config.Requirement{Source: newString("system2")},
 					config.Requirement{Source: newString("system3")},
@@ -400,24 +406,29 @@ func (tc *testCase) GetPrincipalByToken(token, exp string) *testCase {
 	return tc
 }
 
-func (tc *testCase) SourcesGetData(srcID, dataID string, expected any) *testCase {
+func (tc *testCase) SourcesGetData(srcID, dataID string, expectedData any, expectedChildren []string) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		data, found, err := db.SourcesDataGet(ctx, srcID, dataID, "admin")
+		data, adjacent, err := db.SourcesDataGet(ctx, srcID, path.Join(dataID, "data.json"), "admin")
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
+		found := data != nil
 
 		switch {
-		case found && expected == nil:
+		case found && expectedData == nil:
 			t.Fatal("expected no data to be found")
-		case !found && expected != nil:
-			t.Fatal("expected data to be found")
-		case !found && expected == nil:
+		case !found && expectedData != nil:
+			t.Fatal("expectedData data to be found")
+		case !found && expectedData == nil:
 			// OK
-		case found && expected != nil:
-			if !reflect.DeepEqual(expected, data) {
+		case found && expectedData != nil:
+			if !reflect.DeepEqual(expectedData, data) {
 				t.Fatalf("expected data not found, got %v", data)
 			}
+		}
+
+		if !slices.Equal(expectedChildren, adjacent) {
+			t.Fatalf("expected children %v, got %v", expectedChildren, expectedData)
 		}
 	})
 	return tc
@@ -434,7 +445,7 @@ func (tc *testCase) SourcesQueryData(srcID string, expected map[string][]byte) *
 		}
 
 		if !reflect.DeepEqual(expected, data) {
-			t.Fatalf("expected data not found, got %v", data)
+			t.Fatalf("expected data %v, got %v", expected, data)
 		}
 	})
 	return tc
@@ -442,7 +453,7 @@ func (tc *testCase) SourcesQueryData(srcID string, expected map[string][]byte) *
 
 func (tc *testCase) SourcesPutData(srcID, dataID string, data any) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.SourcesDataPut(ctx, srcID, dataID, data, "admin"); err != nil {
+		if err := db.SourcesDataPut(ctx, srcID, path.Join(dataID, "data.json"), data, "admin"); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})
@@ -451,7 +462,7 @@ func (tc *testCase) SourcesPutData(srcID, dataID string, data any) *testCase {
 
 func (tc *testCase) SourcesDeleteData(srcID, dataID string) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.SourcesDataDelete(ctx, srcID, dataID, "admin"); err != nil {
+		if err := db.SourcesDataDelete(ctx, srcID, path.Join(dataID, "data.json"), "admin"); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})

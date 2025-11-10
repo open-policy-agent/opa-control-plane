@@ -288,15 +288,14 @@ func (s *Server) v1SourcesDataGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, ok, err := s.db.SourcesDataGet(ctx, name, path.Join(r.PathValue("path"), "data.json"), s.auth(r))
+	data, paths, err := s.db.SourcesDataGet(ctx, name, path.Join(r.PathValue("path"), "data.json"), s.auth(r))
 	if err != nil {
 		errorAuto(w, err)
 		return
 	}
 
-	resp := types.SourcesGetDataResponseV1{}
-
-	if ok {
+	resp := types.SourcesGetDataResponseV1{Paths: paths}
+	if data != nil {
 		resp.Result = &data
 	}
 
@@ -573,11 +572,13 @@ func (*Server) listOptions(r *http.Request) database.ListOptions {
 }
 
 func errorAuto(w http.ResponseWriter, err error) {
-	switch err {
-	case database.ErrNotAuthorized:
+	switch {
+	case errors.Is(err, database.ErrNotAuthorized):
 		ErrorString(w, http.StatusForbidden, types.CodeNotAuthorized, err)
-	case database.ErrNotFound:
+	case errors.Is(err, database.ErrNotFound):
 		ErrorString(w, http.StatusNotFound, types.CodeNotFound, err)
+	case errors.Is(err, database.ErrDataConflict):
+		ErrorString(w, http.StatusBadRequest, types.CodeDataConflict, err)
 	default:
 		ErrorString(w, http.StatusInternalServerError, types.CodeInternal, err)
 	}

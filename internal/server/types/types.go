@@ -11,6 +11,7 @@ const (
 	CodeInternal         = "internal_error"
 	CodeNotAuthorized    = "not_authorized"
 	CodeNotFound         = "not_found"
+	CodeDataConflict     = "data_conflict"
 	CodeInvalidParameter = "invalid_parameter"
 )
 
@@ -26,7 +27,8 @@ type SourcesPatchDataRequestV1 = jsonpatch.Patch
 type SourcesPatchDataResponseV1 struct{}
 
 type SourcesGetDataResponseV1 struct {
-	Result *any `json:"result,omitempty"`
+	Result *any     `json:"result,omitempty"`
+	Paths  []string `json:"paths,omitempty"`
 }
 
 type SourcesListResponseV1 struct {
