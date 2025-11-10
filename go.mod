@@ -61,7 +61,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.8.0 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.2.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/docker v28.3.3+incompatible // indirect
+	github.com/docker/docker v28.5.1+incompatible // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -245,13 +245,13 @@ require (
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/spf13/pflag v1.0.10
 	github.com/swaggest/jsonschema-go v0.3.78
-	github.com/testcontainers/testcontainers-go v0.39.0
-	github.com/testcontainers/testcontainers-go/modules/mysql v0.39.0
-	github.com/testcontainers/testcontainers-go/modules/postgres v0.39.0
+	github.com/testcontainers/testcontainers-go v0.40.0
+	github.com/testcontainers/testcontainers-go/modules/mysql v0.40.0
+	github.com/testcontainers/testcontainers-go/modules/postgres v0.40.0
 	github.com/thediveo/enumflag/v2 v2.0.7
 	github.com/yalue/merged_fs v1.3.0
 	golang.org/x/crypto v0.43.0
-	golang.org/x/sync v0.17.0
+	golang.org/x/sync v0.18.0
 	google.golang.org/api v0.255.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.40.0
