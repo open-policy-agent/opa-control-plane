@@ -49,7 +49,7 @@ all: build test
 
 .PHONY: generate
 generate:
-	$(GO) generate
+	$(GO) generate ./...
 
 .PHONY: build
 build: go-build

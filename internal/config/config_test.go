@@ -424,6 +424,47 @@ stacks:
   empty-stack:
 `)
 	_, _ = config.Parse(cfg)
+	// it has not panicked
+}
+
+func TestValidateYAML(t *testing.T) {
+	{ // This is OK, empty sources can be used for PUT /sources/<name>/data/<path> updates
+		cfg := []byte(`
+sources:
+  empty-source:
+`)
+		_, err := config.Parse(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	{ // These cannot be empty: It won't panic, but it won't pass validation either
+		cfg := []byte(`
+tokens:
+  empty-token:
+bundles:
+  empty-bundle:
+secrets:
+  empty-secret:
+stacks:
+  empty-stack:
+`)
+		_, err := config.Parse(cfg)
+		exp := []string{
+			`- at '/stacks/empty-stack': got null, want object`,
+			`- at '/tokens/empty-token': got null, want object`,
+			`- at '/bundles/empty-bundle': got null, want object`,
+			`- at '/secrets/empty-secret': got null, want object`,
+		}
+		for _, line := range exp {
+			if !strings.Contains(err.Error(), line) {
+				t.Errorf("expected error with line %q", line)
+			}
+		}
+		if t.Failed() && err != nil {
+			t.Logf("error: %q", err.Error())
+		}
+	}
 }
 
 func TestRequirementsEqual(t *testing.T) {
