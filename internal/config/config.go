@@ -208,7 +208,7 @@ func (r *Root) SortedStacks() iter.Seq2[int, *Stack] {
 	return iterator(r.Stacks, func(s *Stack) string { return s.Name })
 }
 
-func iterator[V any](m map[string]V, name func(v V) string) func(yield func(int, V) bool) {
+func iterator[V any](m map[string]V, name func(V) string) func(func(int, V) bool) {
 	names := make([]string, 0, len(m))
 	for _, v := range m {
 		names = append(names, name(v))
@@ -225,14 +225,9 @@ func iterator[V any](m map[string]V, name func(v V) string) func(yield func(int,
 	}
 }
 
-func (r *Root) Validate() error {
-	data, err := json.Marshal(r)
-	if err != nil {
-		return err
-	}
-
+func Validate(data []byte) error {
 	var config any
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err := yaml.Unmarshal(data, &config); err != nil {
 		return err
 	}
 
@@ -247,6 +242,7 @@ type Bundle struct {
 	Requirements  Requirements  `json:"requirements,omitempty" yaml:"requirements,omitempty"`
 	ExcludedFiles StringSet     `json:"excluded_files,omitempty" yaml:"excluded_files,omitempty"`
 	Interval      Duration      `json:"rebuild_interval,omitzero" yaml:"rebuild_interval,omitempty"`
+	_             struct{}      `additionalProperties:"false" description:"Bundle object"`
 }
 
 // Instead of marshaling and unmarshaling as int64 it uses strings, like "5m" or "0.5s".
@@ -822,12 +818,12 @@ func ParseFile(filename string) (root *Root, err error) {
 }
 
 func Parse(bs []byte) (root *Root, err error) {
-	if err := yaml.Unmarshal(bs, &root); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	if err := Validate(bs); err != nil {
+		return nil, err
 	}
 
-	if err := root.Validate(); err != nil {
-		return nil, err
+	if err := yaml.Unmarshal(bs, &root); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
 	return root, nil

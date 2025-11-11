@@ -22,7 +22,7 @@ bundles:
     object_storage:
       filesystem:
         path: bundles/a/bundle.tar.gz
-    requirements:
+    requirements: []
 -- config.d/local_db.yml --
 database:
   sql:
@@ -33,5 +33,4 @@ bundles:
     object_storage:
       filesystem:
         path: bundles/a/bundle.tar.gz
-    requirements:
-
+    requirements: []

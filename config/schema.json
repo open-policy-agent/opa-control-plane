@@ -1,0 +1,428 @@
+{
+  "definitions": {
+    "ConfigAmazonRDS": {
+      "properties": {
+        "credentials": {
+          "type": "string"
+        },
+        "database_name": {
+          "type": "string"
+        },
+        "database_user": {
+          "type": "string"
+        },
+        "driver": {
+          "type": "string"
+        },
+        "dsn": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "root_certificates": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigAmazonS3": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "credentials": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigAzureBlobStorage": {
+      "properties": {
+        "account_url": {
+          "type": "string"
+        },
+        "container": {
+          "type": "string"
+        },
+        "credentials": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigBundle": {
+      "description": "Bundle object",
+      "additionalProperties": false,
+      "properties": {
+        "excluded_files": {
+          "$ref": "#/definitions/ConfigStringSet"
+        },
+        "labels": {
+          "$ref": "#/definitions/ConfigLabels"
+        },
+        "name": {
+          "type": "string"
+        },
+        "object_storage": {
+          "$ref": "#/definitions/ConfigObjectStorage"
+        },
+        "rebuild_interval": {
+          "type": "string"
+        },
+        "requirements": {
+          "$ref": "#/definitions/ConfigRequirements"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigDatabase": {
+      "properties": {
+        "aws_rds": {
+          "$ref": "#/definitions/ConfigAmazonRDS"
+        },
+        "sql": {
+          "$ref": "#/definitions/ConfigSQLDatabase"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigDatasource": {
+      "properties": {
+        "config": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "credentials": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "transform_query": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigDatasources": {
+      "items": {
+        "$ref": "#/definitions/ConfigDatasource"
+      },
+      "type": "array"
+    },
+    "ConfigFileSystemStorage": {
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigFiles": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "ConfigGCPCloudStorage": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "credentials": {
+          "type": "string"
+        },
+        "object": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigGit": {
+      "properties": {
+        "commit": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "credentials": {
+          "type": "string"
+        },
+        "excluded_files": {
+          "$ref": "#/definitions/ConfigStringSet"
+        },
+        "included_files": {
+          "$ref": "#/definitions/ConfigStringSet"
+        },
+        "path": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "reference": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "repo": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigGitRequirement": {
+      "properties": {
+        "commit": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ConfigLabels": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "ConfigMetadata": {
+      "properties": {
+        "exported_at": {
+          "type": "string"
+        },
+        "exported_from": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigObjectStorage": {
+      "properties": {
+        "aws": {
+          "$ref": "#/definitions/ConfigAmazonS3"
+        },
+        "azure": {
+          "$ref": "#/definitions/ConfigAzureBlobStorage"
+        },
+        "filesystem": {
+          "$ref": "#/definitions/ConfigFileSystemStorage"
+        },
+        "gcp": {
+          "$ref": "#/definitions/ConfigGCPCloudStorage"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigRequirement": {
+      "properties": {
+        "git": {
+          "$ref": "#/definitions/ConfigGitRequirement"
+        },
+        "path": {
+          "type": "string"
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "source": {
+          "type": [
+            "null",
+            "string"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ConfigRequirements": {
+      "items": {
+        "$ref": "#/definitions/ConfigRequirement"
+      },
+      "type": "array"
+    },
+    "ConfigSQLDatabase": {
+      "type": "object"
+    },
+    "ConfigScope": {
+      "properties": {
+        "role": {
+          "enum": [
+            "administrator",
+            "viewer",
+            "owner",
+            "stack_owner"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigSecret": {
+      "type": "object"
+    },
+    "ConfigSelector": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": "object"
+    },
+    "ConfigService": {
+      "properties": {
+        "api_prefix": {
+          "pattern": "^/([^/].*[^/])?$",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigSource": {
+      "properties": {
+        "builtin": {
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "datasources": {
+          "$ref": "#/definitions/ConfigDatasources"
+        },
+        "directory": {
+          "type": "string"
+        },
+        "files": {
+          "$ref": "#/definitions/ConfigFiles"
+        },
+        "git": {
+          "$ref": "#/definitions/ConfigGit"
+        },
+        "name": {
+          "type": "string"
+        },
+        "paths": {
+          "$ref": "#/definitions/ConfigStringSet"
+        },
+        "requirements": {
+          "$ref": "#/definitions/ConfigRequirements"
+        }
+      },
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "ConfigStack": {
+      "properties": {
+        "exclude_selector": {
+          "$ref": "#/definitions/ConfigSelector"
+        },
+        "name": {
+          "type": "string"
+        },
+        "requirements": {
+          "$ref": "#/definitions/ConfigRequirements"
+        },
+        "selector": {
+          "$ref": "#/definitions/ConfigSelector"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigStringSet": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "ConfigToken": {
+      "properties": {
+        "api_key": {
+          "type": "string"
+        },
+        "scopes": {
+          "items": {
+            "$ref": "#/definitions/ConfigScope"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "properties": {
+    "bundles": {
+      "additionalProperties": {
+        "$ref": "#/definitions/ConfigBundle"
+      },
+      "type": "object"
+    },
+    "database": {
+      "$ref": "#/definitions/ConfigDatabase"
+    },
+    "metadata": {
+      "$ref": "#/definitions/ConfigMetadata"
+    },
+    "secrets": {
+      "additionalProperties": {
+        "$ref": "#/definitions/ConfigSecret"
+      },
+      "type": "object"
+    },
+    "service": {
+      "$ref": "#/definitions/ConfigService"
+    },
+    "sources": {
+      "additionalProperties": {
+        "$ref": "#/definitions/ConfigSource"
+      },
+      "type": "object"
+    },
+    "stacks": {
+      "additionalProperties": {
+        "$ref": "#/definitions/ConfigStack"
+      },
+      "type": "object"
+    },
+    "tokens": {
+      "additionalProperties": {
+        "$ref": "#/definitions/ConfigToken"
+      },
+      "type": "object"
+    }
+  },
+  "type": "object"
+}
