@@ -389,7 +389,7 @@ func (s *Bundle) validate() error {
 }
 
 func (s *Bundle) Equal(other *Bundle) bool {
-	return fastEqual(s, other, func() bool {
+	return fastEqual(s, other, func(s, other *Bundle) bool {
 		return s.Name == other.Name &&
 			maps.Equal(s.Labels, other.Labels) &&
 			s.ObjectStorage.Equal(&other.ObjectStorage) &&
@@ -411,7 +411,7 @@ type Source struct {
 }
 
 func (s *Source) Equal(other *Source) bool {
-	return fastEqual(s, other, func() bool {
+	return fastEqual(s, other, func(s, other *Source) bool {
 		return s.Name == other.Name &&
 			stringPtrEqual(s.Builtin, other.Builtin) &&
 			s.Git.Equal(&other.Git) &&
@@ -482,8 +482,11 @@ type Stack struct {
 }
 
 func (a *Stack) Equal(other *Stack) bool {
-	return fastEqual(a, other, func() bool {
-		return a.Name == other.Name && a.Selector.Equal(other.Selector) && a.ExcludeSelector.PtrEqual(other.ExcludeSelector) && a.Requirements.Equal(other.Requirements)
+	return fastEqual(a, other, func(a, other *Stack) bool {
+		return a.Name == other.Name &&
+			a.Selector.Equal(other.Selector) &&
+			a.ExcludeSelector.PtrEqual(other.ExcludeSelector) &&
+			a.Requirements.Equal(other.Requirements)
 	})
 }
 
@@ -664,7 +667,7 @@ type Git struct {
 }
 
 func (g *Git) Equal(other *Git) bool {
-	return fastEqual(g, other, func() bool {
+	return fastEqual(g, other, func(g, other *Git) bool {
 		return stringPtrEqual(g.Reference, other.Reference) &&
 			stringPtrEqual(g.Commit, other.Commit) &&
 			stringPtrEqual(g.Path, other.Path) &&
@@ -727,7 +730,7 @@ func (s *SecretRef) UnmarshalJSON(bs []byte) error {
 }
 
 func (s *SecretRef) Equal(other *SecretRef) bool {
-	return fastEqual(s, other, func() bool {
+	return fastEqual(s, other, func(s, other *SecretRef) bool {
 		return s.Name == other.Name && s.value.Equal(other.value)
 	})
 }
@@ -740,7 +743,7 @@ type Token struct {
 }
 
 func (t *Token) Equal(other *Token) bool {
-	return fastEqual(t, other, func() bool {
+	return fastEqual(t, other, func(t, other *Token) bool {
 		return t.Name == other.Name && t.APIKey == other.APIKey && scopesEqual(t.Scopes, other.Scopes)
 	})
 }
@@ -800,8 +803,11 @@ type ObjectStorage struct {
 }
 
 func (o *ObjectStorage) Equal(other *ObjectStorage) bool {
-	return fastEqual(o, other, func() bool {
-		return o.AmazonS3.Equal(other.AmazonS3) && o.GCPCloudStorage.Equal(other.GCPCloudStorage) && o.AzureBlobStorage.Equal(other.AzureBlobStorage) && o.FileSystemStorage.Equal(other.FileSystemStorage)
+	return fastEqual(o, other, func(o, other *ObjectStorage) bool {
+		return o.AmazonS3.Equal(other.AmazonS3) &&
+			o.GCPCloudStorage.Equal(other.GCPCloudStorage) &&
+			o.AzureBlobStorage.Equal(other.AzureBlobStorage) &&
+			o.FileSystemStorage.Equal(other.FileSystemStorage)
 	})
 }
 
@@ -852,8 +858,12 @@ type FileSystemStorage struct {
 }
 
 func (a *AmazonS3) Equal(other *AmazonS3) bool {
-	return fastEqual(a, other, func() bool {
-		return a.Bucket == other.Bucket && a.Key == other.Key && a.Region == other.Region && a.Credentials.Equal(other.Credentials) && a.URL == other.URL
+	return fastEqual(a, other, func(a, other *AmazonS3) bool {
+		return a.Bucket == other.Bucket &&
+			a.Key == other.Key &&
+			a.Region == other.Region &&
+			a.Credentials.Equal(other.Credentials) &&
+			a.URL == other.URL
 	})
 }
 
@@ -878,8 +888,10 @@ func (a *AmazonS3) validate() error {
 }
 
 func (g *GCPCloudStorage) Equal(other *GCPCloudStorage) bool {
-	return fastEqual(g, other, func() bool {
-		return g.Project == other.Project && g.Bucket == other.Bucket && g.Object == other.Object
+	return fastEqual(g, other, func(g, other *GCPCloudStorage) bool {
+		return g.Project == other.Project &&
+			g.Bucket == other.Bucket &&
+			g.Object == other.Object
 	})
 }
 
@@ -904,8 +916,10 @@ func (g *GCPCloudStorage) validate() error {
 }
 
 func (a *AzureBlobStorage) Equal(other *AzureBlobStorage) bool {
-	return fastEqual(a, other, func() bool {
-		return a.AccountURL == other.AccountURL && a.Container == other.Container && a.Path == other.Path
+	return fastEqual(a, other, func(a, other *AzureBlobStorage) bool {
+		return a.AccountURL == other.AccountURL &&
+			a.Container == other.Container &&
+			a.Path == other.Path
 	})
 }
 
@@ -930,7 +944,7 @@ func (a *AzureBlobStorage) validate() error {
 }
 
 func (f *FileSystemStorage) Equal(other *FileSystemStorage) bool {
-	return fastEqual(f, other, func() bool {
+	return fastEqual(f, other, func(f, other *FileSystemStorage) bool {
 		return f.Path == other.Path
 	})
 }
@@ -957,7 +971,7 @@ type Datasource struct {
 }
 
 func (d *Datasource) Equal(other *Datasource) bool {
-	return fastEqual(d, other, func() bool {
+	return fastEqual(d, other, func(d, other *Datasource) bool {
 		return d.Name == other.Name &&
 			d.Path == other.Path &&
 			d.Type == other.Type &&
@@ -1004,6 +1018,10 @@ type Service struct {
 }
 
 func setEqual[K comparable, V any](a, b []V, key func(V) K, eq func(a, b V) bool) bool {
+	if len(a) == 1 && len(b) == 1 {
+		return eq(a[0], b[0])
+	}
+
 	// NB(sr): There's a risk of false positives here, e.g. []struct{n, v string}{ {"foo", "bar"}, {"foo", "baz"} }
 	// is setEqual to []struct{n, v string}{ {"foo", "baz"} }
 	m := make(map[K]V, len(a))
@@ -1020,7 +1038,7 @@ func setEqual[K comparable, V any](a, b []V, key func(V) K, eq func(a, b V) bool
 }
 
 func stringPtrEqual(a, b *string) bool {
-	return fastEqual(a, b, func() bool { return *a == *b })
+	return fastEqual(a, b, func(a, b *string) bool { return *a == *b })
 }
 
 func stringPtrCompare(a, b *string) int {
@@ -1045,7 +1063,7 @@ func stringPtrCompare(a, b *string) int {
 	return 0
 }
 
-func fastEqual[V any](a, b *V, slowEqual func() bool) bool {
+func fastEqual[V any](a, b *V, slowEqual func(a, b *V) bool) bool {
 	if a == b {
 		return true
 	}
@@ -1054,5 +1072,5 @@ func fastEqual[V any](a, b *V, slowEqual func() bool) bool {
 		return false
 	}
 
-	return slowEqual()
+	return slowEqual(a, b)
 }
