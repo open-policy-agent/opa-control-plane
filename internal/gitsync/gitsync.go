@@ -82,11 +82,6 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 		return false, errors.New("either reference or commit must be set in git configuration")
 	}
 
-	authMethod, err := s.auth(ctx)
-	if err != nil {
-		return false, err
-	}
-
 	var referenceName plumbing.ReferenceName
 	if s.config.Reference != nil {
 		referenceName = plumbing.ReferenceName(*s.config.Reference)
@@ -110,8 +105,15 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	repository, err = git.PlainOpen(s.path)
+	var authMethod transport.AuthMethod
+
+	repository, err := git.PlainOpen(s.path)
 	if errors.Is(err, git.ErrRepositoryNotExists) { // does not exist? clone it
+		authMethod, err = s.auth(ctx)
+		if err != nil {
+			return false, err
+		}
+
 		fetched = true
 		repository, err = git.PlainCloneContext(ctx, s.path, false, &git.CloneOptions{
 			URL:               s.config.Repo,
@@ -154,6 +156,12 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 	// If we couldn't check out the hash, we're using a branch or tag reference,
 	// or we have not checked out anything yet. Either way, we'll need to fetch
 	// and checkout.
+	if authMethod == nil {
+		authMethod, err = s.auth(ctx)
+		if err != nil {
+			return false, err
+		}
+	}
 
 	remote := "origin"
 	fetched = true
@@ -226,6 +234,11 @@ type github struct {
 	installationID int64
 	privateKey     []byte
 	tr             *ghinstallation.Transport
+	
+	// Token caching
+	cachedToken    string
+	tokenExpiresAt time.Time
+	
 	mu             sync.Mutex
 }
 
@@ -233,6 +246,17 @@ func (gh *github) Token(ctx context.Context, integrationID, installationID int64
 	privateKey, err := os.ReadFile(privateKeyFile)
 	if err != nil {
 		return "", err
+	}
+
+	gh.mu.Lock()
+	defer gh.mu.Unlock()
+
+	// Check if we have a valid cached token
+	if gh.cachedToken != "" && time.Now().Before(gh.tokenExpiresAt) &&
+		gh.integrationID == integrationID && gh.installationID == installationID &&
+		bytes.Equal(gh.privateKey, privateKey) {
+			fmt.Printf("Using cached GitHub token for installation ID %d\n", installationID)
+			return gh.cachedToken, nil
 	}
 
 	tr, err := gh.transport(integrationID, installationID, privateKey)
@@ -245,13 +269,14 @@ func (gh *github) Token(ctx context.Context, integrationID, installationID int64
 		return "", err
 	}
 
+	// Cache the token with a 50-minute expiration (GitHub tokens last 1 hour)
+	gh.cachedToken = token
+	gh.tokenExpiresAt = time.Now().Add(50 * time.Minute)
+
 	return token, nil
 }
 
 func (gh *github) transport(integrationID, installationID int64, privateKey []byte) (*ghinstallation.Transport, error) {
-	gh.mu.Lock()
-	defer gh.mu.Unlock()
-
 	if gh.tr == nil || gh.integrationID != integrationID || gh.installationID != installationID || !bytes.Equal(gh.privateKey, privateKey) {
 		tr, err := ghinstallation.New(gohttp.DefaultTransport, integrationID, installationID, privateKey)
 		if err != nil {
@@ -262,6 +287,12 @@ func (gh *github) transport(integrationID, installationID int64, privateKey []by
 		gh.installationID = installationID
 		gh.privateKey = privateKey
 		gh.tr = tr
+
+		fmt.Printf("Created new transport for installation ID and clearing cached token for %d\n", installationID)
+		
+		// Clear cached token when transport changes
+		gh.cachedToken = ""
+		gh.tokenExpiresAt = time.Time{}
 	}
 
 	return gh.tr, nil
