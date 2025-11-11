@@ -285,19 +285,21 @@ func (a Requirement) Compare(b Requirement) int {
 type Requirements []Requirement
 
 func (a Requirements) Equal(b Requirements) bool {
-	// Ordering of requirements does not matter, so we sort copies before comparing.
 	if len(a) != len(b) {
 		return false
 	}
-	if len(a) == 1 { // nothing to sort, so nothing to copy
-		return a[0].Equal(b[0])
+	// Ordering of requirements does not matter, so we sort copies before comparing if
+	// the slices have more than one element.
+	if len(a) > 1 {
+		a = slices.Clone(a)
+		slices.SortFunc(a, Requirement.Compare)
+	}
+	if len(b) > 1 {
+		b = slices.Clone(b)
+		slices.SortFunc(b, Requirement.Compare)
 	}
 
-	aCpy := slices.Clone(a)
-	bCpy := slices.Clone(b)
-	slices.SortFunc(aCpy, Requirement.Compare)
-	slices.SortFunc(bCpy, Requirement.Compare)
-	return slices.EqualFunc(aCpy, bCpy, Requirement.Equal)
+	return slices.EqualFunc(a, b, Requirement.Equal)
 }
 
 type Files map[string]string
