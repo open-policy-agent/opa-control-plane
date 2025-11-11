@@ -356,6 +356,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			WithSources(sources).
 			WithSynchronizers(syncs).
 			WithStorage(storage).
+			WithInterval(b.Interval).
 			WithSingleShot(s.singleShot)
 		s.pool.Add(w.Execute)
 

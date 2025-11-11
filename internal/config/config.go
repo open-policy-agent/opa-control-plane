@@ -15,6 +15,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gobwas/glob"
 	"github.com/swaggest/jsonschema-go"
@@ -245,6 +246,38 @@ type Bundle struct {
 	ObjectStorage ObjectStorage `json:"object_storage,omitzero" yaml:"object_storage,omitempty"`
 	Requirements  Requirements  `json:"requirements,omitempty" yaml:"requirements,omitempty"`
 	ExcludedFiles StringSet     `json:"excluded_files,omitempty" yaml:"excluded_files,omitempty"`
+	Interval      Duration      `json:"rebuild_interval,omitzero" yaml:"rebuild_interval,omitempty"`
+}
+
+// Instead of marshaling and unmarshaling as int64 it uses strings, like "5m" or "0.5s".
+type Duration time.Duration
+
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.String())
+}
+
+func (d *Duration) UnmarshalJSON(data []byte) error {
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+	val, err := time.ParseDuration(str)
+	*d = Duration(val)
+	return err
+}
+
+func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
+	var s string
+	if err := node.Decode(&s); err != nil {
+		return err
+	}
+	val, err := time.ParseDuration(s)
+	*d = Duration(val)
+	return err
+}
+
+func (d Duration) String() string {
+	return time.Duration(d).String()
 }
 
 type Labels map[string]string
@@ -396,7 +429,8 @@ func (s *Bundle) Equal(other *Bundle) bool {
 			maps.Equal(s.Labels, other.Labels) &&
 			s.ObjectStorage.Equal(&other.ObjectStorage) &&
 			s.Requirements.Equal(other.Requirements) &&
-			s.ExcludedFiles.Equal(other.ExcludedFiles)
+			s.ExcludedFiles.Equal(other.ExcludedFiles) &&
+			s.Interval == other.Interval
 	})
 }
 

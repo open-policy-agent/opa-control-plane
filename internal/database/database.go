@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/achille-roussel/sqlrange"
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
@@ -587,6 +588,7 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 		bundles.azure_path,
 		bundles.filepath,
 		bundles.excluded,
+		bundles.rebuild_interval,
         secrets.name AS secret_name,
         secrets.value AS secret_value,
 		bundles_requirements.source_name AS req_src,
@@ -632,6 +634,7 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 			azureAccountURL, azureContainer, azurePath *string // Azure object storage
 			filepath                                   *string // File system storage
 			excluded                                   *string
+			interval                                   *string
 			secretName, secretValue                    *string
 			reqSrc, reqCommit                          *string
 			reqPath, reqPrefix                         sql.Null[string]
@@ -647,7 +650,9 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 				&row.gcpProject, &row.gcpObject, // GCP
 				&row.azureAccountURL, &row.azureContainer, &row.azurePath, // Azure
 				&row.filepath,
-				&row.excluded, &row.secretName, &row.secretValue,
+				&row.excluded,
+				&row.interval,
+				&row.secretName, &row.secretValue,
 				&row.reqSrc, &row.reqPath, &row.reqPrefix, &row.reqCommit); err != nil {
 				return nil, "", err
 			}
@@ -721,6 +726,14 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 					if err := json.Unmarshal([]byte(*row.excluded), &bundle.ExcludedFiles); err != nil {
 						return nil, "", fmt.Errorf("failed to unmarshal excluded files for %q: %w", bundle.Name, err)
 					}
+				}
+
+				if row.interval != nil {
+					dur, err := time.ParseDuration(*row.interval)
+					if err != nil {
+						return nil, "", fmt.Errorf("invalid duration %s: %w", *row.interval, err)
+					}
+					bundle.Interval = config.Duration(dur)
 				}
 			}
 
@@ -1314,12 +1327,13 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 			"s3url", "s3region", "s3bucket", "s3key",
 			"gcp_project", "gcp_object",
 			"azure_account_url", "azure_container", "azure_path",
-			"filepath", "excluded"}, []string{"name"},
+			"filepath", "excluded",
+			"rebuild_interval"}, []string{"name"},
 			bundle.Name, string(labels),
 			s3url, s3region, s3bucket, s3key,
 			gcpProject, gcpObject,
 			azureAccountURL, azureContainer, azurePath,
-			filepath, string(excluded)); err != nil {
+			filepath, string(excluded), bundle.Interval.String()); err != nil {
 			return err
 		}
 

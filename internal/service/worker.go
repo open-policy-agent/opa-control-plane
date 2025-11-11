@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"time"
 
@@ -14,7 +15,8 @@ import (
 )
 
 var (
-	errorDelay = 30 * time.Second
+	defaultInterval = 30 * time.Second
+	errorInterval   = 30 * time.Second
 )
 
 // BundleWorker is responsible for constructing a bundle from the source
@@ -36,6 +38,7 @@ type BundleWorker struct {
 	log           *logging.Logger
 	bar           *progress.Bar
 	status        Status
+	interval      time.Duration
 }
 
 type Synchronizer interface {
@@ -52,6 +55,7 @@ func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Sourc
 		log:           logger,
 		bar:           bar,
 		changed:       make(chan struct{}), done: make(chan struct{}),
+		interval: defaultInterval,
 	}
 }
 
@@ -72,6 +76,11 @@ func (worker *BundleWorker) WithStorage(storage s3.ObjectStorage) *BundleWorker 
 
 func (worker *BundleWorker) WithSingleShot(singleShot bool) *BundleWorker {
 	worker.singleShot = singleShot
+	return worker
+}
+
+func (worker *BundleWorker) WithInterval(d config.Duration) *BundleWorker {
+	worker.interval = cmp.Or(time.Duration(d), defaultInterval)
 	return worker
 }
 
@@ -158,8 +167,10 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 }
 
 func (w *BundleWorker) report(ctx context.Context, state BuildState, startTime time.Time, err error) time.Time {
+	interval := w.interval
 	w.status.State = state
 	if err != nil {
+		interval = errorInterval // faster retry on error
 		w.status.Message = err.Error()
 	}
 
@@ -173,7 +184,7 @@ func (w *BundleWorker) report(ctx context.Context, state BuildState, startTime t
 		return w.die(ctx)
 	}
 
-	return time.Now().Add(errorDelay)
+	return time.Now().Add(interval)
 }
 
 func (w *BundleWorker) changeConfiguration() {
