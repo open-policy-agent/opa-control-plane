@@ -249,12 +249,7 @@ func (gh *github) Token(ctx context.Context, integrationID, installationID int64
 		return "", err
 	}
 
-	token, err := tr.Token(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	return token, nil
+	return tr.Token(ctx)
 }
 
 func (gh *github) transport(integrationID, installationID int64, privateKey []byte) (*ghinstallation.Transport, error) {
@@ -262,7 +257,8 @@ func (gh *github) transport(integrationID, installationID int64, privateKey []by
 	defer gh.mu.Unlock()
 
 	if gh.tr == nil || gh.integrationID != integrationID || gh.installationID != installationID || !bytes.Equal(gh.privateKey, privateKey) {
-		tr, err := ghinstallation.New(gohttp.DefaultTransport, integrationID, installationID, privateKey)
+		trns := NewLoggingTransport(gohttp.DefaultTransport, nil)
+		tr, err := ghinstallation.New(trns, integrationID, installationID, privateKey)
 		if err != nil {
 			return nil, err
 		}
