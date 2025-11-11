@@ -14,7 +14,21 @@ func Migrations(dialect string) (fs.FS, error) {
 	return merged_fs.MergeMultiple(
 		initialSchemaFS(dialect),
 		addMounts(dialect),
+		addBundleInterval(dialect),
 	), nil
+}
+func addBundleInterval(dialect string) fs.FS {
+	var stmt string
+	switch dialect {
+	case "sqlite", "postgresql":
+		stmt = `ALTER TABLE bundles ADD rebuild_interval TEXT`
+	case "mysql":
+		stmt = `ALTER TABLE bundles ADD rebuild_interval VARCHAR(255)`
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		"017_add_bundles_interval.up.sql": stmt,
+	})
 }
 
 func addMounts(dialect string) fs.FS {

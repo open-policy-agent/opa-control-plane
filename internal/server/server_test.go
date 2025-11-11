@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/open-policy-agent/opa/v1/util"
@@ -421,9 +422,11 @@ func TestServerBundleOwners(t *testing.T) {
 				"bucket": "test-bucket",
 				"key": "test-key"
 			}
-		}
+		},
+		"rebuild_interval": "10m30s"
 	}`, ownerKey).ExpectStatus(200)
 
+			ivl, _ := time.ParseDuration("10m30s")
 			exp := &config.Bundle{
 				Name: "testbundle",
 				ObjectStorage: config.ObjectStorage{
@@ -433,6 +436,7 @@ func TestServerBundleOwners(t *testing.T) {
 						Key:    "test-key",
 					},
 				},
+				Interval: config.Duration(ivl),
 			}
 
 			{

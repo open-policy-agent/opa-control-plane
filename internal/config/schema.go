@@ -38,3 +38,9 @@ func init() {
 		panic(err)
 	}
 }
+
+func (Duration) PrepareJSONSchema(schema *schemareflector.Schema) error {
+	schema.Type = nil
+	schema.AddType(schemareflector.String)
+	return nil
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/testcontainers/testcontainers-go"
@@ -40,6 +41,7 @@ func TestDatabase(t *testing.T) {
 
 			data1 := map[string]any{"key": "value1"}
 			data2 := map[string]any{"key": "value2"}
+			dur, _ := time.ParseDuration("1h20m")
 
 			root := config.Root{
 				Tokens: map[string]*config.Token{
@@ -83,6 +85,7 @@ func TestDatabase(t *testing.T) {
 						Requirements: config.Requirements{
 							config.Requirement{Source: newString("system2")},
 						},
+						Interval: config.Duration(dur),
 					},
 					"system3": {
 						Name: "system3",
