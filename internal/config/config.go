@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/gobwas/glob"
 	"github.com/swaggest/jsonschema-go"
@@ -265,33 +266,38 @@ func (a Requirement) Equal(b Requirement) bool {
 		a.Path == b.Path &&
 		a.Prefix == b.Prefix
 }
+func (a Requirement) Compare(b Requirement) int {
+	if x := stringPtrCompare(a.Source, b.Source); x != 0 {
+		return x
+	}
+	if x := stringPtrCompare(a.Git.Commit, b.Git.Commit); x != 0 {
+		return x
+	}
+	if x := strings.Compare(a.Path, b.Path); x != 0 {
+		return x
+	}
+	if x := strings.Compare(a.Prefix, b.Prefix); x != 0 {
+		return x
+	}
+	return 0
+}
 
 type Requirements []Requirement
 
 func (a Requirements) Equal(b Requirements) bool {
-	// Ordering of requirements does not matter, so we sort them before comparing.
-
+	// Ordering of requirements does not matter, so we sort copies before comparing.
 	if len(a) != len(b) {
 		return false
+	}
+	if len(a) == 1 { // nothing to sort, so nothing to copy
+		return a[0].Equal(b[0])
 	}
 
 	aCpy := slices.Clone(a)
 	bCpy := slices.Clone(b)
-
-	cmp := func(a, b Requirement) int {
-		if x := stringPtrCompare(a.Source, b.Source); x != 0 {
-			return x
-		} else if x := stringPtrCompare(a.Git.Commit, b.Git.Commit); x != 0 {
-			return x
-		}
-
-		return 0
-	}
-
-	slices.SortFunc(aCpy, cmp)
-	slices.SortFunc(bCpy, cmp)
-
-	return slices.EqualFunc(aCpy, bCpy, func(a, b Requirement) bool { return a.Equal(b) })
+	slices.SortFunc(aCpy, Requirement.Compare)
+	slices.SortFunc(bCpy, Requirement.Compare)
+	return slices.EqualFunc(aCpy, bCpy, Requirement.Equal)
 }
 
 type Files map[string]string
@@ -528,7 +534,7 @@ func (s *Selector) Matches(labels Labels) bool {
 }
 
 func (s Selector) Equal(other Selector) bool {
-	return maps.EqualFunc(s.s, other.s, func(a, b StringSet) bool { return a.Equal(b) })
+	return maps.EqualFunc(s.s, other.s, StringSet.Equal)
 }
 
 func (s *Selector) PtrMatches(labels Labels) bool {
@@ -998,6 +1004,8 @@ type Service struct {
 }
 
 func setEqual[K comparable, V any](a, b []V, key func(V) K, eq func(a, b V) bool) bool {
+	// NB(sr): There's a risk of false positives here, e.g. []struct{n, v string}{ {"foo", "bar"}, {"foo", "baz"} }
+	// is setEqual to []struct{n, v string}{ {"foo", "baz"} }
 	m := make(map[K]V, len(a))
 	for _, v := range a {
 		m[key(v)] = v

@@ -425,3 +425,59 @@ stacks:
 `)
 	_, _ = config.Parse(cfg)
 }
+
+func TestRequirementsEqual(t *testing.T) {
+	reqs := func(r ...config.Requirement) config.Requirements { return r }
+	a0, b0 := "source-a", "source-b"
+	for _, tc := range []struct {
+		name string
+		a, b config.Requirements
+		exp  bool
+	}{
+		{
+			name: "simple equal",
+			a:    reqs(config.Requirement{Source: &a0}, config.Requirement{Source: &b0}),
+			b:    reqs(config.Requirement{Source: &a0}, config.Requirement{Source: &b0}),
+			exp:  true,
+		},
+		{
+			name: "simple unequal",
+			a:    reqs(config.Requirement{Source: &a0}, config.Requirement{Source: &b0}),
+			b:    reqs(config.Requirement{Source: &a0}, config.Requirement{Source: &a0}),
+		},
+		{
+			name: "path unequal",
+			a:    reqs(config.Requirement{Source: &a0, Path: "p0"}, config.Requirement{Source: &b0}),
+			b:    reqs(config.Requirement{Source: &a0}, config.Requirement{Source: &b0}),
+		},
+		{
+			name: "with path+prefix equal",
+			a:    reqs(config.Requirement{Source: &a0, Path: "p0", Prefix: "p01"}, config.Requirement{Source: &a0}),
+			b:    reqs(config.Requirement{Source: &a0}, config.Requirement{Source: &a0, Path: "p0", Prefix: "p01"}),
+			exp:  true,
+		},
+		{
+			name: "with path equal",
+			a:    reqs(config.Requirement{Source: &a0, Path: "p0"}, config.Requirement{Source: &a0}),
+			b:    reqs(config.Requirement{Source: &a0}, config.Requirement{Source: &a0, Path: "p0"}),
+			exp:  true,
+		},
+		{
+			name: "with prefix equal",
+			a:    reqs(config.Requirement{Source: &a0, Prefix: "p0"}, config.Requirement{Source: &a0}),
+			b:    reqs(config.Requirement{Source: &a0}, config.Requirement{Source: &a0, Prefix: "p0"}),
+			exp:  true,
+		},
+		{
+			name: "prefix unequal",
+			a:    reqs(config.Requirement{Source: &a0, Path: "p0"}, config.Requirement{Source: &a0}),
+			b:    reqs(config.Requirement{Source: &a0, Path: "p0"}, config.Requirement{Source: &a0, Prefix: "p1"}),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if act := tc.a.Equal(tc.b); act != tc.exp {
+				t.Errorf("expected %v, got %v", tc.exp, act)
+			}
+		})
+	}
+}
