@@ -417,6 +417,8 @@ func (s *Source) Equal(other *Source) bool {
 			s.Git.Equal(&other.Git) &&
 			s.Datasources.Equal(other.Datasources) &&
 			s.EmbeddedFiles.Equal(other.EmbeddedFiles) &&
+			s.Directory == other.Directory &&
+			s.Paths.Equal(other.Paths) &&
 			s.Requirements.Equal(other.Requirements)
 	})
 }
@@ -470,7 +472,7 @@ func (s *Source) SetDirectory(directory string) {
 type Sources []*Source
 
 func (a Sources) Equal(b Sources) bool {
-	return setEqual(a, b, func(s *Source) string { return s.Name }, func(a, b *Source) bool { return a.Equal(b) })
+	return setEqual(a, b, func(s *Source) string { return s.Name }, (*Source).Equal)
 }
 
 // Stack defines the configuration for an OPA Control Plane Stack.
@@ -493,7 +495,7 @@ func (a *Stack) Equal(other *Stack) bool {
 type Stacks []*Stack
 
 func (a Stacks) Equal(b Stacks) bool {
-	return setEqual(a, b, func(s *Stack) string { return s.Name }, func(a, b *Stack) bool { return a.Equal(b) })
+	return setEqual(a, b, func(s *Stack) string { return s.Name }, (*Stack).Equal)
 }
 
 type Selector struct {
