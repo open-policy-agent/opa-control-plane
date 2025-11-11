@@ -82,11 +82,6 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 		return false, errors.New("either reference or commit must be set in git configuration")
 	}
 
-	authMethod, err := s.auth(ctx)
-	if err != nil {
-		return false, err
-	}
-
 	var referenceName plumbing.ReferenceName
 	if s.config.Reference != nil {
 		referenceName = plumbing.ReferenceName(*s.config.Reference)
@@ -110,8 +105,15 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	repository, err = git.PlainOpen(s.path)
+	var authMethod transport.AuthMethod
+
+	repository, err := git.PlainOpen(s.path)
 	if errors.Is(err, git.ErrRepositoryNotExists) { // does not exist? clone it
+		authMethod, err = s.auth(ctx)
+		if err != nil {
+			return false, err
+		}
+
 		fetched = true
 		repository, err = git.PlainCloneContext(ctx, s.path, false, &git.CloneOptions{
 			URL:               s.config.Repo,
@@ -154,6 +156,13 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 	// If we couldn't check out the hash, we're using a branch or tag reference,
 	// or we have not checked out anything yet. Either way, we'll need to fetch
 	// and checkout.
+
+	if authMethod == nil {
+		authMethod, err = s.auth(ctx)
+		if err != nil {
+			return false, err
+		}
+	}
 
 	remote := "origin"
 	fetched = true
