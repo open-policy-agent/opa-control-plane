@@ -99,8 +99,9 @@ func (s *Secret) UnmarshalJSON(bs []byte) error {
 }
 
 func (s *Secret) Equal(other *Secret) bool {
-	return fastEqual(s, other, func() bool {
-		return s.Name == other.Name && reflect.DeepEqual(s.Value, other.Value)
+	return fastEqual(s, other, func(s, other *Secret) bool {
+		return s.Name == other.Name &&
+			reflect.DeepEqual(s.Value, other.Value)
 	})
 }
 
