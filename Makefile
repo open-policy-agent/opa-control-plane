@@ -1,4 +1,5 @@
 CGO_ENABLED ?= 0
+GENERATE ?= 1
 GOFLAGS ?= "-buildmode=exe"
 GO := CGO_ENABLED=$(CGO_ENABLED) GOFLAGS="$(GOFLAGS)" go
 
@@ -49,14 +50,21 @@ all: build test
 
 .PHONY: generate
 generate:
+ifeq ($(GENERATE), 1)
 	$(GO) generate ./...
+else
+	@echo Skipping "go generate"
+endif
 
 .PHONY: build
 build: go-build
 
+# NB(sr): build-linux is used via ci-go-build-linux for cross-building. `go generate` will
+# use `go run`, and run into an arch/format mismatch. In CI, the generated files are already
+# in place, so we skip re-generating them.
 .PHONY: build-linux
 build-linux:
-	@$(MAKE) build GOOS=linux CGO_ENABLED=0
+	@$(MAKE) build GOOS=linux CGO_ENABLED=0 GENERATE=0
 
 .PHONY: test
 test: go-test go-bench library-test authz-test
