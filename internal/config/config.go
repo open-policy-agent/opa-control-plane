@@ -443,8 +443,6 @@ type Source struct {
 	Directory     string       `json:"directory,omitempty" yaml:"directory,omitempty"` // Root directory for the source files, used to resolve file paths below.
 	Paths         StringSet    `json:"paths,omitempty" yaml:"paths,omitempty"`
 	Requirements  Requirements `json:"requirements,omitempty" yaml:"requirements,omitempty"`
-
-	noAdditionalProps
 }
 
 func (s *Source) Equal(other *Source) bool {

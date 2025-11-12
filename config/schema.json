@@ -311,7 +311,6 @@
       "type": "object"
     },
     "ConfigSource": {
-      "additionalProperties": false,
       "properties": {
         "builtin": {
           "type": [
