@@ -9,7 +9,6 @@ import (
 	"reflect"
 
 	"github.com/go-viper/mapstructure/v2"
-	"github.com/swaggest/jsonschema-go"
 	"gopkg.in/yaml.v3"
 )
 
@@ -63,12 +62,6 @@ type Secret struct {
 
 func (s *Secret) Ref() *SecretRef {
 	return &SecretRef{Name: s.Name, value: s}
-}
-
-func (*Secret) PrepareJSONSchema(schema *jsonschema.Schema) error {
-	schema.Type = nil
-	schema.AddType(jsonschema.Object)
-	return nil
 }
 
 func (s *Secret) MarshalYAML() (any, error) {
@@ -238,7 +231,7 @@ type SecretAzure struct {
 type SecretGitHubApp struct {
 	IntegrationID  int64  `json:"integration_id" yaml:"integration_id"`
 	InstallationID int64  `json:"installation_id" yaml:"installation_id"`
-	PrivateKey     string `json:"private_key" yaml:"private_key"` // Private key as PEM.
+	PrivateKey     string `json:"private_key" yaml:"private_key"` // Private key filepath as PEM.
 }
 
 type SecretSSHKey struct {

@@ -67,7 +67,6 @@
       "type": "object"
     },
     "ConfigBundle": {
-      "description": "Bundle object",
       "additionalProperties": false,
       "properties": {
         "excluded_files": {
@@ -103,6 +102,7 @@
       "type": "object"
     },
     "ConfigDatasource": {
+      "additionalProperties": false,
       "properties": {
         "config": {
           "additionalProperties": {},
@@ -164,6 +164,7 @@
       "type": "object"
     },
     "ConfigGit": {
+      "additionalProperties": false,
       "properties": {
         "commit": {
           "type": [
@@ -216,6 +217,7 @@
       "type": "object"
     },
     "ConfigMetadata": {
+      "additionalProperties": false,
       "properties": {
         "exported_at": {
           "type": "string"
@@ -299,6 +301,7 @@
       "type": "object"
     },
     "ConfigService": {
+      "additionalProperties": false,
       "properties": {
         "api_prefix": {
           "pattern": "^/([^/].*[^/])?$",
@@ -308,6 +311,7 @@
       "type": "object"
     },
     "ConfigSource": {
+      "additionalProperties": false,
       "properties": {
         "builtin": {
           "type": [
@@ -343,6 +347,7 @@
       ]
     },
     "ConfigStack": {
+      "additionalProperties": false,
       "properties": {
         "exclude_selector": {
           "$ref": "#/definitions/ConfigSelector"
@@ -366,6 +371,7 @@
       "type": "array"
     },
     "ConfigToken": {
+      "additionalProperties": false,
       "properties": {
         "api_key": {
           "type": "string"

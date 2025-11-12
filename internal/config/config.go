@@ -30,6 +30,8 @@ import (
 type Metadata struct {
 	ExportedFrom string `json:"exported_from" yaml:"exported_from"`
 	ExportedAt   string `json:"exported_at" yaml:"exported_at"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 // Root is the top-level configuration structure used by OPA Control Plane.
@@ -242,7 +244,8 @@ type Bundle struct {
 	Requirements  Requirements  `json:"requirements,omitempty" yaml:"requirements,omitempty"`
 	ExcludedFiles StringSet     `json:"excluded_files,omitempty" yaml:"excluded_files,omitempty"`
 	Interval      Duration      `json:"rebuild_interval,omitzero" yaml:"rebuild_interval,omitempty"`
-	_             struct{}      `additionalProperties:"false" description:"Bundle object"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 // Instead of marshaling and unmarshaling as int64 it uses strings, like "5m" or "0.5s".
@@ -440,6 +443,8 @@ type Source struct {
 	Directory     string       `json:"directory,omitempty" yaml:"directory,omitempty"` // Root directory for the source files, used to resolve file paths below.
 	Paths         StringSet    `json:"paths,omitempty" yaml:"paths,omitempty"`
 	Requirements  Requirements `json:"requirements,omitempty" yaml:"requirements,omitempty"`
+
+	noAdditionalProps
 }
 
 func (s *Source) Equal(other *Source) bool {
@@ -513,6 +518,8 @@ type Stack struct {
 	Selector        Selector     `json:"selector" yaml:"selector"` // Schema validation overrides Selector to object of string array values.
 	ExcludeSelector *Selector    `json:"exclude_selector,omitempty" yaml:"exclude_selector,omitempty"`
 	Requirements    Requirements `json:"requirements,omitempty" yaml:"requirements,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 func (a *Stack) Equal(other *Stack) bool {
@@ -698,6 +705,8 @@ type Git struct {
 	ExcludedFiles StringSet  `json:"excluded_files,omitempty" yaml:"excluded_files,omitempty"`
 	Credentials   *SecretRef `json:"credentials,omitempty" yaml:"credentials,omitempty"` // If nil, use the default SSH authentication mechanisms available
 	// or no authentication for public repos. Note, JSON schema validation overrides this to string type.
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 func (g *Git) Equal(other *Git) bool {
@@ -714,12 +723,6 @@ func (g *Git) Equal(other *Git) bool {
 type SecretRef struct {
 	Name  string `json:"-" yaml:"-"`
 	value *Secret
-}
-
-func (*SecretRef) PrepareJSONSchema(schema *jsonschema.Schema) error {
-	schema.Type = nil
-	schema.AddType(jsonschema.String)
-	return nil
 }
 
 // Resolve retrieves the secret value from the secret store. If the secret is not found, an error is returned.
@@ -774,6 +777,8 @@ type Token struct {
 	Name   string  `json:"-" yaml:"-"`
 	APIKey string  `json:"api_key" yaml:"api_key"`
 	Scopes []Scope `json:"scopes" yaml:"scopes"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 func (t *Token) Equal(other *Token) bool {
@@ -1002,6 +1007,8 @@ type Datasource struct {
 	TransformQuery string         `json:"transform_query,omitempty" yaml:"transform_query,omitempty"`
 	Config         map[string]any `json:"config,omitempty" yaml:"config,omitempty"`
 	Credentials    *SecretRef     `json:"credentials,omitempty" yaml:"credentials,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 func (d *Datasource) Equal(other *Datasource) bool {
@@ -1049,6 +1056,8 @@ type Service struct {
 	// ApiPrefix prefixes all endpoints (including health and metrics) with its value. It is important to start with `/` and not end with `/`.
 	// For example `/my/path` will make health endpoint be accessible under `/my/path/health`
 	ApiPrefix string `json:"api_prefix,omitempty" yaml:"api_prefix,omitempty" pattern:"^/([^/].*[^/])?$"`
+
+	noAdditionalProps
 }
 
 func setEqual[K comparable, V any](a, b []V, key func(V) K, eq func(a, b V) bool) bool {
