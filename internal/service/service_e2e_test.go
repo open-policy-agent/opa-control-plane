@@ -31,7 +31,6 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/service"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/libraries"
-	"github.com/open-policy-agent/opa-control-plane/internal/util"
 )
 
 // TestCases is a struct that holds a slice of test cases in a YAML file.

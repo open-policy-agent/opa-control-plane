@@ -1,6 +1,8 @@
 {
+  "additionalProperties": false,
   "definitions": {
     "ConfigAmazonRDS": {
+      "additionalProperties": false,
       "properties": {
         "credentials": {
           "type": "string"
@@ -91,6 +93,7 @@
       "type": "object"
     },
     "ConfigDatabase": {
+      "additionalProperties": false,
       "properties": {
         "aws_rds": {
           "$ref": "#/definitions/ConfigAmazonRDS"
@@ -200,6 +203,7 @@
       "type": "object"
     },
     "ConfigGitRequirement": {
+      "additionalProperties": false,
       "properties": {
         "commit": {
           "type": [
@@ -246,6 +250,7 @@
       "type": "object"
     },
     "ConfigRequirement": {
+      "additionalProperties": false,
       "properties": {
         "git": {
           "$ref": "#/definitions/ConfigGitRequirement"
@@ -272,6 +277,15 @@
       "type": "array"
     },
     "ConfigSQLDatabase": {
+      "additionalProperties": false,
+      "properties": {
+        "driver": {
+          "type": "string"
+        },
+        "dsn": {
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "ConfigScope": {

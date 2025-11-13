@@ -44,6 +44,8 @@ type Root struct {
 	Tokens   map[string]*Token  `json:"tokens,omitempty"`
 	Database *Database          `json:"database,omitempty"`
 	Service  *Service           `json:"service,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 // SetSQLitePersistentByDefault sets the database configuration to use a SQLite
@@ -286,10 +288,14 @@ type Requirement struct {
 	Git    GitRequirement `json:"git,omitzero"`
 	Path   string         `json:"path,omitzero"`
 	Prefix string         `json:"prefix,omitzero"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 type GitRequirement struct {
 	Commit *string `json:"commit,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 func (a Requirement) Equal(b Requirement) bool {
@@ -443,6 +449,12 @@ type Source struct {
 	Directory     string       `json:"directory,omitempty"` // Root directory for the source files, used to resolve file paths below.
 	Paths         StringSet    `json:"paths,omitempty"`
 	Requirements  Requirements `json:"requirements,omitempty"`
+
+	// NOTE(sr): additional properties need to be allowed here because we support things like
+	//
+	// sources:
+	//   builtin-entz:
+	//     styra.entitlements.v1: entitlements-v1/completions/completions/completions.rego
 }
 
 func (s *Source) Equal(other *Source) bool {
@@ -1030,11 +1042,15 @@ func (a Datasources) Equal(b Datasources) bool {
 type Database struct {
 	SQL    *SQLDatabase `json:"sql,omitempty"`
 	AWSRDS *AmazonRDS   `json:"aws_rds,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 type SQLDatabase struct {
-	Driver string `yaml:"driver"`
-	DSN    string `yaml:"dsn"`
+	Driver string `json:"driver"`
+	DSN    string `json:"dsn"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 type AmazonRDS struct {
@@ -1049,13 +1065,16 @@ type AmazonRDS struct {
 	// root CA certificates are used. For RDS, you can download the appropriate bundle for your region
 	// from here: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html#UsingWithRDS.SSL.CertificatesAllRegions
 	RootCertificates string `json:"root_certificates,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 type Service struct {
 	// ApiPrefix prefixes all endpoints (including health and metrics) with its value. It is important to start with `/` and not end with `/`.
 	// For example `/my/path` will make health endpoint be accessible under `/my/path/health`
-	ApiPrefix string   `json:"api_prefix,omitempty" pattern:"^/([^/].*[^/])?$"`
-	_         struct{} `additionalProperties:"false"`
+	ApiPrefix string `json:"api_prefix,omitempty" pattern:"^/([^/].*[^/])?$"`
+
+	_ struct{} `additionalProperties:"false"`
 }
 
 func setEqual[K comparable, V any](a, b []V, key func(V) K, eq func(a, b V) bool) bool {

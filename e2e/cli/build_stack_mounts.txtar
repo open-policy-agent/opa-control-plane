@@ -42,7 +42,6 @@ stacks:
       - production
     requirements:
     - source: global-data
-      mounts:
       path: data.common
       prefix: data.stack.req.new
 sources:
