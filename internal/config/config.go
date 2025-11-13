@@ -19,7 +19,6 @@ import (
 
 	"github.com/gobwas/glob"
 	"github.com/goccy/go-yaml"
-	"github.com/swaggest/jsonschema-go"
 )
 
 // Internal configuration data structures for OPA Control Plane.
@@ -561,19 +560,6 @@ func MustNewSelector(s map[string]StringSet) Selector {
 	}
 
 	return ss
-}
-
-func (*Selector) PrepareJSONSchema(schema *jsonschema.Schema) error {
-	str := jsonschema.String.ToSchemaOrBool()
-
-	arr := jsonschema.Array.ToSchemaOrBool()
-	arr.TypeObject.ItemsEns().SchemaOrBool = &str
-
-	schema.Type = nil
-	schema.AddType(jsonschema.Object)
-	schema.AdditionalProperties = &arr
-
-	return nil
 }
 
 // Matches checks if the given labels match the selector. Empty selector value matches any label value

@@ -63,3 +63,16 @@ func (*Source) PrepareJSONSchema(schema *schemareflector.Schema) error {
 	schema.AddType(schemareflector.Null)
 	return nil
 }
+
+func (*Selector) PrepareJSONSchema(schema *schemareflector.Schema) error {
+	str := schemareflector.String.ToSchemaOrBool()
+
+	arr := schemareflector.Array.ToSchemaOrBool()
+	arr.TypeObject.ItemsEns().SchemaOrBool = &str
+
+	schema.Type = nil
+	schema.AddType(schemareflector.Object)
+	schema.AdditionalProperties = &arr
+
+	return nil
+}
