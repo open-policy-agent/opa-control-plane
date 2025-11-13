@@ -15,8 +15,24 @@ func Migrations(dialect string) (fs.FS, error) {
 		initialSchemaFS(dialect),
 		addMounts(dialect),
 		addBundleInterval(dialect),
+		addBundleOptions(dialect),
 	), nil
 }
+
+func addBundleOptions(dialect string) fs.FS {
+	var stmt string
+	switch dialect {
+	case "sqlite", "postgresql":
+		stmt = `ALTER TABLE bundles ADD options TEXT`
+	case "mysql":
+		stmt = `ALTER TABLE bundles ADD options VARCHAR(255)`
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		"018_add_bundles_options.up.sql": stmt,
+	})
+}
+
 func addBundleInterval(dialect string) fs.FS {
 	var stmt string
 	switch dialect {
