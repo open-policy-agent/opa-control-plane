@@ -27,25 +27,25 @@ result if data.prefix.common != "uncommon"
 -- config.d/bundle.yml --
 bundles:
   hello-world:
-    options:
-      no_default_stack_mount: true
     labels:
       env: production
     object_storage:
       filesystem:
         path: bundles/hello-world/bundle.tar.gz
-    requirements:
-    - source: global-data
-      prefix: data.bundle.req
 stacks:
-  stack-with-mount:
+  without-mount:
     selector:
       env:
       - production
     requirements:
     - source: global-data
-      path: data.common
-      prefix: data.stack.req.new
+  with-mount:
+    selector:
+      env:
+      - production
+    requirements:
+    - source: global-data
+      prefix: global
 sources:
   global-data:
     directory: data/
@@ -63,18 +63,18 @@ sources:
 /global-data/rules.rego
 /.manifest
 -- exp/data.json --
-{"bundle":{"req":{"common":{"foo":{"foo":true}}}},"stack":{"req":{"new":{"foo":{"foo":true}}}}}
+{"stacks":{"with-mount":{"global":{"common":{"foo":{"foo":true}}}},"without-mount":{"common":{"foo":{"foo":true}}}}}
 -- exp/.manifest --
-{"revision":"","roots":["bundle/req/common/rules","bundle/req/common/foo","stack/req/new/rules","stack/req/new/foo"],"rego_version":0}
+{"revision":"","roots":["stacks/with-mount/global/common/rules","stacks/with-mount/global/common/foo","stacks/without-mount/common/rules","stacks/without-mount/common/foo"],"rego_version":0}
 -- exp/global-data/rules.rego --
-package bundle.req.common.rules
+package stacks["with-mount"].global.common.rules
 
 import rego.v1
 
-result if data.bundle.req.foo.common != "uncommon"
+result if data.stacks["with-mount"].global.foo.common != "uncommon"
 -- exp/global-data1/rules.rego --
-package stack.req.new.rules
+package stacks["without-mount"].common.rules
 
 import rego.v1
 
-result if data.foo.common != "uncommon"
+result if data.stacks["without-mount"].foo.common != "uncommon"
