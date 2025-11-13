@@ -59,7 +59,6 @@ stacks:
       - production
     requirements:
     - source: stack1src
-      prefix: data.stacks.stack1
 sources:
   entrypoint:
     directory: entry/

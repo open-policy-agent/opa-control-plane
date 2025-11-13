@@ -83,6 +83,9 @@
         "object_storage": {
           "$ref": "#/definitions/ConfigObjectStorage"
         },
+        "options": {
+          "$ref": "#/definitions/ConfigOptions"
+        },
         "rebuild_interval": {
           "type": "string"
         },
@@ -245,6 +248,15 @@
         },
         "gcp": {
           "$ref": "#/definitions/ConfigGCPCloudStorage"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "no_default_stack_mount": {
+          "type": "boolean"
         }
       },
       "type": "object"
