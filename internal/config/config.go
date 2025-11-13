@@ -237,6 +237,16 @@ func Validate(data []byte) error {
 	return rootSchema.Validate(config)
 }
 
+type Options struct {
+	NoDefaultStackMount bool `json:"no_default_stack_mount"`
+
+	_ struct{} `additionalProperties:"false"`
+}
+
+func (o Options) Empty() bool {
+	return o == Options{}
+}
+
 // Bundle defines the configuration for an OPA Control Plane Bundle.
 type Bundle struct {
 	Name          string        `json:"name"`
@@ -245,6 +255,7 @@ type Bundle struct {
 	Requirements  Requirements  `json:"requirements,omitempty"`
 	ExcludedFiles StringSet     `json:"excluded_files,omitempty"`
 	Interval      Duration      `json:"rebuild_interval,omitzero"`
+	Options       Options       `json:"options,omitzero"`
 
 	_ struct{} `additionalProperties:"false"`
 }

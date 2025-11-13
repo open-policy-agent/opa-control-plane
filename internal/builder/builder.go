@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"maps"
 	"os"
 	"path/filepath"
@@ -540,6 +541,7 @@ func extractAndTransformRego(fsys fs.FS, mnts []mount) (fs.FS, error) {
 		maps.DeleteFunc(modules, func(k string, mod *ast.Module) bool {
 			return !mod.Package.Path.HasPrefix(ast.MustParseRef(from))
 		})
+		log.Println("replacements", replacements)
 
 		res, err := refactor.New().Move(refactor.MoveQuery{
 			Modules:       modules,
