@@ -4,6 +4,9 @@ cases:
         {
           bundles: {
             TestSystem: {
+              options: {
+                no_default_stack_mount: true,
+              },
               labels: {
                 app: payments,
                 env: production

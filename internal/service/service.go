@@ -12,9 +12,11 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/open-policy-agent/opa/v1/ast"
 	_ "modernc.org/sqlite"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/builder"
@@ -31,8 +33,14 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/sqlsync"
 )
 
-const internalPrincipal = "internal"
-const reconfigurationInterval = 15 * time.Second
+const (
+	internalPrincipal       = "internal"
+	reconfigurationInterval = 15 * time.Second
+)
+
+var (
+	defaultStackMountPrefix = ast.DefaultRootRef.Append(ast.StringTerm("stacks"))
+)
 
 type Service struct {
 	config         *config.Root
@@ -311,7 +319,14 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 		for _, stack := range stacks {
 			if stack.Selector.Matches(b.Labels) && !stack.ExcludeSelector.PtrMatches(b.Labels) {
-				root = root.AddRequirements(stack.Requirements)
+				reqs := make([]config.Requirement, len(stack.Requirements))
+				for i, req := range stack.Requirements {
+					if !b.Options.NoDefaultStackMount {
+						req.Prefix = addPrefix(defaultStackMountPrefix, stack.Name, req.Prefix)
+					}
+					reqs[i] = req
+				}
+				root = root.AddRequirements(reqs)
 			}
 		}
 
@@ -509,4 +524,16 @@ func md5sum(s string) string {
 // `filepath.ToSlash`.
 func join(ps ...string) string {
 	return filepath.ToSlash(path.Join(ps...))
+}
+
+func addPrefix(prefix ast.Ref, name string, existing string) string {
+	pr := prefix.Append(ast.StringTerm(name)).String() // String() takes care of using ["..."] where required
+	offset := 0
+	if existing == "" {
+		return pr
+	}
+	if strings.HasPrefix(existing, "data.") {
+		offset = 5
+	}
+	return pr + "." + existing[offset:]
 }
