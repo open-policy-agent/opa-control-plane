@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"slices"
 
-	"gopkg.in/yaml.v3"
+	"github.com/goccy/go-yaml"
 )
 
 func Merge(configFiles []string, conflictError bool) ([]byte, error) {

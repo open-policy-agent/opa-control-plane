@@ -46,6 +46,12 @@ func (Duration) PrepareJSONSchema(schema *schemareflector.Schema) error {
 	return nil
 }
 
+func (*SecretRef) PrepareJSONSchema(schema *schemareflector.Schema) error {
+	schema.Type = nil
+	schema.AddType(schemareflector.String)
+	return nil
+}
+
 // We do this so that the following YAML config is considered valid:
 //
 //	sources:

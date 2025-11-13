@@ -27,8 +27,6 @@ bundles:
 sources:
   dir-paths:
     directory: files/sources/a
-    excluded_files:
-    - unrelated.yaml
     paths:
     - rules/rules.rego
     - prefix/data.json

@@ -6,6 +6,7 @@ package gitsync
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -24,8 +25,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
+
 	"golang.org/x/crypto/ssh"
-	"gopkg.in/yaml.v3"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
@@ -96,7 +97,7 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 		config := config.Git{
 			Credentials: s.config.Credentials,
 		}
-		if err := yaml.Unmarshal(data, &config); err != nil || !config.Equal(&s.config) {
+		if err := json.Unmarshal(data, &config); err != nil || !config.Equal(&s.config) {
 			if err := os.RemoveAll(s.path); err != nil {
 				return false, err
 			}
@@ -127,7 +128,7 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 			return false, err
 		}
 
-		data, err := yaml.Marshal(s.config)
+		data, err := json.Marshal(s.config)
 		if err != nil {
 			return false, err
 		}

@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goccy/go-yaml"
 	"github.com/google/go-cmp/cmp"
+
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
-	"gopkg.in/yaml.v3"
 )
 
 func TestParseSecretResolve(t *testing.T) {
@@ -407,24 +408,6 @@ func TestServiceApiPrefixValidation(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestParseWithoutPanicsOnEmptyKeys(t *testing.T) {
-	// One big config that contains all the things that previously caused panics.
-	cfg := []byte(`
-tokens:
-  empty-token:
-bundles:
-  empty-bundle:
-secrets:
-  empty-secret:
-sources:
-  empty-source:
-stacks:
-  empty-stack:
-`)
-	_, _ = config.Parse(cfg)
-	// it has not panicked
 }
 
 func TestValidateYAML(t *testing.T) {

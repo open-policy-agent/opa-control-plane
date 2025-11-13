@@ -32,7 +32,7 @@ func TestUnconfiguredSecretHandling(t *testing.T) {
 		sources: {
 			test_src: {
 				git: {
-					repo: https://example.com/repo.git, # doesn't matter
+					repo: https://example.com/repo.git,
 					credentials: test_creds,
 					reference: refs/heads/main,
 				}
