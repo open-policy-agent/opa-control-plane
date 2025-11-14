@@ -735,6 +735,8 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 					}
 					bundle.Interval = config.Duration(dur)
 				}
+			} else {
+				d.log.Warnf("ListBundles: bundle %s has multiple rows so incorrect number of rows returned", row.bundleName)
 			}
 
 			if row.reqSrc != nil {
@@ -855,20 +857,32 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			query += fmt.Sprintf(" AND (sources.name = %s)", d.arg(len(args)))
 			args = append(args, opts.name)
 		}
+		query += ` AND (sources.id IN (
+SELECT id FROM sources`
+		after := opts.cursor()
 
-		if after := opts.cursor(); after > 0 {
-			query += fmt.Sprintf(" AND (sources.id > %s)", d.arg(len(args)))
-			args = append(args, after)
+		if after > 0 || opts.Limit > 0 {
+			subQuery := ""
+			if after > 0 {
+				subQuery += fmt.Sprintf(" WHERE id > %s", d.arg(len(args)))
+				args = append(args, after)
+			}
+			subQuery += " ORDER BY id"
+			if opts.Limit > 0 {
+				subQuery += fmt.Sprintf(" LIMIT %s", d.arg(len(args)))
+				args = append(args, opts.Limit)
+			}
+			query += subQuery
 		}
+		query += "))"
+
+		// order has to be deterministic both in main query and subquery
 		query += " ORDER BY sources.id"
-		if opts.Limit > 0 {
-			query += " LIMIT " + d.arg(len(args))
-			args = append(args, opts.Limit)
-		}
 
 		rows, err := txn.Query(query, args...)
 		if err != nil {
-			return nil, "", err
+			// TODO: revert this log before merging
+			return nil, "", fmt.Errorf("querying sources: %w with query %s \n with args %v", err, query, args)
 		}
 		defer rows.Close()
 
@@ -924,6 +938,8 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 						return nil, "", fmt.Errorf("failed to unmarshal exclude paths for %q: %w", src.Name, err)
 					}
 				}
+			} else {
+				d.log.Warnf("ListSources: Source %s has multiple rows so incorrect number of rows returned", row.sourceName)
 			}
 
 			if row.secretRefType != nil && *row.secretRefType == "git_credentials" && row.secretName != nil {

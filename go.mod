@@ -255,6 +255,5 @@ require (
 	golang.org/x/crypto v0.43.0
 	golang.org/x/sync v0.18.0
 	google.golang.org/api v0.255.0
-	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.40.0
 )
