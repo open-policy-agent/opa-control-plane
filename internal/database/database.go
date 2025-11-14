@@ -642,8 +642,10 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 		bundleMap := make(map[string]*config.Bundle)
 		idMap := make(map[string]int64)
 		var lastId int64
+		numRows := 0
 
 		for rows.Next() {
+			numRows++
 			var row bundleRow
 			if err := rows.Scan(&row.id, &row.bundleName, &row.labels,
 				&row.s3url, &row.s3region, &row.s3bucket, &row.s3key, // S3
@@ -735,6 +737,8 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 					}
 					bundle.Interval = config.Duration(dur)
 				}
+			} else {
+				d.log.Warnf("ListBundles: bundle %s has multiple rows so incorrect number of rows returned", row.bundleName)
 			}
 
 			if row.reqSrc != nil {
@@ -760,7 +764,7 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 		})
 
 		var nextCursor string
-		if opts.Limit > 0 && len(sl) == opts.Limit {
+		if opts.Limit > 0 && numRows == opts.Limit {
 			nextCursor = encodeCursor(lastId)
 		}
 
@@ -886,8 +890,10 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 		srcMap := make(map[string]*config.Source)
 		idMap := make(map[string]int64)
 		var last int64
+		numRows := 0
 
 		for rows.Next() {
+			numRows++
 			var row sourceRow
 			if err := rows.Scan(&row.id, &row.sourceName, &row.builtin, &row.repo, &row.ref, &row.gitCommit, &row.path, &row.includePaths, &row.excludePaths, &row.secretName, &row.secretRefType, &row.secretValue, &row.requirementName, &row.requirementCommit, &row.reqPath, &row.reqPrefix); err != nil {
 				return nil, "", err
@@ -924,6 +930,8 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 						return nil, "", fmt.Errorf("failed to unmarshal exclude paths for %q: %w", src.Name, err)
 					}
 				}
+			} else {
+				d.log.Warnf("ListSources: Source %s has multiple rows so incorrect number of rows returned", row.sourceName)
 			}
 
 			if row.secretRefType != nil && *row.secretRefType == "git_credentials" && row.secretName != nil {
@@ -1016,7 +1024,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 		})
 
 		var nextCursor string
-		if opts.Limit > 0 && len(sl) == opts.Limit {
+		if opts.Limit > 0 && numRows == opts.Limit {
 			cursor := strconv.FormatInt(last, 10)
 			nextCursor = base64.URLEncoding.EncodeToString([]byte(cursor))
 		}
