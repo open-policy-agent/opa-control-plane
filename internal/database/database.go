@@ -859,12 +859,12 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			query += fmt.Sprintf(" AND (sources.name = %s)", d.arg(len(args)))
 			args = append(args, opts.name)
 		}
-
+		query += ` AND (sources.id IN (
+SELECT id FROM sources`
 		after := opts.cursor()
 
 		if after > 0 || opts.Limit > 0 {
-			subQuery := ` AND (sources.id IN (
-SELECT id FROM sources`
+			subQuery := ""
 			if after > 0 {
 				subQuery += fmt.Sprintf(" WHERE id > %s", d.arg(len(args)))
 				args = append(args, after)
@@ -874,9 +874,9 @@ SELECT id FROM sources`
 				subQuery += fmt.Sprintf(" LIMIT %s", d.arg(len(args)))
 				args = append(args, opts.Limit)
 			}
-			subQuery += "))"
 			query += subQuery
 		}
+		query += "))"
 
 		// order has to be deterministic both in main query and subquery
 		query += " ORDER BY sources.id"
