@@ -223,20 +223,6 @@ func TestDatabase(t *testing.T) {
 							"token": "xyz",
 						},
 					},
-					"secret3": {
-						Name: "secret3",
-						Value: map[string]any{
-							"type":  "git_credentials",
-							"token": "xyz",
-						},
-					},
-					"secret4": {
-						Name: "secret4",
-						Value: map[string]any{
-							"type":  "git_credentials",
-							"token": "xyz",
-						},
-					},
 				},
 				Database: &config.Database{
 					SQL: &config.SQLDatabase{

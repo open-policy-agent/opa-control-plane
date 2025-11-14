@@ -860,19 +860,30 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			args = append(args, opts.name)
 		}
 
-		if after := opts.cursor(); after > 0 {
-			query += fmt.Sprintf(" AND (sources.id > %s)", d.arg(len(args)))
-			args = append(args, after)
+		after := opts.cursor()
+
+		if after > 0 || opts.Limit > 0 {
+			subQuery := ` AND (sources.id IN (
+SELECT id FROM sources`
+			if after > 0 {
+				subQuery += fmt.Sprintf(" WHERE id > %s", d.arg(len(args)))
+				args = append(args, after)
+			}
+			subQuery += " ORDER BY id"
+			if opts.Limit > 0 {
+				subQuery += fmt.Sprintf(" LIMIT %s", d.arg(len(args)))
+				args = append(args, opts.Limit)
+			}
+			subQuery += "))"
+			query += subQuery
 		}
+
+		// order has to be deterministic both in main query and subquery
 		query += " ORDER BY sources.id"
-		if opts.Limit > 0 {
-			query += " LIMIT " + d.arg(len(args))
-			args = append(args, opts.Limit)
-		}
 
 		rows, err := txn.Query(query, args...)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("querying sources: %w with query %s \n with args %v", err, query, args)
 		}
 		defer rows.Close()
 
