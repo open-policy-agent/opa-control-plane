@@ -642,10 +642,8 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 		bundleMap := make(map[string]*config.Bundle)
 		idMap := make(map[string]int64)
 		var lastId int64
-		numRows := 0
 
 		for rows.Next() {
-			numRows++
 			var row bundleRow
 			if err := rows.Scan(&row.id, &row.bundleName, &row.labels,
 				&row.s3url, &row.s3region, &row.s3bucket, &row.s3key, // S3
@@ -764,7 +762,7 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 		})
 
 		var nextCursor string
-		if opts.Limit > 0 && numRows == opts.Limit {
+		if opts.Limit > 0 && len(sl) == opts.Limit {
 			nextCursor = encodeCursor(lastId)
 		}
 
@@ -883,6 +881,7 @@ SELECT id FROM sources`
 
 		rows, err := txn.Query(query, args...)
 		if err != nil {
+			// TODO: revert this log before merging
 			return nil, "", fmt.Errorf("querying sources: %w with query %s \n with args %v", err, query, args)
 		}
 		defer rows.Close()
@@ -901,10 +900,8 @@ SELECT id FROM sources`
 		srcMap := make(map[string]*config.Source)
 		idMap := make(map[string]int64)
 		var last int64
-		numRows := 0
 
 		for rows.Next() {
-			numRows++
 			var row sourceRow
 			if err := rows.Scan(&row.id, &row.sourceName, &row.builtin, &row.repo, &row.ref, &row.gitCommit, &row.path, &row.includePaths, &row.excludePaths, &row.secretName, &row.secretRefType, &row.secretValue, &row.requirementName, &row.requirementCommit, &row.reqPath, &row.reqPrefix); err != nil {
 				return nil, "", err
@@ -1035,7 +1032,7 @@ SELECT id FROM sources`
 		})
 
 		var nextCursor string
-		if opts.Limit > 0 && numRows == opts.Limit {
+		if opts.Limit > 0 && len(sl) == opts.Limit {
 			cursor := strconv.FormatInt(last, 10)
 			nextCursor = base64.URLEncoding.EncodeToString([]byte(cursor))
 		}
