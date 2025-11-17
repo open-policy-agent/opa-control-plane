@@ -144,6 +144,7 @@ func TestDatabase(t *testing.T) {
 						},
 						Requirements: config.Requirements{
 							config.Requirement{Source: newString("source-a")},
+							config.Requirement{Source: newString("system1")},
 						},
 					},
 				},
@@ -159,11 +160,25 @@ func TestDatabase(t *testing.T) {
 							config.Requirement{Source: newString("source-b"), Path: "data", Prefix: "data.b"},
 						},
 					},
+					"stack2": {
+						Name: "stack2",
+						Selector: config.MustNewSelector(map[string]config.StringSet{
+							"env": {"test1"},
+						}),
+						Requirements: config.Requirements{
+							config.Requirement{Source: newString("system3")},
+							config.Requirement{Source: newString("system4")},
+						},
+					},
 				},
 				Sources: map[string]*config.Source{
 					"system1": {
-						Name:         "system1",
-						Requirements: config.Requirements{},
+						Name: "system1",
+						Requirements: config.Requirements{
+							config.Requirement{Source: newString("system2")},
+							config.Requirement{Source: newString("system3")},
+							config.Requirement{Source: newString("system4")},
+						},
 					},
 					"system2": {
 						Name:         "system2",
@@ -184,8 +199,12 @@ func TestDatabase(t *testing.T) {
 						Requirements: config.Requirements{},
 					},
 					"source-a": {
-						Name:         "source-a",
-						Requirements: config.Requirements{},
+						Name: "source-a",
+						Requirements: config.Requirements{
+							config.Requirement{Source: newString("system1")},
+							config.Requirement{Source: newString("system2")},
+							config.Requirement{Source: newString("system3")},
+						},
 					},
 					"source-b": {
 						Name:         "source-b",
@@ -241,8 +260,12 @@ func TestDatabase(t *testing.T) {
 				newTestCase("check token expansion").GetPrincipalByToken("sesame", "api-token"),
 				// source operations:
 				newTestCase("list sources").ListSources([]*config.Source{
+					root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"], root.Sources["system1"],
 					root.Sources["source-a"], root.Sources["source-b"], root.Sources["source-z"], root.Sources["source-y"], root.Sources["source-x"],
-					root.Sources["system1"], root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"]}),
+				}),
+				newTestCase("list sources with pagination").ListSourcesPagination(5, []*config.Source{ // NB(sr): limit large enough so that we capture system1 which has requirements
+					root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"], root.Sources["system1"],
+				}),
 				newTestCase("get source system1").GetSource("system1", root.Sources["system1"]),
 				newTestCase("delete sources + requirements").
 					DeleteSource("source-z", false). // used by x and y
@@ -255,11 +278,13 @@ func TestDatabase(t *testing.T) {
 					GetSource("source-y", nil).
 					GetSource("source-z", nil),
 				newTestCase("list sources again").ListSources([]*config.Source{
+					root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"], root.Sources["system1"],
 					root.Sources["source-a"], root.Sources["source-b"],
-					root.Sources["system1"], root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"]}),
+				}),
 
 				// stack operations:
-				newTestCase("list stacks").ListStacks([]*config.Stack{root.Stacks["stack1"]}),
+				newTestCase("list stacks").ListStacks([]*config.Stack{root.Stacks["stack1"], root.Stacks["stack2"]}),
+				newTestCase("list stacks with pagination").ListStacksPagination(1, []*config.Stack{root.Stacks["stack1"]}),
 				newTestCase("get stack stack1").GetStack("stack1", root.Stacks["stack1"]),
 				newTestCase("delete stack stack1 and source-b").
 					DeleteSource("source-b", false). // cannot delete it, it's referenced in stack-1
@@ -315,6 +340,8 @@ func TestDatabase(t *testing.T) {
 					root.Bundles["bundle-a"], root.Bundles["system1"], root.Bundles["system2"],
 					root.Bundles["system3"], root.Bundles["system4"], root.Bundles["system5"],
 				}),
+				newTestCase("list bundles with pagination").ListBundlesPagination(2, []*config.Bundle{
+					root.Bundles["bundle-a"], root.Bundles["system1"]}),
 				newTestCase("get bundle system1").GetBundle("system1", root.Bundles["system1"]),
 				newTestCase("put bundle requirements").BundlesPutRequirements("system6", config.Requirements{
 					config.Requirement{Source: newString("system1")},
@@ -497,14 +524,27 @@ func (tc *testCase) ListBundles(expected []*config.Bundle) *testCase {
 			}
 
 			listed = append(listed, bundles...)
-
 			if len(bundles) < limit {
 				break
-
 			}
 		}
 
 		if diff := cmp.Diff(expected, listed); diff != "" {
+			t.Fatal("unexpected list result", diff)
+		}
+	})
+
+	return tc
+}
+
+func (tc *testCase) ListBundlesPagination(limit int, expected []*config.Bundle) *testCase { // NB(sr): limit large enough so that we capture system1 which has requirements
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		bundles, _, err := db.ListBundles(ctx, "admin", database.ListOptions{Limit: limit})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if diff := cmp.Diff(expected, bundles); diff != "" {
 			t.Fatal("unexpected list result", diff)
 		}
 	})
@@ -571,11 +611,25 @@ func (tc *testCase) ListSources(expected []*config.Source) *testCase {
 
 			if len(sources) < limit {
 				break
-
 			}
 		}
 
 		if diff := cmp.Diff(expected, listed); diff != "" {
+			t.Fatal("unexpected list result", diff)
+		}
+	})
+
+	return tc
+}
+
+func (tc *testCase) ListSourcesPagination(limit int, expected []*config.Source) *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		sources, _, err := db.ListSources(ctx, "admin", database.ListOptions{Limit: limit})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if diff := cmp.Diff(expected, sources); diff != "" {
 			t.Fatal("unexpected list result", diff)
 		}
 	})
@@ -686,14 +740,27 @@ func (tc *testCase) ListStacks(expected []*config.Stack) *testCase {
 			}
 
 			listed = append(listed, stacks...)
-
 			if len(stacks) < limit {
 				break
-
 			}
 		}
 
 		if diff := cmp.Diff(expected, listed); diff != "" {
+			t.Fatal("unexpected list result", diff)
+		}
+	})
+
+	return tc
+}
+
+func (tc *testCase) ListStacksPagination(limit int, expected []*config.Stack) *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		stacks, _, err := db.ListStacks(ctx, "admin", database.ListOptions{Limit: limit})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if diff := cmp.Diff(expected, stacks); diff != "" {
 			t.Fatal("unexpected list result", diff)
 		}
 	})

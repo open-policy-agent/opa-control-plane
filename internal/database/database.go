@@ -573,9 +573,13 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 
 		conditions, args := expr.SQL(d.arg, nil)
 
-		query := `SELECT
+		// Building the query, we'll first deal with the `bundles` table:
+		// 1. apply conditions
+		// 2. deal with pagination
+		// and _then_ join whatever extra information we need
+		bundles := `SELECT
 		bundles.id,
-        bundles.name AS bundle_name,
+		bundles.name,
 		bundles.labels,
 		bundles.s3url,
 		bundles.s3region,
@@ -588,36 +592,41 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 		bundles.azure_path,
 		bundles.filepath,
 		bundles.excluded,
-		bundles.rebuild_interval,
-        secrets.name AS secret_name,
-        secrets.value AS secret_value,
-		bundles_requirements.source_name AS req_src,
-		bundles_requirements.path AS req_path,
-		bundles_requirements.prefix AS req_prefix,
-		bundles_requirements.gitcommit AS req_commit
-    FROM
-        bundles
-    LEFT JOIN
-        bundles_secrets ON bundles.name = bundles_secrets.bundle_name
-    LEFT JOIN
-        secrets ON bundles_secrets.secret_name = secrets.name
-	LEFT JOIN
-		bundles_requirements ON bundles.name = bundles_requirements.bundle_name WHERE (` + conditions + ")"
+		bundles.rebuild_interval
+FROM bundles
+WHERE (` + conditions + ")"
 
 		if opts.name != "" {
-			query += fmt.Sprintf(" AND (bundles.name = %s)", d.arg(len(args)))
+			bundles += fmt.Sprintf(" AND (bundles.name = %s)", d.arg(len(args)))
 			args = append(args, opts.name)
 		}
 
 		if after := opts.cursor(); after > 0 {
-			query += fmt.Sprintf(" AND (bundles.id > %s)", d.arg(len(args)))
+			bundles += fmt.Sprintf(" AND (bundles.id > %s)", d.arg(len(args)))
 			args = append(args, after)
 		}
-		query += " ORDER BY bundles.id"
+		bundles += " ORDER BY bundles.id"
 		if opts.Limit > 0 {
-			query += " LIMIT " + d.arg(len(args))
+			bundles += " LIMIT " + d.arg(len(args))
 			args = append(args, opts.Limit)
 		}
+
+		query := fmt.Sprintf(`SELECT
+		bundles.*,
+		secrets.name AS secret_name,
+		secrets.value AS secret_value,
+		bundles_requirements.source_name AS req_src,
+		bundles_requirements.path AS req_path,
+		bundles_requirements.prefix AS req_prefix,
+		bundles_requirements.gitcommit AS req_commit
+FROM (%s) AS bundles
+LEFT JOIN
+    bundles_secrets ON bundles.name = bundles_secrets.bundle_name
+LEFT JOIN
+    secrets ON bundles_secrets.secret_name = secrets.name
+LEFT JOIN
+	bundles_requirements ON bundles.name = bundles_requirements.bundle_name
+`, bundles)
 
 		rows, err := txn.Query(query, args...)
 		if err != nil {
@@ -824,16 +833,36 @@ func (d *Database) ListSources(ctx context.Context, principal string, opts ListO
 
 		conditions, args := expr.SQL(d.arg, nil)
 
-		query := `SELECT
+		sources := `SELECT
 	sources.id,
-	sources.name AS source_name,
+	sources.name,
 	sources.builtin,
 	sources.repo,
 	sources.ref,
 	sources.gitcommit,
 	sources.path,
 	sources.git_included_files,
-	sources.git_excluded_files,
+	sources.git_excluded_files
+FROM sources
+WHERE (` + conditions + ")"
+
+		if opts.name != "" {
+			sources += fmt.Sprintf(" AND (sources.name = %s)", d.arg(len(args)))
+			args = append(args, opts.name)
+		}
+
+		if after := opts.cursor(); after > 0 {
+			sources += fmt.Sprintf(" AND (sources.id > %s)", d.arg(len(args)))
+			args = append(args, after)
+		}
+		sources += " ORDER BY sources.id"
+		if opts.Limit > 0 {
+			sources += " LIMIT " + d.arg(len(args))
+			args = append(args, opts.Limit)
+		}
+
+		query := fmt.Sprintf(`SELECT
+	sources.*,
 	secrets.name AS secret_name,
 	sources_secrets.ref_type AS secret_ref_type,
 	secrets.value AS secret_value,
@@ -841,30 +870,15 @@ func (d *Database) ListSources(ctx context.Context, principal string, opts ListO
 	sources_requirements.gitcommit,
 	sources_requirements.path AS req_path,
 	sources_requirements.prefix AS req_prefix
-FROM
-	sources
+FROM (%s) AS sources
 LEFT JOIN
 	sources_secrets ON sources.name = sources_secrets.source_name
 LEFT JOIN
 	secrets ON sources_secrets.secret_name = secrets.name
 LEFT JOIN
 	sources_requirements ON sources.name = sources_requirements.source_name
-WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type IS NULL) AND (` + conditions + ")"
-
-		if opts.name != "" {
-			query += fmt.Sprintf(" AND (sources.name = %s)", d.arg(len(args)))
-			args = append(args, opts.name)
-		}
-
-		if after := opts.cursor(); after > 0 {
-			query += fmt.Sprintf(" AND (sources.id > %s)", d.arg(len(args)))
-			args = append(args, after)
-		}
-		query += " ORDER BY sources.id"
-		if opts.Limit > 0 {
-			query += " LIMIT " + d.arg(len(args))
-			args = append(args, opts.Limit)
-		}
+WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type IS NULL)
+ORDER BY sources.id`, sources)
 
 		rows, err := txn.Query(query, args...)
 		if err != nil {
@@ -1164,36 +1178,39 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 		}
 
 		conditions, args := expr.SQL(d.arg, nil)
-		query := `SELECT
-        stacks.id,
-        stacks.name AS stack_name,
-        stacks.selector,
-		stacks.exclude_selector,
-        stacks_requirements.source_name,
-		stacks_requirements.gitcommit,
-		stacks_requirements.path AS req_path,
-		stacks_requirements.prefix AS req_prefix
-    FROM
-        stacks
-    LEFT JOIN
-        stacks_requirements ON stacks.name = stacks_requirements.stack_name
-    WHERE (` + conditions + ")"
+		stacks := `SELECT
+	stacks.id,
+	stacks.name,
+	stacks.selector,
+	stacks.exclude_selector
+FROM stacks
+WHERE (` + conditions + ")"
 
 		if opts.name != "" {
-			query += fmt.Sprintf(" AND (stacks.name = %s)", d.arg(len(args)))
+			stacks += fmt.Sprintf(" AND (stacks.name = %s)", d.arg(len(args)))
 			args = append(args, opts.name)
 		}
 
 		if after := opts.cursor(); after > 0 {
-			query += fmt.Sprintf(" AND (stacks.id > %s)", d.arg(len(args)))
+			stacks += fmt.Sprintf(" AND (stacks.id > %s)", d.arg(len(args)))
 			args = append(args, after)
 		}
-		query += " ORDER BY stacks.id"
+		stacks += " ORDER BY stacks.id"
 		if opts.Limit > 0 {
-			query += " LIMIT " + d.arg(len(args))
+			stacks += " LIMIT " + d.arg(len(args))
 			args = append(args, opts.Limit)
 		}
 
+		query := fmt.Sprintf(`SELECT
+    stacks.*,
+	stacks_requirements.source_name,
+	stacks_requirements.gitcommit,
+	stacks_requirements.path AS req_path,
+	stacks_requirements.prefix AS req_prefix
+FROM (%s) AS stacks
+LEFT JOIN
+	stacks_requirements ON stacks.name = stacks_requirements.stack_name
+   `, stacks)
 		rows, err := txn.Query(query, args...)
 		if err != nil {
 			return nil, "", err
