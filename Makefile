@@ -34,7 +34,7 @@ DOCKER_RUNNING ?= $(shell docker ps >/dev/null 2>&1 && echo 1 || echo 0)
 
 # Get current git SHA and add -dirty if there are uncommitted changes
 VCS := $(shell git rev-parse --short HEAD)$(shell test -n "$(shell git status --porcelain)" && echo -dirty)
-GOVERSION := $(shell awk '/^go /{print $$2; exit}' go.mod)
+GOVERSION := $(shell cat .go-version)
 
 # Supported platforms to include in image manifest lists
 DOCKER_PLATFORMS := linux/amd64,linux/arm64
