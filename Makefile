@@ -129,7 +129,10 @@ push-image: docker-login push-manifest-list-$(VERSION)
 deploy-ci: docker-login ci-build-linux push-manifest-list-$(VERSION) push-manifest-list-edge
 
 .PHONY: release-ci
-release-ci: docker-login ci-build-linux push-manifest-list-$(VERSION) push-manifest-list-latest
+release-ci: gorelease docker-login ci-build-linux push-manifest-list-$(VERSION) push-manifest-list-latest
+
+.PHONY: gorelease
+gorelease:
 	goreleaser release --clean --timeout=60m
 
 .PHONY: libary-test
