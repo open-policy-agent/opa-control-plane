@@ -7,9 +7,10 @@
 
 # runtime artifacts
 config.yaml
-config.d
-bundles/
-data
+/config.d
+/bundles/
+/data
 opactl_*
-files
-.go
+/files
+/.go
+/dist

@@ -33,7 +33,6 @@ func generateCmdOutput(out io.Writer) {
 	platform := runtime.GOOS + "/" + runtime.GOARCH
 	binVcs := ""
 	binTimestamp := ""
-	hostname := ""
 
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
@@ -56,11 +55,9 @@ func generateCmdOutput(out io.Writer) {
 		binVcs += "-dirty"
 	}
 
-	fmt.Fprintln(out, "Version: "+Version)
-	fmt.Fprintln(out, "Build Commit: "+binVcs)
-	fmt.Fprintln(out, "Build Timestamp: "+binTimestamp)
-	fmt.Fprintln(out, "Build Hostname: "+hostname)
-	fmt.Fprintln(out, "Go Version: "+goVersion)
-	fmt.Fprintln(out, "Platform: "+platform)
-
+	fmt.Fprintln(out, "Version:", Version)
+	fmt.Fprintln(out, "Build Commit:", binVcs)
+	fmt.Fprintln(out, "Build Timestamp:", binTimestamp)
+	fmt.Fprintln(out, "Go Version:", goVersion)
+	fmt.Fprintln(out, "Platform:", platform)
 }
