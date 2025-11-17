@@ -13,11 +13,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-
+      - id: go_version
+        name: Read go version
+        run: echo "go_version=$(cat .go-version)" >> $GITHUB_OUTPUT
       - name: Set up Go
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
-          go-version-file: go.mod
+          go-version: ${{ steps.go_version.outputs.go_version }}
+          cache-dependency-path: go.sum
 
       - name: Run Makefile target `go-test`
         run: make go-test
@@ -45,10 +48,15 @@ jobs:
         if: matrix.run == 'windows-latest'
       - name: Checkout code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - id: go_version
+        name: Read go version
+        run: echo "go_version=$(cat .go-version)" >> $GITHUB_OUTPUT
+        shell: bash
       - name: Set up Go
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
-          go-version-file: go.mod
+          go-version: ${{ steps.go_version.outputs.go_version }}
+          cache-dependency-path: go.sum
       - name: build
         run: make build
       - if: runner.os == 'Windows'
