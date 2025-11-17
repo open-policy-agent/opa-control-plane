@@ -26,7 +26,7 @@ else
 DOCKER_FLAGS := --rm
 endif
 
-LDFLAGS := ""
+LDFLAGS := "-s -X github.com/open-policy-agent/opa-control-plane/cmd/version.Version=$(VERSION)"
 
 GOLANGCI_LINT_VERSION := v2.4.0
 
