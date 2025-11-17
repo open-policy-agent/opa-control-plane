@@ -130,6 +130,7 @@ deploy-ci: docker-login ci-build-linux push-manifest-list-$(VERSION) push-manife
 
 .PHONY: release-ci
 release-ci: docker-login ci-build-linux push-manifest-list-$(VERSION) push-manifest-list-latest
+	goreleaser release --clean --timeout=60m
 
 .PHONY: libary-test
 library-test:
