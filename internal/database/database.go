@@ -303,18 +303,24 @@ func (d *Database) InitDB(ctx context.Context) error {
 	case d.config != nil && d.config.SQL != nil && (d.config.SQL.Driver == "postgres" || d.config.SQL.Driver == "pgx"):
 		dsn := os.ExpandEnv(d.config.SQL.DSN)
 		d.kind = postgres
-		d.db, err = sql.Open("pgx", dsn)
+		cfg, err := pgx.ParseConfig(dsn)
 		if err != nil {
 			return err
 		}
+		d.db = sql.OpenDB(stdlib.GetConnector(*cfg))
 
 	case d.config != nil && d.config.SQL != nil && d.config.SQL.Driver == "mysql":
 		dsn := os.ExpandEnv(d.config.SQL.DSN)
 		d.kind = mysql
-		d.db, err = sql.Open("mysql", dsn)
+		cfg, err := mysqldriver.ParseDSN(dsn)
 		if err != nil {
 			return err
 		}
+		conn, err := mysqldriver.NewConnector(cfg)
+		if err != nil {
+			return err
+		}
+		d.db = sql.OpenDB(conn)
 
 	default:
 		return errors.New("unsupported database connection type")
