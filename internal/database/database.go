@@ -592,7 +592,8 @@ func (d *Database) ListBundles(ctx context.Context, principal string, opts ListO
 		bundles.azure_path,
 		bundles.filepath,
 		bundles.excluded,
-		bundles.rebuild_interval
+ 		bundles.rebuild_interval,
+		bundles.options
 FROM bundles
 WHERE (` + conditions + ")"
 
@@ -613,6 +614,8 @@ WHERE (` + conditions + ")"
 
 		query := fmt.Sprintf(`SELECT
 		bundles.*,
+		secrets.name AS secret_name,
+		secrets.value AS secret_value,
 		secrets.name AS secret_name,
 		secrets.value AS secret_value,
 		bundles_requirements.source_name AS req_src,
@@ -644,6 +647,7 @@ LEFT JOIN
 			filepath                                   *string // File system storage
 			excluded                                   *string
 			interval                                   *string
+			options                                    *string
 			secretName, secretValue                    *string
 			reqSrc, reqCommit                          *string
 			reqPath, reqPrefix                         sql.Null[string]
@@ -661,6 +665,7 @@ LEFT JOIN
 				&row.filepath,
 				&row.excluded,
 				&row.interval,
+				&row.options,
 				&row.secretName, &row.secretValue,
 				&row.reqSrc, &row.reqPath, &row.reqPrefix, &row.reqCommit); err != nil {
 				return nil, "", err
@@ -683,6 +688,11 @@ LEFT JOIN
 				if row.labels != nil {
 					if err := json.Unmarshal([]byte(*row.labels), &bundle.Labels); err != nil {
 						return nil, "", fmt.Errorf("failed to unmarshal labels for %q: %w", bundle.Name, err)
+					}
+				}
+				if row.options != nil {
+					if err := json.Unmarshal([]byte(*row.options), &bundle.Options); err != nil {
+						return nil, "", fmt.Errorf("failed to unmarshal options for %q: %w", bundle.Name, err)
 					}
 				}
 
@@ -1339,18 +1349,26 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 		if err != nil {
 			return err
 		}
+		var options []byte
+		if !bundle.Options.Empty() {
+			options, err = json.Marshal(bundle.Options)
+			if err != nil {
+				return err
+			}
+		}
 
 		if err := d.upsert(ctx, tx, "bundles", []string{"name", "labels",
 			"s3url", "s3region", "s3bucket", "s3key",
 			"gcp_project", "gcp_object",
 			"azure_account_url", "azure_container", "azure_path",
 			"filepath", "excluded",
-			"rebuild_interval"}, []string{"name"},
+			"rebuild_interval", "options"}, []string{"name"},
 			bundle.Name, string(labels),
 			s3url, s3region, s3bucket, s3key,
 			gcpProject, gcpObject,
 			azureAccountURL, azureContainer, azurePath,
-			filepath, string(excluded), bundle.Interval.String()); err != nil {
+			filepath, string(excluded), bundle.Interval.String(),
+			options); err != nil {
 			return err
 		}
 
