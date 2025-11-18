@@ -307,12 +307,20 @@ func (d *Database) InitDB(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		cfg.TLSConfig, err = tlsConfig(ctx, d.config.SQL.Credentials, cfg.TLSConfig)
+		if err != nil {
+			return err
+		}
 		d.db = sql.OpenDB(stdlib.GetConnector(*cfg))
 
 	case d.config != nil && d.config.SQL != nil && d.config.SQL.Driver == "mysql":
 		dsn := os.ExpandEnv(d.config.SQL.DSN)
 		d.kind = mysql
 		cfg, err := mysqldriver.ParseDSN(dsn)
+		if err != nil {
+			return err
+		}
+		cfg.TLS, err = tlsConfig(ctx, d.config.SQL.Credentials, cfg.TLS)
 		if err != nil {
 			return err
 		}
@@ -327,6 +335,40 @@ func (d *Database) InitDB(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func tlsConfig(ctx context.Context, cred *config.SecretRef, dsn *tls.Config) (*tls.Config, error) {
+	if cred == nil {
+		return dsn, nil
+	}
+
+	value, err := cred.Resolve(ctx)
+	if err != nil {
+		return nil, err
+	}
+	creds, ok := value.(config.SecretTLSCert)
+	if !ok {
+		return nil, fmt.Errorf("unsupported secret type '%T' for SQL credentials", value)
+	}
+
+	tc, err := creds.ToConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if dsn == nil {
+		return tc, err
+	}
+	// Apply overrides from dsn: Root CA cert pool and "insecure skip verify" are taken from DSN,
+	// client certs are merged.
+	tc.InsecureSkipVerify = dsn.InsecureSkipVerify
+	if len(dsn.Certificates) > 0 {
+		tc.Certificates = append(dsn.Certificates, tc.Certificates...)
+	}
+	if dsn.RootCAs != nil {
+		tc.RootCAs = dsn.RootCAs
+	}
+
+	return tc, nil
 }
 
 func (d *Database) CloseDB() {

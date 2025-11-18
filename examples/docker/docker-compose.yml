@@ -12,6 +12,11 @@ services:
       - ./ocp.yml:/ocp.yml
     ports:
       - 8282:8282
+    environment:
+      - OCP_TLS_CERT
+      - OCP_TLS_KEY
+    depends_on:
+      - db
 
   localstack:
     image: localstack/localstack:latest
@@ -40,8 +45,13 @@ services:
     restart: always
     environment:
       POSTGRES_PASSWORD: sesame
+    ports:
+      - 5432:5432
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./tls:/etc/ssl/postgresql/
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf
+    command: -c ssl=on -c ssl_cert_file=/etc/ssl/postgresql/server-cert.pem -c ssl_key_file=/etc/ssl/postgresql/server-key.pem -c hba_file=/etc/postgresql/pg_hba.conf
 
   prometheus:
     image: prom/prometheus:latest
