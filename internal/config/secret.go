@@ -2,6 +2,8 @@ package config
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -207,6 +209,14 @@ func (s *Secret) Typed(context.Context) (any, error) {
 
 		return value, nil
 
+	case "tls_cert":
+		var value SecretTLSCert
+		if err := decode(m, &value); err != nil {
+			return nil, err
+		}
+
+		return value, nil
+
 	default:
 		return nil, fmt.Errorf("unknown secret type %q", s.Value["type"])
 	}
@@ -252,6 +262,41 @@ type SecretTokenAuth struct {
 
 type SecretPassword struct {
 	Password string `json:"password"` // Password for authentication.
+}
+
+type SecretTLSCert struct {
+	RootCA  string `json:"root_ca"`  // Root CA certificate (PEM encoded)
+	TLSCert string `json:"tls_cert"` // TLS certificate (PEM encoded)
+	TLSKey  string `json:"tls_key"`  // TLS key (PEM encoded)
+}
+
+func (value *SecretTLSCert) ToConfig(ctx context.Context) (*tls.Config, error) {
+	tlsCfg := &tls.Config{}
+
+	// Root CA
+	if value.RootCA != "" {
+		rootCAs := x509.NewCertPool()
+		ok := rootCAs.AppendCertsFromPEM([]byte(value.RootCA))
+		if !ok {
+			return nil, errors.New("failed to append root CA certificate")
+		}
+		tlsCfg.RootCAs = rootCAs
+	}
+
+	// Client Certificate and Key
+	if value.TLSCert != "" && value.TLSKey != "" {
+		cert, err := tls.X509KeyPair([]byte(value.TLSCert), []byte(value.TLSKey))
+		if err != nil {
+			return nil, err
+		}
+
+		tlsCfg.Certificates = []tls.Certificate{cert}
+	}
+
+	// Enforce TLS 1.2 or higher
+	tlsCfg.MinVersion = tls.VersionTLS12
+
+	return tlsCfg, nil
 }
 
 // we use this one so we don't need duplicate tags on every struct

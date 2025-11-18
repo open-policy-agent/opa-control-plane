@@ -1,7 +1,6 @@
 package config_test
 
 import (
-	"context"
 	"reflect"
 	"strings"
 	"testing"
@@ -31,14 +30,13 @@ func TestParseSecretResolve(t *testing.T) {
 			}
 		}
 	}`))
-
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Setenv("OPACTL_PASSWORD", "passw0rd")
 
-	value, err := result.Sources["foo"].Git.Credentials.Resolve(context.Background())
+	value, err := result.Sources["foo"].Git.Credentials.Resolve(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

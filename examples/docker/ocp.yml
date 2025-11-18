@@ -9,11 +9,6 @@ bundles:
         credentials: s3-creds
     requirements:
     - source: git-policies
-secrets:
-  s3-creds:
-    type: aws_auth
-    access_key_id: doesnotmatter
-    secret_access_key: doesnotmatter
 sources:
   git-policies:
     git:
@@ -30,3 +25,13 @@ database:
   sql:
     driver: postgres
     dsn: postgresql://postgres:sesame@db:5432
+    credentials: pg-tls
+secrets:
+  s3-creds:
+    type: aws_auth
+    access_key_id: doesnotmatter
+    secret_access_key: doesnotmatter
+  pg-tls:
+    type: tls_cert
+    tls_cert: ${OCP_TLS_CERT}
+    tls_key: ${OCP_TLS_KEY}
