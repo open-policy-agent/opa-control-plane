@@ -279,6 +279,9 @@
     "ConfigSQLDatabase": {
       "additionalProperties": false,
       "properties": {
+        "credentials": {
+          "type": "string"
+        },
         "driver": {
           "type": "string"
         },
