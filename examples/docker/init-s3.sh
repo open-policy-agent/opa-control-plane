@@ -9,3 +9,4 @@ done
 echo "LocalStack S3 is ready. Creating bucket..."
 awslocal --endpoint-url=http://localstack:4566 s3 mb s3://bundles
 
+sleep infinity
