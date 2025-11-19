@@ -38,19 +38,23 @@ services:
     command: ["/init-s3.sh"]
     depends_on:
       - localstack
-    restart: "no"
+    healthcheck: # override healthcheck defined in image
+      test:
+      - CMD-SHELL
+      - exit 0
 
   db:
-    image: postgres:latest
+    image: postgres:18-alpine
     restart: always
     environment:
       POSTGRES_PASSWORD: sesame
     ports:
       - 5432:5432
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ./init-pg.sh:/init-pg.sh
       - ./tls:/etc/ssl/postgresql/
       - ./pg_hba.conf:/etc/postgresql/pg_hba.conf
+    entrypoint: "/init-pg.sh"
     command: -c ssl=on -c ssl_cert_file=/etc/ssl/postgresql/server-cert.pem -c ssl_key_file=/etc/ssl/postgresql/server-key.pem -c hba_file=/etc/postgresql/pg_hba.conf
 
   prometheus:
@@ -76,6 +80,3 @@ services:
       AWS_ACCESS_KEY_ID: doesntmatter
       AWS_SECRET_ACCESS_KEY: doesntmatter
       AWS_REGION: us-east-1
-
-volumes:
-  pgdata:

@@ -1,10 +1,16 @@
 name: PR Check
 on: [pull_request]
 
+# When a new revision is pushed to a PR, cancel all in-progress CI runs for that
+# PR. See https://docs.github.com/en/actions/using-jobs/using-concurrency
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   go-lint:
     name: Go Lint
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out code
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -17,3 +23,37 @@ jobs:
           make generate
           git diff --exit-code
 
+  examples:
+    name: Check examples
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Check out code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - id: go_version
+        name: Read go version
+        run: echo "go_version=$(cat .go-version)" >> $GITHUB_OUTPUT
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version: ${{ steps.go_version.outputs.go_version }}
+          cache-dependency-path: go.sum
+      - run: make build-linux
+      - run: make image-quick
+        env:
+          VERSION: dev # predictable image tag below
+      - name: start docker compose example
+        working-directory: examples/docker
+        run: |
+          eval $(./init.sh) # tls
+          docker compose up --quiet-pull --wait --wait-timeout 300 --detach
+        env:
+          OCP_IMAGE: docker.io/openpolicyagent/opa-control-plane:dev
+      - name: smoke test curl
+        run: |
+          curl --retry 12 --retry-delay 10 --retry-all-errors --fail http://127.0.0.1:8282/v1/bundles -H "Authorization: bearer sesame"
+          curl --retry 12 --retry-delay 10 --retry-all-errors --fail http://127.0.0.1:8181/v1/data/k8s/authz/decision/status/allowed -d '{"input":{"apiVersion":"v1"}}'
+      - name: dump logs
+        run: docker compose logs
+        working-directory: examples/docker
+        if: always()
