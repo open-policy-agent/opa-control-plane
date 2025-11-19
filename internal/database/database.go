@@ -511,6 +511,12 @@ func (d *Database) LoadConfig(ctx context.Context, bar *progress.Bar, principal 
 
 	// Secrets have env lookups done on access, without the secret value persisted in the databse.
 	for _, secret := range root.SortedSecrets() {
+		if root.Database != nil && root.Database.SQL != nil && root.Database.SQL.Credentials != nil {
+			// check if this secret is used for the database, omit it if true
+			if secret.Ref().Equal(root.Database.SQL.Credentials) {
+				continue
+			}
+		}
 		if err := d.UpsertSecret(ctx, principal, secret); err != nil {
 			return fmt.Errorf("upsert secret %q failed: %w", secret.Name, err)
 		}
