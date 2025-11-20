@@ -1,29 +1,20 @@
 package migrations
 
+// NOTE(sr): Here, we collect the migrations up until version v0.1.0. Consider this file immutable.
+
 import (
 	"fmt"
 	"io/fs"
 	"strings"
 
-	"github.com/yalue/merged_fs"
-
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 )
-
-func Migrations(dialect string) (fs.FS, error) {
-	return merged_fs.MergeMultiple(
-		initialSchemaFS(dialect),
-		addMounts(dialect),
-		addBundleInterval(dialect),
-		addBundleOptions(dialect),
-	), nil
-}
 
 func addBundleOptions(dialect string) fs.FS {
 	var stmt string
 	switch dialect {
 	case "sqlite", "postgresql":
-		stmt = `ALTER TABLE bundles ADD options TEXT`
+		stmt = `ALTER TABLE bundles ADD options TEXT;`
 	case "mysql":
 		stmt = `ALTER TABLE bundles ADD options VARCHAR(255)`
 	}
