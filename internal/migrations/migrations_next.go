@@ -64,7 +64,8 @@ var v2Tables = []sqlTable{
 		TextColumn("azure_container").
 		TextColumn("azure_path").
 		TextColumn("filepath").
-		TextColumn("excluded"),
+		TextColumn("excluded").
+		TextColumn("rebuild_interval"),
 	createSQLTable("sources").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		VarCharNonNullColumn("name").
@@ -97,6 +98,8 @@ var v2Tables = []sqlTable{
 		IntegerNonNullColumn("bundle_id").
 		IntegerNonNullColumn("source_id").
 		TextColumn("gitcommit").
+		TextColumn("path").
+		TextColumn("prefix").
 		PrimaryKey("bundle_id", "source_id").
 		ForeignKey("bundle_id", "bundles(id)").
 		ForeignKey("source_id", "sources(id)"),
@@ -104,6 +107,8 @@ var v2Tables = []sqlTable{
 		IntegerNonNullColumn("stack_id").
 		IntegerNonNullColumn("source_id").
 		TextColumn("gitcommit").
+		TextColumn("path").
+		TextColumn("prefix").
 		PrimaryKey("stack_id", "source_id").
 		ForeignKey("stack_id", "stacks(id)").
 		ForeignKey("source_id", "sources(id)"),
@@ -111,6 +116,8 @@ var v2Tables = []sqlTable{
 		IntegerNonNullColumn("source_id").
 		IntegerNonNullColumn("requirement_id").
 		TextColumn("gitcommit").
+		TextColumn("path").
+		TextColumn("prefix").
 		PrimaryKey("source_id", "requirement_id").
 		ForeignKey("source_id", "sources(id)").
 		ForeignKey("requirement_id", "sources(id)"),
