@@ -1757,7 +1757,7 @@ func (d *Database) upsertRel(ctx context.Context, tx *sql.Tx, table string, colu
 
 func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) (int, error) {
 	if returning {
-		columns = append(columns, "app_id")
+		columns = append(columns, "tenant_id")
 		values = append(values, 0)
 	}
 	var query string
