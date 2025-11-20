@@ -472,7 +472,7 @@ func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, 
 			return err
 		}
 
-		return d.upsert(ctx, tx, "sources_data", []string{"source_name", "path", "data"}, []string{"source_name", "path"}, sourceName, path, bs)
+		return d.upsertRel(ctx, tx, "sources_data", []string{"source_name", "path", "data"}, []string{"source_name", "path"}, sourceName, path, bs)
 	}
 }
 
@@ -598,17 +598,17 @@ func (d *Database) DeleteBundle(ctx context.Context, principal string, name stri
 		if err := d.prepareDelete(ctx, tx, principal, "bundles", name, "bundles.manage"); err != nil {
 			return err
 		}
-
-		if err := d.delete(ctx, tx, "bundles_secrets", "bundle_name", name); err != nil {
+		id, err := d.lookupID(ctx, tx, "bundles", name)
+		if err != nil {
+			return fmt.Errorf("lookup bundle %s: %w", name, err)
+		}
+		if err := d.delete(ctx, tx, "bundles_secrets", "bundle_id", id); err != nil {
 			return err
 		}
-		if err := d.delete(ctx, tx, "bundles_requirements", "bundle_name", name); err != nil {
+		if err := d.delete(ctx, tx, "bundles_requirements", "bundle_id", id); err != nil {
 			return err
 		}
-		if err := d.delete(ctx, tx, "bundles", "name", name); err != nil {
-			return err
-		}
-		return nil
+		return d.delete(ctx, tx, "bundles", "id", id)
 	})
 }
 
@@ -670,17 +670,19 @@ WHERE (` + conditions + ")"
 		bundles.*,
 		secrets.name AS secret_name,
 		secrets.value AS secret_value,
-		bundles_requirements.source_name AS req_src,
+		sources.name AS req_src,
 		bundles_requirements.path AS req_path,
 		bundles_requirements.prefix AS req_prefix,
 		bundles_requirements.gitcommit AS req_commit
 FROM (%s) AS bundles
 LEFT JOIN
-    bundles_secrets ON bundles.name = bundles_secrets.bundle_name
+    bundles_secrets ON bundles.id = bundles_secrets.bundle_id
 LEFT JOIN
-    secrets ON bundles_secrets.secret_name = secrets.name
+    secrets ON bundles_secrets.secret_id = secrets.id
 LEFT JOIN
-	bundles_requirements ON bundles.name = bundles_requirements.bundle_name
+	bundles_requirements ON bundles.id = bundles_requirements.bundle_id
+LEFT JOIN
+    sources ON bundles_requirements.source_id = sources.id
 `, bundles)
 
 		rows, err := txn.Query(query, args...)
@@ -857,25 +859,26 @@ func (d *Database) DeleteSource(ctx context.Context, principal string, name stri
 		if err := d.prepareDelete(ctx, tx, principal, "sources", name, "sources.manage"); err != nil {
 			return err
 		}
+		id, err := d.lookupID(ctx, tx, "sources", name)
+		if err != nil {
+			return fmt.Errorf("lookup source %s: %w", name, err)
+		}
 
 		// NB(sr): We do not clean out stacks_requirements and bundles_requirements:
 		// that'll ensure that only unused sources can be deleted.
-		if err := d.delete(ctx, tx, "sources_datasources", "source_name", name); err != nil {
+		if err := d.delete(ctx, tx, "sources_datasources", "source_id", id); err != nil {
 			return err
 		}
-		if err := d.delete(ctx, tx, "sources_secrets", "source_name", name); err != nil {
+		if err := d.delete(ctx, tx, "sources_secrets", "source_id", id); err != nil {
 			return err
 		}
-		if err := d.delete(ctx, tx, "sources_requirements", "source_name", name); err != nil {
+		if err := d.delete(ctx, tx, "sources_requirements", "source_id", id); err != nil {
 			return err
 		}
-		if err := d.delete(ctx, tx, "sources_data", "source_name", name); err != nil {
+		if err := d.delete(ctx, tx, "sources_data", "source_id", id); err != nil {
 			return err
 		}
-		if err := d.delete(ctx, tx, "sources", "name", name); err != nil {
-			return err
-		}
-		return nil
+		return d.delete(ctx, tx, "sources", "id", id)
 	})
 }
 
@@ -928,19 +931,21 @@ WHERE (` + conditions + ")"
 	secrets.name AS secret_name,
 	sources_secrets.ref_type AS secret_ref_type,
 	secrets.value AS secret_value,
-	sources_requirements.requirement_name,
+	required_sources.name,
 	sources_requirements.gitcommit,
 	sources_requirements.path AS req_path,
 	sources_requirements.prefix AS req_prefix
 FROM (%s) AS sources
 LEFT JOIN
-	sources_secrets ON sources.name = sources_secrets.source_name
+	sources_secrets ON sources.id = sources_secrets.source_id
 LEFT JOIN
-	secrets ON sources_secrets.secret_name = secrets.name
+	secrets ON sources_secrets.secret_id = secrets.id
 LEFT JOIN
-	sources_requirements ON sources.name = sources_requirements.source_name
+	sources_requirements ON sources.id = sources_requirements.source_id
+LEFT JOIN
+    sources AS required_sources ON sources.id = sources_requirements.requirement_id
 WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type IS NULL)
-ORDER BY sources.id`, sources)
+`, sources)
 
 		rows, err := txn.Query(query, args...)
 		if err != nil {
@@ -1033,17 +1038,19 @@ ORDER BY sources.id`, sources)
 
 		rows2, err := txn.Query(`SELECT
 		sources_datasources.name,
-		sources_datasources.source_name,
+		sources.name,
 		sources_datasources.path,
 		sources_datasources.type,
 		sources_datasources.config,
 		sources_datasources.transform_query,
-	    sources_datasources.secret_name,
+	    secrets.name,
 	    secrets.value AS secret_value
 	FROM
 		sources_datasources
 	LEFT JOIN
-		secrets ON sources_datasources.secret_name = secrets.name
+		secrets ON sources_datasources.secret_id = secrets.id
+	LEFT JOIN
+		sources ON sources_datasources.source_id = sources.id
 	`)
 		if err != nil {
 			return nil, "", err
@@ -1119,10 +1126,12 @@ func (d *Database) DeleteSecret(ctx context.Context, principal string, name stri
 		if err := d.prepareDelete(ctx, tx, principal, "secrets", name, "secrets.manage"); err != nil {
 			return err
 		}
-		if err := d.delete(ctx, tx, "secrets", "name", name); err != nil {
-			return err
+
+		id, err := d.lookupID(ctx, tx, "secrets", name)
+		if err != nil {
+			return fmt.Errorf("lookup secret %s: %w", name, err)
 		}
-		return nil
+		return d.delete(ctx, tx, "secrets", "id", id)
 	})
 }
 
@@ -1215,14 +1224,15 @@ func (d *Database) DeleteStack(ctx context.Context, principal string, name strin
 		if err := d.prepareDelete(ctx, tx, principal, "stacks", name, "stacks.manage"); err != nil {
 			return err
 		}
+		id, err := d.lookupID(ctx, tx, "stacks", name)
+		if err != nil {
+			return fmt.Errorf("lookup stack %s: %w", name, err)
+		}
 
-		if err := d.delete(ctx, tx, "stacks_requirements", "stack_name", name); err != nil {
+		if err := d.delete(ctx, tx, "stacks_requirements", "stack_id", id); err != nil {
 			return err
 		}
-		if err := d.delete(ctx, tx, "stacks", "name", name); err != nil {
-			return err
-		}
-		return nil
+		return d.delete(ctx, tx, "stacks", "id", id)
 	})
 }
 
@@ -1265,14 +1275,16 @@ WHERE (` + conditions + ")"
 
 		query := fmt.Sprintf(`SELECT
     stacks.*,
-	stacks_requirements.source_name,
+	sources.name,
 	stacks_requirements.gitcommit,
 	stacks_requirements.path AS req_path,
 	stacks_requirements.prefix AS req_prefix
 FROM (%s) AS stacks
 LEFT JOIN
-	stacks_requirements ON stacks.name = stacks_requirements.stack_name
-   `, stacks)
+	stacks_requirements ON stacks.id = stacks_requirements.stack_id
+LEFT JOIN
+	sources ON sources.id = stacks_requirements.source_id
+`, stacks)
 		rows, err := txn.Query(query, args...)
 		if err != nil {
 			return nil, "", err
@@ -1409,7 +1421,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 			}
 		}
 
-		if err := d.upsert(ctx, tx, "bundles", []string{"name", "labels",
+		id, err := d.upsert(ctx, tx, "bundles", []string{"name", "labels",
 			"s3url", "s3region", "s3bucket", "s3key",
 			"gcp_project", "gcp_object",
 			"azure_account_url", "azure_container", "azure_path",
@@ -1420,50 +1432,67 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 			gcpProject, gcpObject,
 			azureAccountURL, azureContainer, azurePath,
 			filepath, string(excluded), bundle.Interval.String(),
-			options); err != nil {
+			options)
+		if err != nil {
 			return err
 		}
 
 		if bundle.ObjectStorage.AmazonS3 != nil {
-			if bundle.ObjectStorage.AmazonS3.Credentials != nil {
-				if err := d.upsert(ctx, tx, "bundles_secrets", []string{"bundle_name", "secret_name", "ref_type"}, []string{"bundle_name", "secret_name"},
-					bundle.Name, bundle.ObjectStorage.AmazonS3.Credentials.Name, "aws"); err != nil {
-					return err
+			if cred := bundle.ObjectStorage.AmazonS3.Credentials; cred != nil {
+				secretID, err := d.lookupID(ctx, tx, "secrets", cred.Name)
+				if err != nil {
+					return fmt.Errorf("lookup id of secret %s: %w", cred.Name, err)
+				}
+				if err := d.upsertRel(ctx, tx, "bundles_secrets", []string{"bundle_id", "secret_id", "ref_type"}, []string{"bundle_id", "secret_id"},
+					id, secretID, "aws"); err != nil {
+					return fmt.Errorf("table bundles_secrets: %w", err)
 				}
 			}
 		}
 
 		if bundle.ObjectStorage.GCPCloudStorage != nil {
-			if bundle.ObjectStorage.GCPCloudStorage.Credentials != nil {
-				if err := d.upsert(ctx, tx, "bundles_secrets", []string{"bundle_name", "secret_name", "ref_type"}, []string{"bundle_name", "secret_name"},
-					bundle.Name, bundle.ObjectStorage.GCPCloudStorage.Credentials.Name, "gcp"); err != nil {
-					return err
+			if cred := bundle.ObjectStorage.GCPCloudStorage.Credentials; cred != nil {
+				secretID, err := d.lookupID(ctx, tx, "secrets", cred.Name)
+				if err != nil {
+					return fmt.Errorf("lookup id of secret %s: %w", cred.Name, err)
+				}
+				if err := d.upsertRel(ctx, tx, "bundles_secrets", []string{"bundle_id", "secret_id", "ref_type"}, []string{"bundle_id", "secret_id"},
+					id, secretID, "gcp"); err != nil {
+					return fmt.Errorf("table bundles_secrets: %w", err)
 				}
 			}
 		}
 
 		if bundle.ObjectStorage.AzureBlobStorage != nil {
-			if bundle.ObjectStorage.AzureBlobStorage.Credentials != nil {
-				if err := d.upsert(ctx, tx, "bundles_secrets", []string{"bundle_name", "secret_name", "ref_type"}, []string{"bundle_name", "secret_name"},
-					bundle.Name, bundle.ObjectStorage.AzureBlobStorage.Credentials.Name, "azure"); err != nil {
-					return err
+			if cred := bundle.ObjectStorage.AzureBlobStorage.Credentials; cred != nil {
+				secretID, err := d.lookupID(ctx, tx, "secrets", cred.Name)
+				if err != nil {
+					return fmt.Errorf("lookup id of secret %s: %w", cred.Name, err)
+				}
+				if err := d.upsertRel(ctx, tx, "bundles_secrets", []string{"bundle_id", "secret_id", "ref_type"}, []string{"bundle_id", "secret_id"},
+					id, secretID, "azure"); err != nil {
+					return fmt.Errorf("table bundles_secrets: %w", err)
 				}
 			}
 		}
 
-		sources := []string{}
+		sources := make([]int, 0, len(bundle.Requirements))
 		for _, req := range bundle.Requirements {
 			if req.Source != nil {
-				if err := d.upsert(ctx, tx, "bundles_requirements", []string{"bundle_name", "source_name", "gitcommit", "path", "prefix"}, []string{"bundle_name", "source_name"},
-					bundle.Name, req.Source, req.Git.Commit, req.Path, req.Prefix); err != nil {
-					return err
+				reqID, err := d.lookupID(ctx, tx, "sources", *req.Source)
+				if err != nil {
+					return fmt.Errorf("lookup id of requirement source %s: %w", *req.Source, err)
 				}
-				sources = append(sources, *req.Source)
+				if err := d.upsertRel(ctx, tx, "bundles_requirements", []string{"bundle_id", "source_id", "gitcommit", "path", "prefix"}, []string{"bundle_id", "source_id"},
+					id, reqID, req.Git.Commit, req.Path, req.Prefix); err != nil {
+					return fmt.Errorf("table bundles_requirements: %w", err)
+				}
+				sources = append(sources, reqID)
 			}
 		}
 		if bundle.Requirements != nil {
-			if err := d.deleteNotIn(ctx, tx, "bundles_requirements", "bundle_name", bundle.Name, "source_name", sources); err != nil {
-				return err
+			if err := d.deleteNotIn(ctx, tx, "bundles_requirements", "bundle_id", id, "source_id", sources); err != nil {
+				return fmt.Errorf("table bundles_requirements (delete): %w", err)
 			}
 		}
 
@@ -1487,15 +1516,20 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 			return err
 		}
 
-		if err := d.upsert(ctx, tx, "sources", []string{"name", "builtin", "repo", "ref", "gitcommit", "path", "git_included_files", "git_excluded_files"}, []string{"name"},
-			source.Name, source.Builtin, source.Git.Repo, source.Git.Reference, source.Git.Commit, source.Git.Path, string(includedFiles), string(excludedFiles)); err != nil {
+		id, err := d.upsert(ctx, tx, "sources", []string{"name", "builtin", "repo", "ref", "gitcommit", "path", "git_included_files", "git_excluded_files"}, []string{"name"},
+			source.Name, source.Builtin, source.Git.Repo, source.Git.Reference, source.Git.Commit, source.Git.Path, string(includedFiles), string(excludedFiles))
+		if err != nil {
 			return err
 		}
 
 		if source.Git.Credentials != nil {
-			if err := d.upsert(ctx, tx, "sources_secrets", []string{"source_name", "secret_name", "ref_type"}, []string{"source_name", "secret_name"},
-				source.Name, source.Git.Credentials.Name, "git_credentials"); err != nil {
-				return err
+			secretID, err := d.lookupID(ctx, tx, "secrets", source.Git.Credentials.Name)
+			if err != nil {
+				return fmt.Errorf("lookup id of secret %s: %w", source.Git.Credentials.Name, err)
+			}
+			if err := d.upsertRel(ctx, tx, "sources_secrets", []string{"source_id", "secret_id", "ref_type"}, []string{"source_id", "secret_id"},
+				id, secretID, "git_credentials"); err != nil {
+				return fmt.Errorf("upsert of secret link %s: %w", source.Git.Credentials.Name, err)
 			}
 		}
 
@@ -1506,14 +1540,18 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 				return err
 			}
 
-			var secret sql.NullString
+			var secret sql.NullInt64
 			if datasource.Credentials != nil {
-				secret.String, secret.Valid = datasource.Credentials.Name, true
+				secretID, err := d.lookupID(ctx, tx, "secrets", datasource.Credentials.Name)
+				if err != nil {
+					return err
+				}
+				secret.Int64, secret.Valid = int64(secretID), true
 			}
-			if err := d.upsert(ctx, tx, "sources_datasources", []string{"source_name", "name", "type", "path", "config", "transform_query", "secret_name"},
-				[]string{"source_name", "name"},
-				source.Name, datasource.Name, datasource.Type, datasource.Path, string(bs), datasource.TransformQuery, secret); err != nil {
-				return err
+			if err := d.upsertRel(ctx, tx, "sources_datasources", []string{"source_id", "name", "type", "path", "config", "transform_query", "secret_id"},
+				[]string{"source_id", "name"},
+				id, datasource.Name, datasource.Type, datasource.Path, string(bs), datasource.TransformQuery, secret); err != nil {
+				return fmt.Errorf("upsert of datasource link %s: %w", datasource.Name, err)
 			}
 		}
 
@@ -1524,27 +1562,31 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 		}
 
 		for path, data := range files {
-			if err := d.upsert(ctx, tx, "sources_data", []string{"source_name", "path", "data"}, []string{"source_name", "path"}, source.Name, path, []byte(data)); err != nil {
+			if _, err := d.upsert(ctx, tx, "sources_data", []string{"source_id", "path", "data"}, []string{"source_id", "path"}, id, path, []byte(data)); err != nil {
 				return err
 			}
 		}
 
 		// Upsert requirements
-		var sources []string
+		var sources []int
 		for _, r := range source.Requirements {
 			if r.Source != nil {
-				if err := d.upsert(ctx, tx, "sources_requirements", []string{"source_name", "requirement_name", "gitcommit", "path", "prefix"},
-					[]string{"source_name", "requirement_name"},
-					source.Name, r.Source, r.Git.Commit, r.Path, r.Prefix,
-				); err != nil {
-					return err
+				reqID, err := d.lookupID(ctx, tx, "sources", *r.Source)
+				if err != nil {
+					return fmt.Errorf("lookup id of requirement source %s: %w", *r.Source, err)
 				}
-				sources = append(sources, *r.Source)
+				if err := d.upsertRel(ctx, tx, "sources_requirements", []string{"source_id", "requirement_id", "gitcommit", "path", "prefix"},
+					[]string{"source_id", "requirement_id"},
+					id, reqID, r.Git.Commit, r.Path, r.Prefix,
+				); err != nil {
+					return fmt.Errorf("upsert of requirement source link %s: %w", *r.Source, err)
+				}
+				sources = append(sources, reqID)
 			}
 		}
 
 		if source.Requirements != nil {
-			if err := d.deleteNotIn(ctx, tx, "sources_requirements", "source_name", source.Name, "requirement_name", sources); err != nil {
+			if err := d.deleteNotIn(ctx, tx, "sources_requirements", "source_id", id, "requirement_id", sources); err != nil {
 				return err
 			}
 		}
@@ -1565,10 +1607,10 @@ func (d *Database) UpsertSecret(ctx context.Context, principal string, secret *c
 				return err
 			}
 
-			return d.upsert(ctx, tx, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, string(bs))
+			return d.upsertNoID(ctx, tx, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, string(bs))
 		}
 
-		return d.upsert(ctx, tx, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, nil)
+		return d.upsertNoID(ctx, tx, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, nil)
 	})
 }
 
@@ -1592,14 +1634,19 @@ func (d *Database) UpsertStack(ctx context.Context, principal string, stack *con
 			exclude = &bs
 		}
 
-		if err := d.upsert(ctx, tx, "stacks", []string{"name", "selector", "exclude_selector"}, []string{"name"}, stack.Name, string(selector), exclude); err != nil {
+		id, err := d.upsert(ctx, tx, "stacks", []string{"name", "selector", "exclude_selector"}, []string{"name"}, stack.Name, string(selector), exclude)
+		if err != nil {
 			return err
 		}
 
 		for _, r := range stack.Requirements {
 			if r.Source != nil {
-				if err := d.upsert(ctx, tx, "stacks_requirements", []string{"stack_name", "source_name", "gitcommit", "path", "prefix"}, []string{"stack_name", "source_name"},
-					stack.Name, r.Source, r.Git.Commit, r.Path, r.Prefix); err != nil {
+				sourceID, err := d.lookupID(ctx, tx, "sources", *r.Source)
+				if err != nil {
+					return fmt.Errorf("lookup source %s: %w", *r.Source, err)
+				}
+				if err := d.upsertRel(ctx, tx, "stacks_requirements", []string{"stack_id", "source_id", "gitcommit", "path", "prefix"}, []string{"stack_id", "source_id"},
+					id, sourceID, r.Git.Commit, r.Path, r.Prefix); err != nil {
 					return err
 				}
 			}
@@ -1620,7 +1667,7 @@ func (d *Database) UpsertToken(ctx context.Context, principal string, token *con
 			return err
 		}
 
-		if err := d.upsert(ctx, tx, "tokens", []string{"name", "api_key"}, []string{"name"}, token.Name, token.APIKey); err != nil {
+		if err := d.upsertNoID(ctx, tx, "tokens", []string{"name", "api_key"}, []string{"name"}, token.Name, token.APIKey); err != nil {
 			return err
 		}
 
@@ -1645,7 +1692,7 @@ func (d *Database) prepareUpsert(ctx context.Context, tx *sql.Tx, principal, res
 			Resource:   resource,
 			Permission: permCreate,
 		}
-		if err := d.upsert(ctx, tx, "resource_permissions", []string{"name", "resource", "principal_id", "role"}, []string{"name", "resource"}, name, resource, principal, "owner"); err != nil {
+		if err := d.upsertNoID(ctx, tx, "resource_permissions", []string{"name", "resource", "principal_id", "role"}, []string{"name", "resource"}, name, resource, principal, "owner"); err != nil {
 			return err
 		}
 	} else {
@@ -1683,7 +1730,27 @@ func (d *Database) resourceExists(ctx context.Context, tx *sql.Tx, table string,
 	return err
 }
 
-func (d *Database) upsert(ctx context.Context, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) error {
+func (d *Database) lookupID(ctx context.Context, tx *sql.Tx, table string, name string) (int, error) {
+	var id int
+	query := fmt.Sprintf("SELECT id FROM %s WHERE (name = %s)", table, d.arg(0))
+	return id, tx.QueryRowContext(ctx, query, name).Scan(&id)
+}
+
+func (d *Database) upsertNoID(ctx context.Context, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) error {
+	_, err := d.upsertReturning(ctx, false, tx, table, columns, primaryKey, values...)
+	return err
+}
+
+func (d *Database) upsert(ctx context.Context, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) (int, error) {
+	return d.upsertReturning(ctx, true, tx, table, columns, primaryKey, values...)
+}
+
+func (d *Database) upsertRel(ctx context.Context, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) error {
+	_, err := d.upsertReturning(ctx, false, tx, table, columns, primaryKey, values...)
+	return err
+}
+
+func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) (int, error) {
 	var query string
 	switch d.kind {
 	case sqlite:
@@ -1724,8 +1791,17 @@ func (d *Database) upsert(ctx context.Context, tx *sql.Tx, table string, columns
 			strings.Join(set, ", "))
 	}
 
-	_, err := tx.ExecContext(ctx, query, values...)
-	return err
+	if returning {
+		var id int
+		query += " RETURNING id"
+		if err := tx.QueryRowContext(ctx, query, values...).Scan(&id); err != nil {
+			return 0, err
+		}
+		return id, nil
+	} else {
+		_, err := tx.ExecContext(ctx, query, values...)
+		return 0, err
+	}
 }
 
 func (d *Database) delete(ctx context.Context, tx *sql.Tx, table, keyColumn string, keyValue any) error {
@@ -1734,7 +1810,7 @@ func (d *Database) delete(ctx context.Context, tx *sql.Tx, table, keyColumn stri
 	return err
 }
 
-func (d *Database) deleteNotIn(ctx context.Context, tx *sql.Tx, table, keyColumn string, keyValue any, column string, values []string) error {
+func (d *Database) deleteNotIn(ctx context.Context, tx *sql.Tx, table, keyColumn string, keyValue any, column string, values []int) error {
 	if len(values) == 0 {
 		return d.delete(ctx, tx, table, keyColumn, keyValue)
 	}
