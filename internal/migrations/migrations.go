@@ -5,6 +5,7 @@ package migrations
 import (
 	"context"
 	"fmt"
+	"io/fs"
 
 	"github.com/golang-migrate/migrate/v4"
 	migrate_database "github.com/golang-migrate/migrate/v4/database"
@@ -14,11 +15,20 @@ import (
 	migrate_source "github.com/golang-migrate/migrate/v4/source"
 	migrate_iofs "github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/spf13/pflag"
+	"github.com/yalue/merged_fs"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 )
+
+func Migrations(dialect string) (fs.FS, error) {
+	return merged_fs.MergeMultiple(
+		initialSchemaFS(dialect),
+		addMounts(dialect),
+		addBundleInterval(dialect),
+	), nil
+}
 
 type Migrator struct {
 	config  *config.Database
