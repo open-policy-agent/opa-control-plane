@@ -62,7 +62,7 @@ func Configs(t *testing.T) map[string]Setup {
 					Database: &config.Database{
 						SQL: &config.SQLDatabase{
 							Driver: "sqlite3",
-							DSN:    filepath.Join(t.TempDir(), "test.db"),
+							DSN:    filepath.Join(".", "test.db"),
 						},
 					},
 				}

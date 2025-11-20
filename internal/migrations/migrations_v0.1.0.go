@@ -288,11 +288,16 @@ type sqlForeignKey struct {
 	OnDeleteCascade bool
 }
 
+type sqlConstraint struct {
+	Columns []string
+}
+
 type sqlTable struct {
 	name              string
 	columns           []sqlColumn
 	primaryKeyColumns []string
 	foreignKeys       []sqlForeignKey
+	unique            []sqlConstraint
 }
 
 func createSQLTable(name string) sqlTable {
@@ -313,6 +318,11 @@ func (t sqlTable) IntegerPrimaryKeyAutoincrementColumn(name string) sqlTable {
 
 func (t sqlTable) IntegerNonNullColumn(name string) sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlInteger{}, NotNull: true})
+	return t
+}
+
+func (t sqlTable) IntegerColumn(name string) sqlTable {
+	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlInteger{}})
 	return t
 }
 
@@ -379,6 +389,13 @@ func (t sqlTable) ForeignKey(column string, references string) sqlTable {
 	return t
 }
 
+func (t sqlTable) Unique(columns ...string) sqlTable {
+	t.unique = append(t.unique, sqlConstraint{
+		Columns: columns,
+	})
+	return t
+}
+
 func (t sqlTable) ForeignKeyOnDeleteCascade(column string, references string) sqlTable {
 	t.foreignKeys = append(t.foreignKeys, sqlForeignKey{
 		Column:          column,
@@ -398,6 +415,12 @@ func (t sqlTable) SQL(kind int) string {
 		c = append(c, "PRIMARY KEY ("+strings.Join(t.primaryKeyColumns, ", ")+")")
 	}
 
+	for _, constraint := range t.unique {
+		// NB(sr): named constraints are easier to delete later
+		c = append(c, fmt.Sprintf("CONSTRAINT %s_unique_%s UNIQUE (%s)", t.name,
+			strings.Join(constraint.Columns, "_"),
+			strings.Join(constraint.Columns, ", ")))
+	}
 	for _, fk := range t.foreignKeys {
 		f := "FOREIGN KEY (" + fk.Column + ") REFERENCES " + fk.References
 		if fk.OnDeleteCascade {
