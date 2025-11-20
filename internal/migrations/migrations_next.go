@@ -51,9 +51,9 @@ var v2Tables = []sqlTable{
 	// entity tables
 	createSQLTable("bundles").
 		IntegerPrimaryKeyAutoincrementColumn("id").
-		IntegerNonNullColumn("app_id").
+		IntegerNonNullColumn("tenant_id").
 		VarCharNonNullColumn("name").
-		Unique("app_id", "name").
+		Unique("tenant_id", "name").
 		TextColumn("labels").
 		TextColumn("s3url").
 		TextColumn("s3region").
@@ -69,9 +69,9 @@ var v2Tables = []sqlTable{
 		TextColumn("rebuild_interval"),
 	createSQLTable("sources").
 		IntegerPrimaryKeyAutoincrementColumn("id").
-		IntegerNonNullColumn("app_id").
+		IntegerNonNullColumn("tenant_id").
 		VarCharNonNullColumn("name").
-		Unique("app_id", "name").
+		Unique("tenant_id", "name").
 		TextColumn("builtin").
 		TextNonNullColumn("repo").
 		TextColumn("ref").
@@ -81,16 +81,16 @@ var v2Tables = []sqlTable{
 		TextColumn("git_excluded_files"),
 	createSQLTable("stacks").
 		IntegerPrimaryKeyAutoincrementColumn("id").
-		IntegerNonNullColumn("app_id").
-		Unique("app_id", "name").
+		IntegerNonNullColumn("tenant_id").
+		Unique("tenant_id", "name").
 		VarCharNonNullColumn("name").
 		TextNonNullColumn("selector").
 		TextColumn("exclude_selector"),
 	createSQLTable("secrets").
 		IntegerPrimaryKeyAutoincrementColumn("id").
-		IntegerNonNullColumn("app_id").
+		IntegerNonNullColumn("tenant_id").
 		VarCharNonNullColumn("name").
-		Unique("app_id", "name").
+		Unique("tenant_id", "name").
 		TextColumn("value"),
 
 	// cross tables
@@ -183,8 +183,8 @@ func tableCopy(st sqlTable) string {
 			continue
 		}
 		cols = append(cols, col.Name)
-		if col.Name == "app_id" {
-			colsSelect = append(colsSelect, "0 AS app_id")
+		if col.Name == "tenant_id" {
+			colsSelect = append(colsSelect, "0 AS tenant_id")
 			continue // this one is new
 		}
 		if idx := slices.IndexFunc(st.foreignKeys, func(f sqlForeignKey) bool { return f.Column == col.Name }); idx != -1 { // lookup IDs by name from old table
