@@ -325,6 +325,11 @@ func (t sqlTable) IntegerPrimaryKeyAutoincrementColumn(name string) sqlTable {
 	return t
 }
 
+func (t sqlTable) IntegerNonNullColumn(name string) sqlTable {
+	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlInteger{}, NotNull: true})
+	return t
+}
+
 func (t sqlTable) TextNonNullUniqueColumn(name string) sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlText{}, NotNull: true, Unique: true})
 	return t
