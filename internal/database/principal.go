@@ -19,10 +19,9 @@ func (db *Database) UpsertPrincipal(ctx context.Context, principal Principal) er
 }
 
 func (db *Database) UpsertPrincipalTx(ctx context.Context, tx *sql.Tx, principal Principal) error {
-	if err := db.upsert(ctx, tx, "principals", []string{"id", "role"}, []string{"id"}, principal.Id, principal.Role); err != nil {
+	if err := db.upsertNoID(ctx, tx, "principals", []string{"id", "role"}, []string{"id"}, principal.Id, principal.Role); err != nil {
 		return fmt.Errorf("failed to insert principal: %w", err)
 	}
-
 	return nil
 }
 
@@ -30,8 +29,5 @@ func (db *Database) GetPrincipalID(ctx context.Context, apiKey string) (string, 
 	query := `SELECT principals.id FROM principals JOIN tokens ON tokens.name = principals.id WHERE tokens.api_key = ` + db.arg(0)
 	row := db.db.QueryRowContext(ctx, query, apiKey)
 	var principalId string
-	if err := row.Scan(&principalId); err != nil {
-		return "", err
-	}
-	return principalId, nil
+	return principalId, row.Scan(&principalId)
 }
