@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"log"
 	"maps"
 	"os"
 	"path/filepath"
@@ -943,10 +944,11 @@ LEFT JOIN
 LEFT JOIN
 	sources_requirements ON sources.id = sources_requirements.source_id
 LEFT JOIN
-    sources AS required_sources ON sources.id = sources_requirements.requirement_id
+    sources AS required_sources ON required_sources.id = sources_requirements.requirement_id
 WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type IS NULL)
 `, sources)
 
+		log.Println(query, args)
 		rows, err := txn.Query(query, args...)
 		if err != nil {
 			return nil, "", err
@@ -973,6 +975,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			if err := rows.Scan(&row.id, &row.sourceName, &row.builtin, &row.repo, &row.ref, &row.gitCommit, &row.path, &row.includePaths, &row.excludePaths, &row.secretName, &row.secretRefType, &row.secretValue, &row.requirementName, &row.requirementCommit, &row.reqPath, &row.reqPrefix); err != nil {
 				return nil, "", err
 			}
+			log.Println("row", row.id, row.sourceName, row.builtin, row.repo, row.ref, row.gitCommit, row.path, row.includePaths, row.excludePaths, row.secretName, row.secretRefType, row.secretValue, row.requirementName, row.requirementCommit, row.reqPath, row.reqPrefix)
 
 			src, exists := srcMap[row.sourceName]
 			if !exists {
@@ -1607,10 +1610,12 @@ func (d *Database) UpsertSecret(ctx context.Context, principal string, secret *c
 				return err
 			}
 
-			return d.upsertNoID(ctx, tx, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, string(bs))
+			_, err = d.upsert(ctx, tx, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, string(bs))
+			return err
 		}
 
-		return d.upsertNoID(ctx, tx, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, nil)
+		_, err := d.upsert(ctx, tx, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, nil)
+		return err
 	})
 }
 
@@ -1751,6 +1756,10 @@ func (d *Database) upsertRel(ctx context.Context, tx *sql.Tx, table string, colu
 }
 
 func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) (int, error) {
+	if returning {
+		columns = append(columns, "app_id")
+		values = append(values, 0)
+	}
 	var query string
 	switch d.kind {
 	case sqlite:
@@ -1794,6 +1803,7 @@ func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.
 	if returning {
 		var id int
 		query += " RETURNING id"
+		log.Println(query, values)
 		if err := tx.QueryRowContext(ctx, query, values...).Scan(&id); err != nil {
 			return 0, err
 		}
