@@ -26,7 +26,8 @@ func Migrations(dialect string) (fs.FS, error) {
 	return merged_fs.MergeMultiple(
 		initialSchemaFS(dialect),
 		addMounts(dialect),
-		addBundleInterval(dialect),
+		addBundleInterval(dialect), // up until #17
+		crossTablesWithIDPKeys(18, dialect),
 	), nil
 }
 
