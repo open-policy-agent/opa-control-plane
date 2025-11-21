@@ -29,6 +29,11 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 	}
 
 	for i, tbl := range v2Tables {
+		f := fmt.Sprintf("%03d_%s.up.sql", i+offset, tbl.name)
+		if tbl.name == "tenants" {
+			m[f] = tbl.SQL(kind) + ";\n" + `INSERT INTO tenants (id, name) VALUES (0, 'default');`
+			continue
+		}
 		stmts := make([]string, 6)
 		switch kind {
 		case mysql, postgres:
@@ -41,17 +46,22 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 		stmts[3] = tableCopy(tbl)                                                 // copy data old -> new
 		stmts[4] = fmt.Sprintf("DROP TABLE %s_old", tbl.name)                     // delete old
 
-		f := fmt.Sprintf("%03d_%s.up.sql", i+offset, tbl.name)
 		m[f] = strings.Join(stmts, ";\n")
 	}
 	return ocp_fs.MapFS(m)
 }
 
 var v2Tables = []sqlTable{
+	// tenants, new
+	createSQLTable("tenants").
+		IntegerPrimaryKeyAutoincrementColumn("id").
+		VarCharNonNullColumn("name"),
+
 	// entity tables
 	createSQLTable("bundles").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		IntegerNonNullColumn("tenant_id").
+		ForeignKeyOnDeleteCascade("tenant_id", "tenants(id)").
 		VarCharNonNullColumn("name").
 		Unique("tenant_id", "name").
 		TextColumn("labels").
@@ -71,6 +81,7 @@ var v2Tables = []sqlTable{
 	createSQLTable("sources").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		IntegerNonNullColumn("tenant_id").
+		ForeignKeyOnDeleteCascade("tenant_id", "tenants(id)").
 		VarCharNonNullColumn("name").
 		Unique("tenant_id", "name").
 		TextColumn("builtin").
@@ -83,6 +94,7 @@ var v2Tables = []sqlTable{
 	createSQLTable("stacks").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		IntegerNonNullColumn("tenant_id").
+		ForeignKeyOnDeleteCascade("tenant_id", "tenants(id)").
 		Unique("tenant_id", "name").
 		VarCharNonNullColumn("name").
 		TextNonNullColumn("selector").
@@ -90,6 +102,7 @@ var v2Tables = []sqlTable{
 	createSQLTable("secrets").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		IntegerNonNullColumn("tenant_id").
+		ForeignKeyOnDeleteCascade("tenant_id", "tenants(id)").
 		VarCharNonNullColumn("name").
 		Unique("tenant_id", "name").
 		TextColumn("value"),

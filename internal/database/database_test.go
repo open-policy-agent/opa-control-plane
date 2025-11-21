@@ -455,8 +455,12 @@ func (tc *testCase) SourcesGetData(srcID, dataID string, expected any) *testCase
 
 func (tc *testCase) SourcesQueryData(srcID string, expected map[string][]byte) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		id, err := db.QuerySourceID(ctx, srcID)
+		if err != nil {
+			t.Fatal(srcID, err)
+		}
 		data := make(map[string][]byte)
-		for d, err := range db.QuerySourceData(srcID)(ctx) {
+		for d, err := range db.QuerySourceData(id, srcID)(ctx) {
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}

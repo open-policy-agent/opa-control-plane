@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"iter"
-	"log"
 	"maps"
 	"os"
 	"path/filepath"
@@ -42,6 +41,7 @@ const (
 	mysql
 )
 
+const defaultTenant = "default"
 const SQLiteMemoryOnlyDSN = "file::memory:?cache=shared"
 
 // Database implements the database operations. It will hide any differences between the varying SQL databases from the rest of the codebase.
@@ -404,7 +404,7 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 ) func(*sql.Tx) (T, bool, error) {
 	return func(tx *sql.Tx) (T, bool, error) {
 		var zero T
-		if err := d.resourceExists(ctx, tx, "sources", sourceName); err != nil {
+		if err := d.resourceExists(ctx, tx, defaultTenant, "sources", sourceName); err != nil {
 			return zero, false, err
 		}
 
@@ -420,11 +420,16 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 
 		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
 
+		args[0], err = d.lookupID(ctx, tx, defaultTenant, "sources", sourceName)
+		if err != nil {
+			return zero, false, fmt.Errorf("lookup source name %s: %w", sourceName, err)
+		}
+
 		rows, err := tx.Query(fmt.Sprintf(`SELECT
 	data
 FROM
 	sources_data
-WHERE source_name = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
+WHERE source_id = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
 		if err != nil {
 			return zero, false, err
 		}
@@ -454,7 +459,7 @@ func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, 
 
 func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, data any, principal string) func(*sql.Tx) error {
 	return func(tx *sql.Tx) error {
-		if err := d.resourceExists(ctx, tx, "sources", sourceName); err != nil {
+		if err := d.resourceExists(ctx, tx, defaultTenant, "sources", sourceName); err != nil {
 			return err
 		}
 
@@ -468,19 +473,24 @@ func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, 
 			return errors.New("unauthorized")
 		}
 
+		sourceID, err := d.lookupID(ctx, tx, defaultTenant, "sources", sourceName)
+		if err != nil {
+			return fmt.Errorf("lookup source %s: %w", sourceName, err)
+		}
+
 		bs, err := json.Marshal(data)
 		if err != nil {
 			return err
 		}
 
-		return d.upsertRel(ctx, tx, "sources_data", []string{"source_name", "path", "data"}, []string{"source_name", "path"}, sourceName, path, bs)
+		return d.upsertRel(ctx, tx, "sources_data", []string{"source_id", "path", "data"}, []string{"source_id", "path"}, sourceID, path, bs)
 	}
 }
 
 func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path string, principal string) error {
 	path = filepath.ToSlash(path)
 	return tx1(ctx, d, func(tx *sql.Tx) error {
-		if err := d.resourceExists(ctx, tx, "sources", sourceName); err != nil {
+		if err := d.resourceExists(ctx, tx, defaultTenant, "sources", sourceName); err != nil {
 			return err
 		}
 
@@ -496,7 +506,12 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 
 		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
 
-		_, err = tx.Exec(fmt.Sprintf(`DELETE FROM sources_data WHERE source_name = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
+		args[0], err = d.lookupID(ctx, tx, defaultTenant, "sources", sourceName)
+		if err != nil {
+			return fmt.Errorf("lookup source name %s: %w", sourceName, err)
+		}
+
+		_, err = tx.Exec(fmt.Sprintf(`DELETE FROM sources_data WHERE source_id = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
 		return err
 	})
 }
@@ -599,7 +614,7 @@ func (d *Database) DeleteBundle(ctx context.Context, principal string, name stri
 		if err := d.prepareDelete(ctx, tx, principal, "bundles", name, "bundles.manage"); err != nil {
 			return err
 		}
-		id, err := d.lookupID(ctx, tx, "bundles", name)
+		id, err := d.lookupID(ctx, tx, defaultTenant, "bundles", name)
 		if err != nil {
 			return fmt.Errorf("lookup bundle %s: %w", name, err)
 		}
@@ -860,7 +875,7 @@ func (d *Database) DeleteSource(ctx context.Context, principal string, name stri
 		if err := d.prepareDelete(ctx, tx, principal, "sources", name, "sources.manage"); err != nil {
 			return err
 		}
-		id, err := d.lookupID(ctx, tx, "sources", name)
+		id, err := d.lookupID(ctx, tx, defaultTenant, "sources", name)
 		if err != nil {
 			return fmt.Errorf("lookup source %s: %w", name, err)
 		}
@@ -948,7 +963,6 @@ LEFT JOIN
 WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type IS NULL)
 `, sources)
 
-		log.Println(query, args)
 		rows, err := txn.Query(query, args...)
 		if err != nil {
 			return nil, "", err
@@ -975,11 +989,11 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			if err := rows.Scan(&row.id, &row.sourceName, &row.builtin, &row.repo, &row.ref, &row.gitCommit, &row.path, &row.includePaths, &row.excludePaths, &row.secretName, &row.secretRefType, &row.secretValue, &row.requirementName, &row.requirementCommit, &row.reqPath, &row.reqPrefix); err != nil {
 				return nil, "", err
 			}
-			log.Println("row", row.id, row.sourceName, row.builtin, row.repo, row.ref, row.gitCommit, row.path, row.includePaths, row.excludePaths, row.secretName, row.secretRefType, row.secretValue, row.requirementName, row.requirementCommit, row.reqPath, row.reqPrefix)
 
 			src, exists := srcMap[row.sourceName]
 			if !exists {
 				src = &config.Source{
+					ID:      row.id,
 					Name:    row.sourceName,
 					Builtin: row.builtin,
 					Git: config.Git{
@@ -1130,7 +1144,7 @@ func (d *Database) DeleteSecret(ctx context.Context, principal string, name stri
 			return err
 		}
 
-		id, err := d.lookupID(ctx, tx, "secrets", name)
+		id, err := d.lookupID(ctx, tx, defaultTenant, "secrets", name)
 		if err != nil {
 			return fmt.Errorf("lookup secret %s: %w", name, err)
 		}
@@ -1227,7 +1241,7 @@ func (d *Database) DeleteStack(ctx context.Context, principal string, name strin
 		if err := d.prepareDelete(ctx, tx, principal, "stacks", name, "stacks.manage"); err != nil {
 			return err
 		}
-		id, err := d.lookupID(ctx, tx, "stacks", name)
+		id, err := d.lookupID(ctx, tx, defaultTenant, "stacks", name)
 		if err != nil {
 			return fmt.Errorf("lookup stack %s: %w", name, err)
 		}
@@ -1371,12 +1385,19 @@ type Data struct {
 	Data []byte `sql:"data"`
 }
 
-func (d *Database) QuerySourceData(sourceName string) func(context.Context) iter.Seq2[Data, error] {
+// TODO(sr): only tests use this
+func (d *Database) QuerySourceID(ctx context.Context, sourceName string) (int64, error) {
+	var id int64
+	return id, d.db.QueryRowContext(ctx,
+		fmt.Sprintf("SELECT sources.id FROM sources JOIN tenants ON tenants.id = sources.tenant_id WHERE sources.name = %s AND tenants.name = %s", d.arg(0), d.arg(1)),
+		sourceName,
+		defaultTenant,
+	).Scan(&id)
+}
+
+func (d *Database) QuerySourceData(sourceID int64, sourceName string) func(context.Context) iter.Seq2[Data, error] {
 	return func(ctx context.Context) iter.Seq2[Data, error] {
-		return sqlrange.QueryContext[Data](ctx,
-			d.db,
-			`SELECT path, data FROM sources_data WHERE source_name = `+d.arg(0),
-			sourceName)
+		return sqlrange.QueryContext[Data](ctx, d.db, `SELECT path, data FROM sources_data WHERE source_id = `+d.arg(0), sourceID)
 	}
 }
 
@@ -1442,7 +1463,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 
 		if bundle.ObjectStorage.AmazonS3 != nil {
 			if cred := bundle.ObjectStorage.AmazonS3.Credentials; cred != nil {
-				secretID, err := d.lookupID(ctx, tx, "secrets", cred.Name)
+				secretID, err := d.lookupID(ctx, tx, defaultTenant, "secrets", cred.Name)
 				if err != nil {
 					return fmt.Errorf("lookup id of secret %s: %w", cred.Name, err)
 				}
@@ -1455,7 +1476,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 
 		if bundle.ObjectStorage.GCPCloudStorage != nil {
 			if cred := bundle.ObjectStorage.GCPCloudStorage.Credentials; cred != nil {
-				secretID, err := d.lookupID(ctx, tx, "secrets", cred.Name)
+				secretID, err := d.lookupID(ctx, tx, defaultTenant, "secrets", cred.Name)
 				if err != nil {
 					return fmt.Errorf("lookup id of secret %s: %w", cred.Name, err)
 				}
@@ -1468,7 +1489,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 
 		if bundle.ObjectStorage.AzureBlobStorage != nil {
 			if cred := bundle.ObjectStorage.AzureBlobStorage.Credentials; cred != nil {
-				secretID, err := d.lookupID(ctx, tx, "secrets", cred.Name)
+				secretID, err := d.lookupID(ctx, tx, defaultTenant, "secrets", cred.Name)
 				if err != nil {
 					return fmt.Errorf("lookup id of secret %s: %w", cred.Name, err)
 				}
@@ -1482,7 +1503,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 		sources := make([]int, 0, len(bundle.Requirements))
 		for _, req := range bundle.Requirements {
 			if req.Source != nil {
-				reqID, err := d.lookupID(ctx, tx, "sources", *req.Source)
+				reqID, err := d.lookupID(ctx, tx, defaultTenant, "sources", *req.Source)
 				if err != nil {
 					return fmt.Errorf("lookup id of requirement source %s: %w", *req.Source, err)
 				}
@@ -1526,7 +1547,7 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 		}
 
 		if source.Git.Credentials != nil {
-			secretID, err := d.lookupID(ctx, tx, "secrets", source.Git.Credentials.Name)
+			secretID, err := d.lookupID(ctx, tx, defaultTenant, "secrets", source.Git.Credentials.Name)
 			if err != nil {
 				return fmt.Errorf("lookup id of secret %s: %w", source.Git.Credentials.Name, err)
 			}
@@ -1545,7 +1566,7 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 
 			var secret sql.NullInt64
 			if datasource.Credentials != nil {
-				secretID, err := d.lookupID(ctx, tx, "secrets", datasource.Credentials.Name)
+				secretID, err := d.lookupID(ctx, tx, defaultTenant, "secrets", datasource.Credentials.Name)
 				if err != nil {
 					return err
 				}
@@ -1574,7 +1595,7 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 		var sources []int
 		for _, r := range source.Requirements {
 			if r.Source != nil {
-				reqID, err := d.lookupID(ctx, tx, "sources", *r.Source)
+				reqID, err := d.lookupID(ctx, tx, defaultTenant, "sources", *r.Source)
 				if err != nil {
 					return fmt.Errorf("lookup id of requirement source %s: %w", *r.Source, err)
 				}
@@ -1646,7 +1667,7 @@ func (d *Database) UpsertStack(ctx context.Context, principal string, stack *con
 
 		for _, r := range stack.Requirements {
 			if r.Source != nil {
-				sourceID, err := d.lookupID(ctx, tx, "sources", *r.Source)
+				sourceID, err := d.lookupID(ctx, tx, defaultTenant, "sources", *r.Source)
 				if err != nil {
 					return fmt.Errorf("lookup source %s: %w", *r.Source, err)
 				}
@@ -1684,7 +1705,7 @@ func (d *Database) prepareUpsert(ctx context.Context, tx *sql.Tx, principal, res
 
 	var a authz.Access
 
-	if err := d.resourceExists(ctx, tx, resource, name); err == nil {
+	if err := d.resourceExists(ctx, tx, defaultTenant, resource, name); err == nil {
 		a = authz.Access{
 			Principal:  principal,
 			Resource:   resource,
@@ -1720,25 +1741,30 @@ func (d *Database) prepareDelete(ctx context.Context, tx *sql.Tx, principal, res
 	}
 
 	if authz.Check(ctx, tx, d.arg, a) {
-		return d.resourceExists(ctx, tx, resource, name) // only inform about existence if authorized
+		return d.resourceExists(ctx, tx, defaultTenant, resource, name) // only inform about existence if authorized
 	}
 
 	return ErrNotAuthorized
 }
 
-func (d *Database) resourceExists(ctx context.Context, tx *sql.Tx, table string, name string) error {
+func (d *Database) resourceExists(ctx context.Context, tx *sql.Tx, tenant, table, name string) error {
 	var exists any
-	err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT 1 FROM %v as T WHERE T.name = %s", table, d.arg(0)), name).Scan(&exists)
+	var err error
+	if table == "tokens" { // special case: tokens are not per tenant
+		err = tx.QueryRowContext(ctx, fmt.Sprintf("SELECT 1 FROM %v as T WHERE T.name = %s", table, d.arg(0)), name).Scan(&exists)
+	} else {
+		err = tx.QueryRowContext(ctx, fmt.Sprintf("SELECT 1 FROM %v as T WHERE T.name = %s AND T.tenant_id = (SELECT id FROM tenants WHERE name = %s)", table, d.arg(0), d.arg(1)), name, tenant).Scan(&exists)
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
 	return err
 }
 
-func (d *Database) lookupID(ctx context.Context, tx *sql.Tx, table string, name string) (int, error) {
+func (d *Database) lookupID(ctx context.Context, tx *sql.Tx, tenant, table, name string) (int, error) {
 	var id int
-	query := fmt.Sprintf("SELECT id FROM %s WHERE (name = %s)", table, d.arg(0))
-	return id, tx.QueryRowContext(ctx, query, name).Scan(&id)
+	query := fmt.Sprintf("SELECT id FROM %s WHERE (name = %s AND tenant_id = (SELECT id FROM tenants WHERE name = %s))", table, d.arg(0), d.arg(1))
+	return id, tx.QueryRowContext(ctx, query, name, tenant).Scan(&id)
 }
 
 func (d *Database) upsertNoID(ctx context.Context, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) error {
@@ -1758,15 +1784,12 @@ func (d *Database) upsertRel(ctx context.Context, tx *sql.Tx, table string, colu
 func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) (int, error) {
 	if returning {
 		columns = append(columns, "tenant_id")
+		primaryKey = append(primaryKey, "tenant_id")
 		values = append(values, 0)
 	}
 	var query string
 	switch d.kind {
-	case sqlite:
-		query = fmt.Sprintf(`INSERT OR REPLACE INTO %s (%s) VALUES (%s)`, table, strings.Join(columns, ", "),
-			strings.Join(d.args(len(columns)), ", "))
-
-	case postgres:
+	case postgres, sqlite:
 		set := make([]string, 0, len(columns))
 		for i := range columns {
 			if !slices.Contains(primaryKey, columns[i]) { // do not update primary key columns
@@ -1803,7 +1826,6 @@ func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.
 	if returning {
 		var id int
 		query += " RETURNING id"
-		log.Println(query, values)
 		if err := tx.QueryRowContext(ctx, query, values...).Scan(&id); err != nil {
 			return 0, err
 		}

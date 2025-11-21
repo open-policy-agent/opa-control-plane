@@ -353,7 +353,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 			src := newSource(dep.Name).
 				SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
-				SyncSourceSQL(&syncs, dep.Name, &s.database, join(srcDir, "database")).
+				SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database")).
 				SyncDatasources(&syncs, dep.Datasources, join(srcDir, "datasources")).
 				SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name]).
 				AddRequirements(dep.Requirements)
@@ -503,8 +503,8 @@ func (src *source) SyncDatasources(syncs *[]Synchronizer, datasources []config.D
 	return src
 }
 
-func (src *source) SyncSourceSQL(syncs *[]Synchronizer, name string, database *database.Database, dir string) *source {
-	*syncs = append(*syncs, sqlsync.NewSQLSourceDataSynchronizer(dir, database, name))
+func (src *source) SyncSourceSQL(syncs *[]Synchronizer, sourceID int64, name string, database *database.Database, dir string) *source {
+	*syncs = append(*syncs, sqlsync.NewSQLSourceDataSynchronizer(dir, database, sourceID, name))
 	src.addDir(dir, true, nil, nil)
 	return src
 }

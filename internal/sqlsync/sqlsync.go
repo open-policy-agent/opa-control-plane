@@ -18,8 +18,8 @@ type SQLDataSynchronizer struct {
 	id    string
 }
 
-func NewSQLSourceDataSynchronizer(path string, db *database.Database, id string) *SQLDataSynchronizer {
-	return &SQLDataSynchronizer{path: path, query: db.QuerySourceData(id), id: id}
+func NewSQLSourceDataSynchronizer(path string, db *database.Database, sourceID int64, sourceName string) *SQLDataSynchronizer {
+	return &SQLDataSynchronizer{path: path, query: db.QuerySourceData(sourceID, sourceName), id: sourceName}
 }
 
 func (s *SQLDataSynchronizer) Execute(ctx context.Context) error {
