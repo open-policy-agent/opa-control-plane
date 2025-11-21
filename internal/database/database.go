@@ -314,6 +314,8 @@ func (d *Database) InitDB(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		loggerAdapter := zerologadapter.New(zerolog.New(os.Stdout))
+		d.db = sqldblogger.OpenDriver(dsn, d.db.Driver(), loggerAdapter)
 
 	case d.config != nil && d.config.SQL != nil && d.config.SQL.Driver == "mysql":
 		dsn := os.ExpandEnv(d.config.SQL.DSN)
