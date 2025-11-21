@@ -430,6 +430,5 @@ func (t sqlTable) SQL(kind int) string {
 		c = append(c, f)
 	}
 
-	return `CREATE TABLE IF NOT EXISTS ` + t.name + ` (
-			` + strings.Join(c, ",\n") + `);`
+	return `CREATE TABLE IF NOT EXISTS ` + t.name + ` (` + strings.Join(c, ", ") + `);`
 }
