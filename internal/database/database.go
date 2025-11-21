@@ -34,6 +34,10 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
+
+	zerolog "github.com/rs/zerolog"
+	sqldblogger "github.com/simukti/sqldb-logger"
+	"github.com/simukti/sqldb-logger/logadapter/zerologadapter"
 )
 
 const (
@@ -297,6 +301,8 @@ func (d *Database) InitDB(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		loggerAdapter := zerologadapter.New(zerolog.New(os.Stdout))
+		d.db = sqldblogger.OpenDriver(dsn, d.db.Driver(), loggerAdapter)
 		if _, err := d.db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
 			return err
 		}

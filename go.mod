@@ -243,8 +243,11 @@ require (
 	github.com/open-policy-agent/opa v1.10.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rogpeppe/go-internal v1.14.1
+	github.com/rs/zerolog v1.34.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/schollz/progressbar/v3 v3.18.0
+	github.com/simukti/sqldb-logger v0.0.0-20230108155151-646c1a075551
+	github.com/simukti/sqldb-logger/logadapter/zerologadapter v0.0.0-20230108155151-646c1a075551
 	github.com/spf13/pflag v1.0.10
 	github.com/swaggest/jsonschema-go v0.3.79
 	github.com/testcontainers/testcontainers-go v0.40.0
@@ -255,6 +258,5 @@ require (
 	golang.org/x/crypto v0.43.0
 	golang.org/x/sync v0.18.0
 	google.golang.org/api v0.255.0
-	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.40.0
 )
