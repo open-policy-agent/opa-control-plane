@@ -15,9 +15,11 @@ import (
 // - principals
 // - resource_permissions
 // - tokens
-
+// NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,
+// in a single transaction.
+// TODO(sr): Let's change a couple of things so that this setup will be lazily evaluated. Most of the
+// service startups will not need thesse statements after all.
 func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
-	m := make(map[string]string, len(v2Tables))
 	var kind int
 	switch dialect {
 	case "postgresql":
@@ -28,27 +30,38 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 		kind = sqlite
 	}
 
-	for i, tbl := range v2Tables {
-		f := fmt.Sprintf("%03d_%s.up.sql", i+offset, tbl.name)
+	stmts := make([]string, 0, len(v2Tables)*4)
+	switch kind {
+	case mysql, postgres:
+		stmts = append(stmts, "BEGIN")
+	}
+	for _, tbl := range v2Tables {
 		if tbl.name == "tenants" {
-			m[f] = tbl.SQL(kind) + ";\n" + `INSERT INTO tenants (id, name) VALUES (0, 'default');`
+			stmts = append(stmts,
+				tbl.SQL(kind),
+				`INSERT INTO tenants (id, name) VALUES (0, 'default')`,
+			)
 			continue
 		}
-		stmts := make([]string, 6)
-		switch kind {
-		case mysql, postgres:
-			stmts[0], stmts[5] = "BEGIN", "COMMIT"
-		case sqlite:
-			stmts[0], stmts[5] = "/**/", "/**/"
-		}
-		stmts[1] = fmt.Sprintf("ALTER TABLE %[1]s RENAME TO %[1]s_old", tbl.name) // rename to old
-		stmts[2] = tbl.SQL(kind)                                                  // create new
-		stmts[3] = tableCopy(tbl)                                                 // copy data old -> new
-		stmts[4] = fmt.Sprintf("DROP TABLE %s_old", tbl.name)                     // delete old
-
-		m[f] = strings.Join(stmts, ";\n")
+		stmts = append(stmts,
+			fmt.Sprintf("ALTER TABLE %[1]s RENAME TO %[1]s_old", tbl.name), // rename to old
+			tbl.SQL(kind),  // create new
+			tableCopy(tbl), // copy data old -> new
+		)
 	}
-	return ocp_fs.MapFS(m)
+	slices.Reverse(v2Tables)
+	for _, tbl := range v2Tables {
+		if tbl.name == "tenants" {
+			continue
+		}
+		stmts = append(stmts, fmt.Sprintf("DROP TABLE %s_old", tbl.name)) // delete old
+	}
+	switch kind {
+	case mysql, postgres:
+		stmts = append(stmts, "COMMIT")
+	}
+	f := fmt.Sprintf("%03d_tenants.up.sql", offset)
+	return ocp_fs.MapFS(map[string]string{f: strings.Join(stmts, ";\n")})
 }
 
 var v2Tables = []sqlTable{
@@ -151,14 +164,14 @@ var v2Tables = []sqlTable{
 		ForeignKey("secret_id", "secrets(id)"),
 	createSQLTable("sources_data").
 		IntegerNonNullColumn("source_id").
-		IntegerNonNullColumn("path").
+		VarCharNonNullColumn("path").
 		BlobNonNullColumn("data").
 		PrimaryKey("source_id", "path").
 		ForeignKey("source_id", "sources(id)"),
 	createSQLTable("sources_datasources").
-		IntegerNonNullColumn("name").
+		VarCharNonNullColumn("name").
 		IntegerNonNullColumn("source_id").
-		VarCharColumn("secret_id"). // optional
+		IntegerColumn("secret_id"). // optional
 		TextNonNullColumn("type").
 		TextNonNullColumn("path").
 		TextNonNullColumn("config").

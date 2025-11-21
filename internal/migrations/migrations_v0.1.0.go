@@ -272,7 +272,7 @@ func (c sqlColumn) SQL(kind int) string {
 		case sqlite:
 			parts = append(parts, []string{c.Name, sqlInteger{}.SQL(kind), "PRIMARY KEY", "AUTOINCREMENT"}...)
 		case postgres:
-			parts = append(parts, []string{c.Name, "SERIAL"}...)
+			parts = append(parts, []string{c.Name, "SERIAL", "PRIMARY KEY"}...)
 		case mysql:
 			parts = append(parts, []string{c.Name, sqlInteger{}.SQL(kind), "PRIMARY KEY", "AUTO_INCREMENT"}...)
 		}
