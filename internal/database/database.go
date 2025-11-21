@@ -251,6 +251,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 				if err != nil {
 					return err
 				}
+				cfg.MultiStatements = true // required for migrations to work
 			} else {
 				cfg = &mysqldriver.Config{
 					User:                    dbUser,
@@ -261,6 +262,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 					AllowNativePasswords:    true,
 					AllowOldPasswords:       true,
 					TLSConfig:               tlsConfigName,
+					MultiStatements:         true, // required for migrations
 				}
 
 				_ = cfg.Apply(mysqldriver.BeforeConnect(func(ctx context.Context, config *mysqldriver.Config) error {
@@ -321,10 +323,13 @@ func (d *Database) InitDB(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		cfg.MultiStatements = true // required for migrations
+
 		cfg.TLS, err = tlsConfig(ctx, d.config.SQL.Credentials, cfg.TLS)
 		if err != nil {
 			return err
 		}
+
 		conn, err := mysqldriver.NewConnector(cfg)
 		if err != nil {
 			return err
@@ -1785,7 +1790,7 @@ func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.
 	if returning {
 		columns = append(columns, "tenant_id")
 		primaryKey = append(primaryKey, "tenant_id")
-		values = append(values, 0)
+		values = append(values, 1)
 	}
 	var query string
 	switch d.kind {
@@ -1824,6 +1829,15 @@ func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.
 	}
 
 	if returning {
+		if d.kind == mysql { // MySQL has no "... RETURNING (cols)"
+			_, err := tx.ExecContext(ctx, query, values...)
+			if err != nil {
+				return 0, err
+			}
+			var id int
+			query = fmt.Sprintf("SELECT %[1]s.id FROM %[1]s JOIN tenants ON tenants.id = %[1]s.tenant_id AND %[1]s.%[2]s = %[3]s", table, primaryKey[0], d.arg(0))
+			return id, tx.QueryRowContext(ctx, query, values[0]).Scan(&id)
+		}
 		var id int
 		query += " RETURNING id"
 		if err := tx.QueryRowContext(ctx, query, values...).Scan(&id); err != nil {

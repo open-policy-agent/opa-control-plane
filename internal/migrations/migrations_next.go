@@ -32,24 +32,24 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 
 	stmts := make([]string, 0, len(v2Tables)*4)
 	switch kind {
-	case mysql, postgres:
+	case postgres:
 		stmts = append(stmts, "BEGIN")
 	}
 	for _, tbl := range v2Tables {
 		if tbl.name == "tenants" {
 			stmts = append(stmts,
-				tbl.SQL(kind),
-				`INSERT INTO tenants (id, name) VALUES (0, 'default')`,
+				strings.TrimRight(tbl.SQL(kind), ";"),
+				`INSERT INTO tenants (id, name) VALUES (1, 'default')`,
 			)
 			continue
 		}
 		stmts = append(stmts,
 			fmt.Sprintf("ALTER TABLE %[1]s RENAME TO %[1]s_old", tbl.name), // rename to old
-			tbl.SQL(kind),  // create new
-			tableCopy(tbl), // copy data old -> new
+			strings.TrimRight(tbl.SQL(kind), ";"),                          // create new
+			tableCopy(tbl),                                                 // copy data old -> new
 		)
 	}
-	slices.Reverse(v2Tables)
+	slices.Reverse(v2Tables) // drop bottom-to-top
 	for _, tbl := range v2Tables {
 		if tbl.name == "tenants" {
 			continue
@@ -57,18 +57,21 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 		stmts = append(stmts, fmt.Sprintf("DROP TABLE %s_old", tbl.name)) // delete old
 	}
 	switch kind {
-	case mysql, postgres:
-		stmts = append(stmts, "COMMIT")
+	case postgres:
+		stmts = append(stmts, "COMMIT;")
+	case mysql:
+		stmts[len(stmts)-1] += ";"
 	}
 	f := fmt.Sprintf("%03d_tenants.up.sql", offset)
-	return ocp_fs.MapFS(map[string]string{f: strings.Join(stmts, ";\n")})
+	return ocp_fs.MapFS(map[string]string{f: strings.Join(stmts, "; ")})
 }
 
 var v2Tables = []sqlTable{
 	// tenants, new
 	createSQLTable("tenants").
 		IntegerPrimaryKeyAutoincrementColumn("id").
-		VarCharNonNullColumn("name"),
+		VarCharNonNullColumn("name").
+		Unique("name"),
 
 	// entity tables
 	createSQLTable("bundles").
@@ -211,7 +214,7 @@ func tableCopy(st sqlTable) string {
 		}
 		cols = append(cols, col.Name)
 		if col.Name == "tenant_id" {
-			colsSelect = append(colsSelect, "0 AS tenant_id")
+			colsSelect = append(colsSelect, "1 AS tenant_id")
 			continue // this one is new
 		}
 		if idx := slices.IndexFunc(st.foreignKeys, func(f sqlForeignKey) bool { return f.Column == col.Name }); idx != -1 { // lookup IDs by name from old table

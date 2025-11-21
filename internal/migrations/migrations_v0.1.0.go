@@ -429,21 +429,19 @@ func (t sqlTable) SQL(kind int) string {
 		c = append(c, "PRIMARY KEY ("+strings.Join(t.primaryKeyColumns, ", ")+")")
 	}
 
+	for _, fk := range t.foreignKeys {
+		f := "FOREIGN KEY (" + fk.Column + ") REFERENCES " + fk.References
+		if fk.OnDeleteCascade {
+			f += " ON DELETE CASCADE"
+		}
+		c = append(c, f)
+	}
 	for _, constraint := range t.unique {
 		// NB(sr): named constraints are easier to delete later
 		c = append(c, fmt.Sprintf("CONSTRAINT %s_unique_%s UNIQUE (%s)", t.name,
 			strings.Join(constraint.Columns, "_"),
 			strings.Join(constraint.Columns, ", ")))
 	}
-	for _, fk := range t.foreignKeys {
-		f := "FOREIGN KEY (" + fk.Column + ") REFERENCES " + fk.References
-		if fk.OnDeleteCascade {
-			f += " ON DELETE CASCADE"
-		}
 
-		c = append(c, f)
-	}
-
-	return `CREATE TABLE IF NOT EXISTS ` + t.name + ` (
-			` + strings.Join(c, ",\n") + `);`
+	return `CREATE TABLE IF NOT EXISTS ` + t.name + ` (` + strings.Join(c, ", ") + `);`
 }
