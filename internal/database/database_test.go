@@ -25,7 +25,9 @@ func TestDatabase(t *testing.T) {
 			var ctr testcontainers.Container
 			if databaseConfig.Setup != nil {
 				ctr = databaseConfig.Setup(t)
-				t.Cleanup(databaseConfig.Cleanup(t, ctr))
+				if databaseConfig.Cleanup != nil {
+					t.Cleanup(databaseConfig.Cleanup(t, ctr))
+				}
 			}
 
 			db, err := migrations.New().WithConfig(databaseConfig.Database(t, ctr).Database).WithMigrate(true).Run(ctx)
