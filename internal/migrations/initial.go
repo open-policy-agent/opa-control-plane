@@ -21,9 +21,9 @@ func addBundleInterval(dialect string) fs.FS {
 	var stmt string
 	switch dialect {
 	case "sqlite", "postgresql":
-		stmt = `ALTER TABLE bundles ADD rebuild_interval TEXT`
+		stmt = `ALTER TABLE bundles ADD rebuild_interval TEXT;`
 	case "mysql":
-		stmt = `ALTER TABLE bundles ADD rebuild_interval VARCHAR(255)`
+		stmt = `ALTER TABLE bundles ADD rebuild_interval VARCHAR(255);`
 	}
 
 	return ocp_fs.MapFS(map[string]string{
@@ -35,17 +35,17 @@ func addMounts(dialect string) fs.FS {
 	var stmtBundles, stmtSources, stmtStacks string
 	switch dialect {
 	case "sqlite": // NB(sr): sqlite doesn't support adding multiple columns in one statement
-		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix TEXT; ALTER TABLE bundles_requirements ADD path TEXT`
-		stmtSources = `ALTER TABLE sources_requirements ADD prefix TEXT; ALTER TABLE sources_requirements ADD path TEXT`
-		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix TEXT; ALTER TABLE stacks_requirements ADD path TEXT`
+		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix TEXT; ALTER TABLE bundles_requirements ADD path TEXT;`
+		stmtSources = `ALTER TABLE sources_requirements ADD prefix TEXT; ALTER TABLE sources_requirements ADD path TEXT;`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix TEXT; ALTER TABLE stacks_requirements ADD path TEXT;`
 	case "postgresql":
-		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix TEXT, ADD path TEXT`
-		stmtSources = `ALTER TABLE sources_requirements ADD prefix TEXT, ADD path TEXT`
-		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix TEXT, ADD path TEXT`
+		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix TEXT, ADD path TEXT;`
+		stmtSources = `ALTER TABLE sources_requirements ADD prefix TEXT, ADD path TEXT;`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix TEXT, ADD path TEXT;`
 	case "mysql":
-		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
-		stmtSources = `ALTER TABLE sources_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
-		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
+		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255);`
+		stmtSources = `ALTER TABLE sources_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255);`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255);`
 	}
 
 	return ocp_fs.MapFS(map[string]string{
