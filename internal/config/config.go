@@ -144,8 +144,13 @@ func (*Root) unmarshal(raw *Root) error {
 		raw.Stacks[name].Name = name
 	}
 
-	if raw.Database != nil && raw.Database.AWSRDS != nil && raw.Database.AWSRDS.Credentials != nil {
-		raw.Database.AWSRDS.Credentials.value = raw.Secrets[raw.Database.AWSRDS.Credentials.Name]
+	if raw.Database != nil {
+		if raw.Database.AWSRDS != nil && raw.Database.AWSRDS.Credentials != nil {
+			raw.Database.AWSRDS.Credentials.value = raw.Secrets[raw.Database.AWSRDS.Credentials.Name]
+		}
+		if raw.Database.SQL != nil && raw.Database.SQL.Credentials != nil {
+			raw.Database.SQL.Credentials.value = raw.Secrets[raw.Database.SQL.Credentials.Name]
+		}
 	}
 
 	return nil
@@ -791,14 +796,8 @@ func scopesEqual(a, b []Scope) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	for i := range a {
-		var found bool
-		for j := range b {
-			if a[i].Equal(b[j]) {
-				found = true
-			}
-		}
-		if !found {
+	for i := range b {
+		if !slices.ContainsFunc(a, func(x Scope) bool { return x.Equal(b[i]) }) {
 			return false
 		}
 	}
@@ -1033,8 +1032,9 @@ type Database struct {
 }
 
 type SQLDatabase struct {
-	Driver string `json:"driver"`
-	DSN    string `json:"dsn"`
+	Driver      string     `json:"driver"`
+	DSN         string     `json:"dsn"`
+	Credentials *SecretRef `json:"credentials,omitempty"`
 
 	_ struct{} `additionalProperties:"false"`
 }

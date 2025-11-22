@@ -3,7 +3,7 @@ GENERATE ?= 1
 GOFLAGS ?= "-buildmode=exe"
 GO := CGO_ENABLED=$(CGO_ENABLED) GOFLAGS="$(GOFLAGS)" go
 
-VERSION := $(shell ./build/get-build-version.sh)
+VERSION ?= $(shell ./build/get-build-version.sh)
 
 DOCKER := docker
 
