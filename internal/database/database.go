@@ -382,18 +382,18 @@ func (d *Database) CloseDB() {
 	d.db.Close()
 }
 
-func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, principal string) (any, bool, error) {
+func (d *Database) SourcesDataGet(ctx context.Context, sourceName, path string, principal, tenant string) (any, bool, error) {
 	path = filepath.ToSlash(path)
-	return tx3(ctx, d, sourcesDataGet(ctx, d, sourceName, path, principal,
+	return tx3(ctx, d, sourcesDataGet(ctx, d, sourceName, path, principal, tenant,
 		func(bs []byte) (data any, err error) {
 			return data, json.Unmarshal(bs, &data)
 		}))
 }
 
-func (d *Database) SourcesDataPatch(ctx context.Context, sourceName, path string, principal string, patch jsonpatch.Patch) error {
+func (d *Database) SourcesDataPatch(ctx context.Context, sourceName, path string, principal, tenant string, patch jsonpatch.Patch) error {
 	path = filepath.ToSlash(path)
 	return tx1(ctx, d, func(tx *sql.Tx) error {
-		previous, _, err := sourcesDataGet(ctx, d, sourceName, path, principal, func(bs []byte) ([]byte, error) { return bs, nil })(tx)
+		previous, _, err := sourcesDataGet(ctx, d, sourceName, path, principal, tenant, func(bs []byte) ([]byte, error) { return bs, nil })(tx)
 		if err != nil {
 			return err
 		}
@@ -401,11 +401,11 @@ func (d *Database) SourcesDataPatch(ctx context.Context, sourceName, path string
 		if err != nil {
 			return err
 		}
-		return d.sourcesDataPut(ctx, sourceName, path, patched, principal)(tx)
+		return d.sourcesDataPut(ctx, sourceName, path, patched, principal, tenant)(tx)
 	})
 }
 
-func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path string, principal string,
+func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path string, principal, tenant string,
 	f func([]byte) (T, error),
 ) func(*sql.Tx) (T, bool, error) {
 	return func(tx *sql.Tx) (T, bool, error) {
@@ -458,19 +458,20 @@ WHERE source_id = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), a
 	}
 }
 
-func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, data any, principal string) error {
+func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, data any, principal, tenant string) error {
 	path = filepath.ToSlash(path)
-	return tx1(ctx, d, d.sourcesDataPut(ctx, sourceName, path, data, principal))
+	return tx1(ctx, d, d.sourcesDataPut(ctx, sourceName, path, data, principal, tenant))
 }
 
-func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, data any, principal string) func(*sql.Tx) error {
+func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, data any, principal, tenant string) func(*sql.Tx) error {
 	return func(tx *sql.Tx) error {
-		if err := d.resourceExists(ctx, tx, defaultTenant, "sources", sourceName); err != nil {
+		if err := d.resourceExists(ctx, tx, tenant, "sources", sourceName); err != nil {
 			return err
 		}
 
 		allowed := authz.Check(ctx, tx, d.arg, authz.Access{
 			Principal:  principal,
+			Tenant:     tenant,
 			Permission: "sources.data.write",
 			Resource:   "sources",
 			Name:       sourceName,
@@ -493,15 +494,16 @@ func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, 
 	}
 }
 
-func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path string, principal string) error {
+func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path string, principal, tenant string) error {
 	path = filepath.ToSlash(path)
 	return tx1(ctx, d, func(tx *sql.Tx) error {
-		if err := d.resourceExists(ctx, tx, defaultTenant, "sources", sourceName); err != nil {
+		if err := d.resourceExists(ctx, tx, tenant, "sources", sourceName); err != nil {
 			return err
 		}
 
 		expr, err := authz.Partial(ctx, authz.Access{
 			Principal:  principal,
+			Tenant:     tenant,
 			Permission: "sources.data.write",
 			Resource:   "sources",
 			Name:       sourceName,
@@ -512,7 +514,7 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 
 		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
 
-		args[0], err = d.lookupID(ctx, tx, defaultTenant, "sources", sourceName)
+		args[0], err = d.lookupID(ctx, tx, tenant, "sources", sourceName)
 		if err != nil {
 			return fmt.Errorf("lookup source name %s: %w", sourceName, err)
 		}
@@ -1251,7 +1253,8 @@ func (d *Database) GetStack(ctx context.Context, principal string, name string) 
 	return stacks[0], nil
 }
 
-func (d *Database) DeleteStack(ctx context.Context, principal, tenant, name string) error {
+func (d *Database) DeleteStack(ctx context.Context, principal, name string) error {
+	tenant := defaultTenant // TODO(sr): Stacks per tenant?
 	return tx1(ctx, d, func(tx *sql.Tx) error {
 		if err := d.prepareDelete(ctx, tx, principal, tenant, "stacks", name, "stacks.manage"); err != nil {
 			return err
