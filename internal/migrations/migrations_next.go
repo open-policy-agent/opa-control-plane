@@ -32,7 +32,7 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 
 	stmts := make([]string, 0, len(v2Tables)*4)
 	switch kind {
-	case postgres:
+	case postgres, mysql:
 		stmts = append(stmts, "BEGIN")
 	}
 	for _, tbl := range v2Tables {
@@ -57,10 +57,8 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 		stmts = append(stmts, fmt.Sprintf("DROP TABLE %s_old", tbl.name)) // delete old
 	}
 	switch kind {
-	case postgres:
+	case postgres, mysql:
 		stmts = append(stmts, "COMMIT;")
-	case mysql:
-		stmts[len(stmts)-1] += ";"
 	}
 	f := fmt.Sprintf("%03d_tenants.up.sql", offset)
 	return ocp_fs.MapFS(map[string]string{f: strings.Join(stmts, "; ")})
