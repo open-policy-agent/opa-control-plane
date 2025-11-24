@@ -15,6 +15,8 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
 )
 
+const tenant = "default"
+
 func TestDatabase(t *testing.T) {
 	ctx := t.Context()
 	t.Setenv("API_TOKEN", "sesame")
@@ -426,7 +428,7 @@ func (tc *testCase) GetPrincipalByToken(token, exp string) *testCase {
 			t.Fatal(err)
 		}
 		if act != exp {
-			t.Errorf("expecited %q, got %q", exp, act)
+			t.Fatalf("expecited %q, got %q", exp, act)
 		}
 	})
 	return tc
@@ -496,7 +498,7 @@ func (tc *testCase) SourcesDeleteData(srcID, dataID string) *testCase {
 
 func (tc *testCase) SourcesPutRequirements(id string, requirements config.Requirements) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.UpsertSource(ctx, "admin", &config.Source{
+		if err := db.UpsertSource(ctx, "admin", tenant, &config.Source{
 			Name:         id,
 			Requirements: requirements,
 		}); err != nil {
@@ -524,7 +526,7 @@ func (tc *testCase) ListBundles(expected []*config.Bundle) *testCase {
 			var bundles []*config.Bundle
 			var err error
 			limit := 2
-			bundles, cursor, err = db.ListBundles(ctx, "admin", database.ListOptions{Limit: limit, Cursor: cursor})
+			bundles, cursor, err = db.ListBundles(ctx, "admin", tenant, database.ListOptions{Limit: limit, Cursor: cursor})
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -545,7 +547,7 @@ func (tc *testCase) ListBundles(expected []*config.Bundle) *testCase {
 
 func (tc *testCase) ListBundlesPagination(limit int, expected []*config.Bundle) *testCase { // NB(sr): limit large enough so that we capture system1 which has requirements
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		bundles, _, err := db.ListBundles(ctx, "admin", database.ListOptions{Limit: limit})
+		bundles, _, err := db.ListBundles(ctx, "admin", tenant, database.ListOptions{Limit: limit})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -560,7 +562,7 @@ func (tc *testCase) ListBundlesPagination(limit int, expected []*config.Bundle) 
 
 func (tc *testCase) BundlesPutRequirements(id string, requirements config.Requirements) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.UpsertBundle(ctx, "admin", &config.Bundle{
+		if err := db.UpsertBundle(ctx, "admin", tenant, &config.Bundle{
 			Name:         id,
 			Requirements: requirements,
 		}); err != nil {
@@ -572,7 +574,7 @@ func (tc *testCase) BundlesPutRequirements(id string, requirements config.Requir
 
 func (tc *testCase) GetBundle(id string, expected *config.Bundle) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		bundle, err := db.GetBundle(ctx, "admin", id)
+		bundle, err := db.GetBundle(ctx, "admin", tenant, id)
 		if err != nil && err != database.ErrNotFound {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -608,7 +610,7 @@ func (tc *testCase) ListSources(expected []*config.Source) *testCase {
 			var sources []*config.Source
 			var err error
 			limit := 2
-			sources, cursor, err = db.ListSources(ctx, "admin", database.ListOptions{Limit: limit, Cursor: cursor})
+			sources, cursor, err = db.ListSources(ctx, "admin", tenant, database.ListOptions{Limit: limit, Cursor: cursor})
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -630,7 +632,7 @@ func (tc *testCase) ListSources(expected []*config.Source) *testCase {
 
 func (tc *testCase) ListSourcesPagination(limit int, expected []*config.Source) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		sources, _, err := db.ListSources(ctx, "admin", database.ListOptions{Limit: limit})
+		sources, _, err := db.ListSources(ctx, "admin", tenant, database.ListOptions{Limit: limit})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -645,7 +647,7 @@ func (tc *testCase) ListSourcesPagination(limit int, expected []*config.Source) 
 
 func (tc *testCase) GetSource(id string, expected *config.Source) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		source, err := db.GetSource(ctx, "admin", id)
+		source, err := db.GetSource(ctx, "admin", tenant, id)
 		if err != nil && err != database.ErrNotFound {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -681,7 +683,7 @@ func (tc *testCase) ListSecrets(expected []*config.SecretRef) *testCase {
 			var secrets []*config.SecretRef
 			var err error
 			limit := 4
-			secrets, cursor, err = db.ListSecrets(ctx, "admin", database.ListOptions{Limit: limit, Cursor: cursor})
+			secrets, cursor, err = db.ListSecrets(ctx, "admin", tenant, database.ListOptions{Limit: limit, Cursor: cursor})
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -704,7 +706,7 @@ func (tc *testCase) ListSecrets(expected []*config.SecretRef) *testCase {
 
 func (tc *testCase) GetSecret(id string, expected *config.SecretRef) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		secret, err := db.GetSecret(ctx, "admin", id)
+		secret, err := db.GetSecret(ctx, "admin", tenant, id)
 		if err != nil && err != database.ErrNotFound {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -803,9 +805,9 @@ func (tc *testCase) DeleteStack(id string, expSuccess bool) *testCase {
 	return tc
 }
 
-func (tc *testCase) deleteBy(by func(*database.Database, context.Context, string, string) error, id string, expSuccess bool) *testCase {
+func (tc *testCase) deleteBy(by func(*database.Database, context.Context, string, string, string) error, id string, expSuccess bool) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		err := by(db, ctx, "admin", id)
+		err := by(db, ctx, "admin", tenant, id)
 		// NB(sr): we're rather loose with the error matching because these tests run
 		// with all three backends and the error types returned are driver-specific.
 		if !expSuccess && err == nil {

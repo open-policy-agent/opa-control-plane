@@ -40,6 +40,8 @@ allow if {
 	data.resource_permissions.name == input.name
 	data.resource_permissions.resource == input.resource
 	data.resource_permissions.principal_id == input.principal
+	data.tenants.name == input.tenant
+	data.resource_permissions.tenant_id == data.tenants.id
 	data.resource_permissions.role == "owner"
 }
 
@@ -48,4 +50,6 @@ allow if {
 	data.resource_permissions.resource == input.resource
 	data.resource_permissions.principal_id == input.principal
 	data.resource_permissions.permission == input.permission
+	data.resource_permissions.tenant_id == data.tenants.id
+	data.tenants.name == input.tenant
 }
