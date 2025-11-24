@@ -1411,6 +1411,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 		if err := d.prepareUpsert(ctx, tx, principal, "bundles", bundle.Name, "bundles.create", "bundles.manage"); err != nil {
 			return err
 		}
+		tenant := defaultTenant // WIP
 
 		var s3url, s3region, s3bucket, s3key, gcpProject, gcpObject, azureAccountURL, azureContainer, azurePath, filepath *string
 		if bundle.ObjectStorage.AmazonS3 != nil {
@@ -1450,7 +1451,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal string, bundle *c
 			}
 		}
 
-		id, err := d.upsert(ctx, tx, "bundles", []string{"name", "labels",
+		id, err := d.upsert(ctx, tx, tenant, "bundles", []string{"name", "labels",
 			"s3url", "s3region", "s3bucket", "s3key",
 			"gcp_project", "gcp_object",
 			"azure_account_url", "azure_container", "azure_path",
@@ -1534,6 +1535,7 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 		if err := d.prepareUpsert(ctx, tx, principal, "sources", source.Name, "sources.create", "sources.manage"); err != nil {
 			return err
 		}
+		tenant := defaultTenant // WIP
 
 		includedFiles, err := json.Marshal(source.Git.IncludedFiles)
 		if err != nil {
@@ -1545,14 +1547,14 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 			return err
 		}
 
-		id, err := d.upsert(ctx, tx, "sources", []string{"name", "builtin", "repo", "ref", "gitcommit", "path", "git_included_files", "git_excluded_files"}, []string{"name"},
+		id, err := d.upsert(ctx, tx, tenant, "sources", []string{"name", "builtin", "repo", "ref", "gitcommit", "path", "git_included_files", "git_excluded_files"}, []string{"name"},
 			source.Name, source.Builtin, source.Git.Repo, source.Git.Reference, source.Git.Commit, source.Git.Path, string(includedFiles), string(excludedFiles))
 		if err != nil {
 			return err
 		}
 
 		if source.Git.Credentials != nil {
-			secretID, err := d.lookupID(ctx, tx, defaultTenant, "secrets", source.Git.Credentials.Name)
+			secretID, err := d.lookupID(ctx, tx, tenant, "secrets", source.Git.Credentials.Name)
 			if err != nil {
 				return fmt.Errorf("lookup id of secret %s: %w", source.Git.Credentials.Name, err)
 			}
@@ -1591,7 +1593,7 @@ func (d *Database) UpsertSource(ctx context.Context, principal string, source *c
 		}
 
 		for path, data := range files {
-			if _, err := d.upsert(ctx, tx, "sources_data", []string{"source_id", "path", "data"}, []string{"source_id", "path"}, id, path, []byte(data)); err != nil {
+			if err := d.upsertRel(ctx, tx, "sources_data", []string{"source_id", "path", "data"}, []string{"source_id", "path"}, id, path, []byte(data)); err != nil {
 				return err
 			}
 		}
@@ -1629,6 +1631,7 @@ func (d *Database) UpsertSecret(ctx context.Context, principal string, secret *c
 		if err := d.prepareUpsert(ctx, tx, principal, "secrets", secret.Name, "secrets.create", "secrets.manage"); err != nil {
 			return err
 		}
+		tenant := defaultTenant // WIP
 
 		if len(secret.Value) > 0 {
 			bs, err := json.Marshal(secret.Value)
@@ -1636,11 +1639,11 @@ func (d *Database) UpsertSecret(ctx context.Context, principal string, secret *c
 				return err
 			}
 
-			_, err = d.upsert(ctx, tx, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, string(bs))
+			_, err = d.upsert(ctx, tx, tenant, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, string(bs))
 			return err
 		}
 
-		_, err := d.upsert(ctx, tx, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, nil)
+		_, err := d.upsert(ctx, tx, tenant, "secrets", []string{"name", "value"}, []string{"name"}, secret.Name, nil)
 		return err
 	})
 }
@@ -1650,6 +1653,7 @@ func (d *Database) UpsertStack(ctx context.Context, principal string, stack *con
 		if err := d.prepareUpsert(ctx, tx, principal, "stacks", stack.Name, "stacks.create", "stacks.manage"); err != nil {
 			return err
 		}
+		tenant := defaultTenant // WIP
 
 		selector, err := json.Marshal(stack.Selector)
 		if err != nil {
@@ -1665,7 +1669,7 @@ func (d *Database) UpsertStack(ctx context.Context, principal string, stack *con
 			exclude = &bs
 		}
 
-		id, err := d.upsert(ctx, tx, "stacks", []string{"name", "selector", "exclude_selector"}, []string{"name"}, stack.Name, string(selector), exclude)
+		id, err := d.upsert(ctx, tx, tenant, "stacks", []string{"name", "selector", "exclude_selector"}, []string{"name"}, stack.Name, string(selector), exclude)
 		if err != nil {
 			return err
 		}
@@ -1772,26 +1776,30 @@ func (d *Database) lookupID(ctx context.Context, tx *sql.Tx, tenant, table, name
 	return id, tx.QueryRowContext(ctx, query, name, tenant).Scan(&id)
 }
 
-func (d *Database) upsertNoID(ctx context.Context, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) error {
-	_, err := d.upsertReturning(ctx, false, tx, table, columns, primaryKey, values...)
-	return err
+func (d *Database) upsert(ctx context.Context, tx *sql.Tx, tenant, table string, columns []string, primaryKey []string, values ...any) (int, error) {
+	return d.upsertReturning(ctx, true, tx, tenant, table, columns, primaryKey, values...)
 }
 
-func (d *Database) upsert(ctx context.Context, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) (int, error) {
-	return d.upsertReturning(ctx, true, tx, table, columns, primaryKey, values...)
+func (d *Database) upsertNoID(ctx context.Context, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) error {
+	_, err := d.upsertReturning(ctx, false, tx, "", table, columns, primaryKey, values...)
+	return err
 }
 
 func (d *Database) upsertRel(ctx context.Context, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) error {
-	_, err := d.upsertReturning(ctx, false, tx, table, columns, primaryKey, values...)
+	_, err := d.upsertReturning(ctx, false, tx, "", table, columns, primaryKey, values...)
 	return err
 }
 
-func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) (int, error) {
-	if returning {
+func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.Tx, tenant, table string, columns []string, primaryKey []string, values ...any) (int, error) {
+	valueArgs := d.args(len(columns))
+	if returning { // not a relation-only table
+		// add tenant
 		columns = append(columns, "tenant_id")
 		primaryKey = append(primaryKey, "tenant_id")
-		values = append(values, 1)
+		valueArgs = append(valueArgs, "(SELECT id FROM tenants WHERE tenants.name = "+d.arg(len(columns)-1)+")")
+		values = append(values, tenant)
 	}
+
 	var query string
 	switch d.kind {
 	case postgres, sqlite:
@@ -1802,15 +1810,13 @@ func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.
 			}
 		}
 
-		values := d.args(len(columns))
-
 		if len(set) == 0 {
-			query = fmt.Sprintf(`INSERT INTO %s (%s) VALUES (%s) ON CONFLICT (%s) DO NOTHING`, table, strings.Join(columns, ", "),
-				strings.Join(values, ", "),
+			query = fmt.Sprintf(`INSERT INTO %s (%s) SELECT %s ON CONFLICT (%s) DO NOTHING`, table, strings.Join(columns, ", "),
+				strings.Join(valueArgs, ", "),
 				strings.Join(primaryKey, ", "))
 		} else {
-			query = fmt.Sprintf(`INSERT INTO %s (%s) VALUES (%s) ON CONFLICT (%s) DO UPDATE SET %s`, table, strings.Join(columns, ", "),
-				strings.Join(values, ", "),
+			query = fmt.Sprintf(`INSERT INTO %s (%s) SELECT %s ON CONFLICT (%s) DO UPDATE SET %s`, table, strings.Join(columns, ", "),
+				strings.Join(valueArgs, ", "),
 				strings.Join(primaryKey, ", "),
 				strings.Join(set, ", "))
 		}
@@ -1821,10 +1827,8 @@ func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.
 			set = append(set, fmt.Sprintf("%s = VALUES(%s)", columns[i], columns[i]))
 		}
 
-		values := d.args(len(columns))
-
 		query = fmt.Sprintf(`INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE %s`, table, strings.Join(columns, ", "),
-			strings.Join(values, ", "),
+			strings.Join(valueArgs, ", "),
 			strings.Join(set, ", "))
 	}
 
