@@ -13,7 +13,6 @@ import (
 // across MySQL and Postgres if they have not been set up at creation time.
 // The only tables left untouched from before are:
 // - principals
-// - resource_permissions
 // - tokens
 // NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,
 // in a single transaction.
@@ -56,6 +55,7 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 		}
 		stmts = append(stmts, fmt.Sprintf("DROP TABLE %s_old", tbl.name)) // delete old
 	}
+
 	switch kind {
 	case postgres, mysql:
 		stmts = append(stmts, "COMMIT;")
@@ -72,6 +72,17 @@ var v2Tables = []sqlTable{
 		Unique("name"),
 
 	// entity tables
+	createSQLTable("resource_permissions").
+		VarCharNonNullColumn("name").
+		VarCharNonNullColumn("resource").
+		VarCharNonNullColumn("principal_id").
+		IntegerNonNullColumn("tenant_id").
+		TextColumn("role").
+		TextColumn("permission").
+		TimestampDefaultCurrentTimeColumn("created_at").
+		PrimaryKey("name", "resource", "tenant_id").
+		ForeignKeyOnDeleteCascade("tenant_id", "tenants(id)").
+		ForeignKeyOnDeleteCascade("principal_id", "principals(id)"),
 	createSQLTable("bundles").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		IntegerNonNullColumn("tenant_id").
@@ -214,6 +225,10 @@ func tableCopy(st sqlTable) string {
 		if col.Name == "tenant_id" {
 			colsSelect = append(colsSelect, "1 AS tenant_id")
 			continue // this one is new
+		}
+		if col.Name == "principal_id" {
+			colsSelect = append(colsSelect, st.name+"_old."+col.Name)
+			continue
 		}
 		if idx := slices.IndexFunc(st.foreignKeys, func(f sqlForeignKey) bool { return f.Column == col.Name }); idx != -1 { // lookup IDs by name from old table
 			fk := st.foreignKeys[idx]

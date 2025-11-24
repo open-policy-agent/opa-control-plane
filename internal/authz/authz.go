@@ -205,6 +205,7 @@ func (sqlInt) Tables() []sqlTableRef    { return nil }
 
 type Access struct {
 	Principal  string `json:"principal"`
+	Tenant     string `json:"tenant"`
 	Resource   string `json:"resource"`
 	Permission string `json:"permission"`
 	Name       string `json:"name,omitempty"`

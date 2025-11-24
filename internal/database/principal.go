@@ -19,7 +19,7 @@ func (db *Database) UpsertPrincipal(ctx context.Context, principal Principal) er
 }
 
 func (db *Database) UpsertPrincipalTx(ctx context.Context, tx *sql.Tx, principal Principal) error {
-	if err := db.upsertNoID(ctx, tx, "principals", []string{"id", "role"}, []string{"id"}, principal.Id, principal.Role); err != nil {
+	if err := db.upsertNoID(ctx, tx, "", "principals", []string{"id", "role"}, []string{"id"}, principal.Id, principal.Role); err != nil {
 		return fmt.Errorf("failed to insert principal: %w", err)
 	}
 	return nil
