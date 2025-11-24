@@ -1395,6 +1395,14 @@ LEFT JOIN
 	})
 }
 
+type Tenant struct {
+	Name string `sql:"name"`
+}
+
+func (d *Database) Tenants(ctx context.Context) iter.Seq2[Tenant, error] {
+	return sqlrange.QueryContext[Tenant](ctx, d.db, `SELECT name FROM tenants`)
+}
+
 type Data struct {
 	Path string `sql:"path"`
 	Data []byte `sql:"data"`

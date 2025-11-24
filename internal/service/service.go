@@ -249,137 +249,150 @@ func (s *Service) initDB(ctx context.Context) error {
 }
 
 func (s *Service) launchWorkers(ctx context.Context) {
-
-	bundles, _, err := s.database.ListBundles(ctx, internalPrincipal, database.ListOptions{})
-	if err != nil {
-		s.log.Errorf("error listing bundles: %s", err.Error())
-		return
-	}
-	s.log.Debugf("launchWorkers for %d bundles", len(bundles))
-
-	sourceDefs, _, err := s.database.ListSources(ctx, internalPrincipal, database.ListOptions{})
-	if err != nil {
-		s.log.Errorf("error listing sources: %s", err.Error())
-		return
-	}
-
-	sourceDefsByName := make(map[string]*config.Source)
-	for _, src := range sourceDefs {
-		sourceDefsByName[src.Name] = src
-	}
-
-	stacks, _, err := s.database.ListStacks(ctx, internalPrincipal, database.ListOptions{})
-	if err != nil {
-		s.log.Errorf("error listing stacks: %s", err.Error())
-		return
-	}
-
-	activeBundles := make(map[string]struct{})
-	for _, b := range bundles {
-		activeBundles[b.Name] = struct{}{}
-	}
-
-	// Remove any worker already shutdown from bookkeeping, as well as initiate shutdown for any bundle (worker) not in the current configuration.
-	for id, w := range s.workers {
-		if w.Done() {
-			delete(s.workers, id)
-			continue
-		}
-
-		if _, ok := activeBundles[id]; !ok {
-			w.UpdateConfig(nil, nil, nil)
-		}
-	}
-
-	// Start any new workers for bundles that are in the current configuration but not yet running. Inform any existing
-	// workers of the current configuration, which will cause them to shutdown if configuration has changed.
-	//
-	// For each bundle, create the following directory structure under persistencyDir for the builder to use
-	// when constructing bundles:
-	//
-	// persistenceDir/
-	// └── {md5(bundle.Name)}/
-	//     └── sources/
-	//         └── {source.Name}/
-	//             ├── builtin/           # Built-in source specific files
-	//             ├── database/          # Source-specific files from SQL database
-	//             ├── datasources/       # Source-specific HTTP datasources
-	//             └── repo/              # Source git repository
-
-	bar := progress.New(s.noninteractive, len(bundles), "building and pushing bundles")
-	failures := make(map[string]Status)
-
-	for _, b := range bundles {
-		if w, ok := s.workers[b.Name]; ok {
-			w.UpdateConfig(b, sourceDefs, stacks)
-			continue
-		}
-
-		s.log.Debugf("(re)starting worker for bundle: %s", b.Name)
-		root := newSource(b.Name).AddRequirements(b.Requirements)
-
-		for _, stack := range stacks {
-			if stack.Selector.Matches(b.Labels) && !stack.ExcludeSelector.PtrMatches(b.Labels) {
-				reqs := make([]config.Requirement, len(stack.Requirements))
-				for i, req := range stack.Requirements {
-					if !b.Options.NoDefaultStackMount {
-						req.Prefix = addPrefix(defaultStackMountPrefix, stack.Name, req.Prefix)
-					}
-					reqs[i] = req
-				}
-				root = root.AddRequirements(reqs)
-			}
-		}
-
-		deps, overrides, conflicts := getDeps(root.Requirements, sourceDefsByName)
-		if len(conflicts) > 0 {
-			sorted := slices.Collect(maps.Keys(conflicts))
-			sort.Strings(sorted)
-			var extra string
-			if len(sorted) > 1 {
-				extra = fmt.Sprintf(" (along with %d other sources)", len(sorted)-1)
-			}
-			failures[b.Name] = Status{State: BuildStateConfigError, Message: fmt.Sprintf("requirements on %q conflict%s", sorted[0], extra)}
-			continue
-		}
-
-		syncs := []Synchronizer{}
-		sources := []*builder.Source{&root.Source}
-		bundleDir := join(s.persistenceDir, md5sum(b.Name))
-
-		for _, dep := range deps {
-			// NB(sr): dep.Name could contain a `:` which cause build errors in OPA's bundle build machinery
-			srcDir := join(bundleDir, "sources", ocp_fs.Escape(dep.Name))
-
-			src := newSource(dep.Name).
-				SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
-				SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database")).
-				SyncDatasources(&syncs, dep.Datasources, join(srcDir, "datasources")).
-				SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name]).
-				AddRequirements(dep.Requirements)
-
-			sources = append(sources, &src.Source)
-		}
-
-		storage, err := s3.New(ctx, b.ObjectStorage)
+	for tenant, err := range s.database.Tenants(ctx) {
 		if err != nil {
-			s.log.Errorf("error creating object storage client: %s", err.Error())
-			failures[b.Name] = Status{State: BuildStateConfigError, Message: fmt.Sprintf("object storage: %v", err)}
-			continue
+			s.log.Errorf("error listing tenants: %s", err.Error())
+			return
+		}
+		tenant := tenant.Name
+
+		bundles, _, err := s.database.ListBundles(ctx, internalPrincipal, tenant, database.ListOptions{})
+		if err != nil {
+			s.log.Errorf("error listing bundles: %s", err.Error())
+			return
+		}
+		s.log.Debugf("launchWorkers(%s) for %d bundles", tenant, len(bundles))
+
+		sourceDefs, _, err := s.database.ListSources(ctx, internalPrincipal, tenant, database.ListOptions{})
+		if err != nil {
+			s.log.Errorf("error listing sources: %s", err.Error())
+			return
 		}
 
-		w := NewBundleWorker(bundleDir, b, sourceDefs, stacks, s.log, bar).
-			WithSources(sources).
-			WithSynchronizers(syncs).
-			WithStorage(storage).
-			WithInterval(b.Interval).
-			WithSingleShot(s.singleShot)
-		s.pool.Add(w.Execute)
+		sourceDefsByName := make(map[string]*config.Source)
+		for _, src := range sourceDefs {
+			sourceDefsByName[src.Name] = src
+		}
 
-		s.workers[b.Name] = w
+		// TODO(sr): figure out if we want stacks to be tied to tenants
+		stacks, _, err := s.database.ListStacks(ctx, internalPrincipal, database.ListOptions{})
+		if err != nil {
+			s.log.Errorf("error listing stacks: %s", err.Error())
+			return
+		}
+
+		activeBundles := make(map[string]struct{})
+		for _, b := range bundles {
+			bName := tenant + "_" + b.Name
+			activeBundles[bName] = struct{}{}
+		}
+
+		// Remove any worker already shutdown from bookkeeping, as well as initiate shutdown for any bundle (worker) not in the current configuration.
+		for id, w := range s.workers {
+			if w.Done() {
+				delete(s.workers, id)
+				continue
+			}
+
+			if _, ok := activeBundles[id]; !ok {
+				w.UpdateConfig(nil, nil, nil)
+			}
+		}
+
+		// Start any new workers for bundles that are in the current configuration but not yet running. Inform any existing
+		// workers of the current configuration, which will cause them to shutdown if configuration has changed.
+		//
+		// For each bundle, create the following directory structure under persistencyDir for the builder to use
+		// when constructing bundles:
+		//
+		// persistenceDir/
+		// └── {md5(${tenant}_${bundle.Name})}/
+		//     └── sources/
+		//         └── {source.Name}/
+		//             ├── builtin/           # Built-in source specific files
+		//             ├── database/          # Source-specific files from SQL database
+		//             ├── datasources/       # Source-specific HTTP datasources
+		//             └── repo/              # Source git repository
+
+		bar := progress.New(s.noninteractive, len(bundles), "building and pushing bundles")
+		failures := make(map[string]Status)
+
+		for _, b := range bundles {
+			bName := tenant + "_" + b.Name
+			if w, ok := s.workers[bName]; ok {
+				w.UpdateConfig(b, sourceDefs, stacks)
+				continue
+			}
+
+			s.log.Debugf("(re)starting worker for bundle: %s (%s)", b.Name, tenant)
+			root := newSource(b.Name).AddRequirements(b.Requirements)
+
+			for _, stack := range stacks {
+				if stack.Selector.Matches(b.Labels) && !stack.ExcludeSelector.PtrMatches(b.Labels) {
+					reqs := make([]config.Requirement, len(stack.Requirements))
+					for i, req := range stack.Requirements {
+						if !b.Options.NoDefaultStackMount {
+							req.Prefix = addPrefix(defaultStackMountPrefix, stack.Name, req.Prefix)
+						}
+						reqs[i] = req
+					}
+					root = root.AddRequirements(reqs)
+				}
+			}
+
+			deps, overrides, conflicts := getDeps(root.Requirements, sourceDefsByName)
+			if len(conflicts) > 0 {
+				sorted := slices.Collect(maps.Keys(conflicts))
+				sort.Strings(sorted)
+				var extra string
+				if len(sorted) > 1 {
+					extra = fmt.Sprintf(" (along with %d other sources)", len(sorted)-1)
+				}
+				// NB(sr): As of now, `failures` is only used for single-shot mode, and that's not a
+				// multi-tenant use cases (I think). So let's ignore the possibility of clashes for the
+				// same bundle name here.
+				failures[b.Name] = Status{State: BuildStateConfigError, Message: fmt.Sprintf("requirements on %q (%s) conflict%s", sorted[0], tenant, extra)}
+				continue
+			}
+
+			syncs := []Synchronizer{}
+			sources := []*builder.Source{&root.Source}
+			bundleDir := join(s.persistenceDir, md5sum(bName))
+
+			for _, dep := range deps {
+				// NB(sr): dep.Name could contain a `:` which cause build errors in OPA's bundle build machinery
+				srcDir := join(bundleDir, "sources", ocp_fs.Escape(dep.Name))
+
+				src := newSource(dep.Name).
+					SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
+					SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database")).
+					SyncDatasources(&syncs, dep.Datasources, join(srcDir, "datasources")).
+					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name]).
+					AddRequirements(dep.Requirements)
+
+				sources = append(sources, &src.Source)
+			}
+
+			storage, err := s3.New(ctx, b.ObjectStorage)
+			if err != nil {
+				s.log.Errorf("error creating object storage client: %s", err.Error())
+				failures[b.Name] = Status{State: BuildStateConfigError, Message: fmt.Sprintf("object storage: %v", err)}
+				continue
+			}
+
+			w := NewBundleWorker(bundleDir, b, sourceDefs, stacks, s.log, bar).
+				WithSources(sources).
+				WithSynchronizers(syncs).
+				WithStorage(storage).
+				WithInterval(b.Interval).
+				WithSingleShot(s.singleShot)
+			s.pool.Add(w.Execute)
+
+			s.workers[bName] = w
+		}
+
+		s.failures = failures
 	}
-
-	s.failures = failures
 }
 
 func (s *Service) allWorkersDone() bool {
