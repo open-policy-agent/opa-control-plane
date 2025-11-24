@@ -436,7 +436,7 @@ func (tc *testCase) GetPrincipalByToken(token, exp string) *testCase {
 
 func (tc *testCase) SourcesGetData(srcID, dataID string, expected any) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		data, found, err := db.SourcesDataGet(ctx, srcID, dataID, "admin")
+		data, found, err := db.SourcesDataGet(ctx, srcID, dataID, "admin", "default")
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -480,7 +480,7 @@ func (tc *testCase) SourcesQueryData(srcID string, expected map[string][]byte) *
 
 func (tc *testCase) SourcesPutData(srcID, dataID string, data any) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.SourcesDataPut(ctx, srcID, dataID, data, "admin"); err != nil {
+		if err := db.SourcesDataPut(ctx, srcID, dataID, data, "admin", "default"); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})
@@ -489,7 +489,7 @@ func (tc *testCase) SourcesPutData(srcID, dataID string, data any) *testCase {
 
 func (tc *testCase) SourcesDeleteData(srcID, dataID string) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.SourcesDataDelete(ctx, srcID, dataID, "admin"); err != nil {
+		if err := db.SourcesDataDelete(ctx, srcID, dataID, "admin", "default"); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})
@@ -801,7 +801,12 @@ func (tc *testCase) GetStack(id string, expected *config.Stack) *testCase {
 }
 
 func (tc *testCase) DeleteStack(id string, expSuccess bool) *testCase {
-	tc.deleteBy((*database.Database).DeleteStack, id, expSuccess)
+	tc.deleteBy(
+		func(db *database.Database, ctx context.Context, principal string, _ string, id string) error {
+			return db.DeleteStack(ctx, principal, id)
+		},
+		id,
+		expSuccess)
 	return tc
 }
 

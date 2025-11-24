@@ -43,7 +43,7 @@ func TestServerSourcesData(t *testing.T) {
 
 			const adminKey = "test-admin-apikey"
 
-			if err := db.UpsertToken(ctx, "internaladmin", &config.Token{Name: "admin", APIKey: adminKey, Scopes: []config.Scope{{Role: "administrator"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internaladmin", "default", &config.Token{Name: "admin", APIKey: adminKey, Scopes: []config.Scope{{Role: "administrator"}}}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -321,11 +321,11 @@ func TestServerSecretsOwners(t *testing.T) {
 			const ownerKey = "test-owner-key"
 			const ownerKey2 = "test-owner-key2"
 
-			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 
-			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner2", APIKey: ownerKey2, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "testowner2", APIKey: ownerKey2, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -407,11 +407,11 @@ func TestServerBundleOwners(t *testing.T) {
 			const ownerKey = "test-owner-key"
 			const ownerKey2 = "test-owner-key2"
 
-			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 
-			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner2", APIKey: ownerKey2, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "testowner2", APIKey: ownerKey2, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -511,11 +511,11 @@ func TestServerSourceOwners(t *testing.T) {
 			const ownerKey = "test-owner-key"
 			const ownerKey2 = "test-owner-key2"
 
-			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 
-			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner2", APIKey: ownerKey2, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "testowner2", APIKey: ownerKey2, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -601,7 +601,7 @@ func TestSourcesDatasourcesSecrets(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if err := db.UpsertSecret(ctx, "internal", &config.Secret{
+			if err := db.UpsertSecret(ctx, "internal", "default", &config.Secret{
 				Name:  "creds-for-api",
 				Value: map[string]any{"type": "token_auth", "token": "box"},
 			}); err != nil {
@@ -610,7 +610,7 @@ func TestSourcesDatasourcesSecrets(t *testing.T) {
 
 			const ownerKey = "test-owner-key"
 
-			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -733,11 +733,11 @@ func TestServerStackOwners(t *testing.T) {
 			const ownerKey = "test-stack-owner-key"
 			const ownerKey2 = "test-stack-owner-key2"
 
-			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "teststackowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "stack_owner"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "teststackowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "stack_owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 
-			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "teststackowner2", APIKey: ownerKey2, Scopes: []config.Scope{{Role: "stack_owner"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "teststackowner2", APIKey: ownerKey2, Scopes: []config.Scope{{Role: "stack_owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -823,13 +823,13 @@ func TestServerSourcePagination(t *testing.T) {
 
 			const ownerKey = "test-owner-key"
 
-			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "testowner", APIKey: ownerKey, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 
 			const ownerKey2 = "test-owner-key2"
 
-			if err := db.UpsertToken(ctx, "internal", &config.Token{Name: "testowner2", APIKey: ownerKey2, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "testowner2", APIKey: ownerKey2, Scopes: []config.Scope{{Role: "owner"}}}); err != nil {
 				t.Fatal(err)
 			}
 
