@@ -48,12 +48,8 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 			tableCopy(tbl),                                                 // copy data old -> new
 		)
 	}
-	slices.Reverse(v2Tables) // drop bottom-to-top
-	for _, tbl := range v2Tables {
-		if tbl.name == "tenants" {
-			continue
-		}
-		stmts = append(stmts, fmt.Sprintf("DROP TABLE %s_old", tbl.name)) // delete old
+	for i := len(v2Tables) - 1; i > 0; i-- { // drop stuff bottom-to-top; ignore first table ("tenants")
+		stmts = append(stmts, fmt.Sprintf("DROP TABLE %s_old", v2Tables[i].name)) // delete old
 	}
 
 	switch kind {
@@ -71,7 +67,9 @@ var v2Tables = []sqlTable{
 		VarCharNonNullColumn("name").
 		Unique("name"),
 
-	// entity tables
+	// This is backing our ownership logic -- it's referencing other tables in a weak manner:
+	// e.g. resource = "bundles", name = "my-bundle". Since all our names are only unique in
+	// a single tenant, this table needs to be tenant-indexed, too.
 	createSQLTable("resource_permissions").
 		VarCharNonNullColumn("name").
 		VarCharNonNullColumn("resource").
@@ -83,6 +81,8 @@ var v2Tables = []sqlTable{
 		PrimaryKey("name", "resource", "tenant_id").
 		ForeignKeyOnDeleteCascade("tenant_id", "tenants(id)").
 		ForeignKeyOnDeleteCascade("principal_id", "principals(id)"),
+
+	// entity tables
 	createSQLTable("bundles").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		IntegerNonNullColumn("tenant_id").
