@@ -391,8 +391,8 @@ func (s *Server) v1SourcesDataDelete(w http.ResponseWriter, r *http.Request) {
 func (s *Server) v1StacksList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	opts := s.listOptions(r)
-	principal, _ := s.auth(r) // TODO(sr): stacks per tenant?
-	stacks, nextCursor, err := s.db.ListStacks(ctx, principal, opts)
+	principal, tenant := s.auth(r)
+	stacks, nextCursor, err := s.db.ListStacks(ctx, principal, tenant, opts)
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -412,8 +412,8 @@ func (s *Server) v1StacksGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	principal, _ := s.auth(r) // TODO(sr): stacks per tenant?
-	stack, err := s.db.GetStack(ctx, principal, name)
+	principal, tenant := s.auth(r)
+	stack, err := s.db.GetStack(ctx, principal, tenant, name)
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -432,8 +432,8 @@ func (s *Server) v1StacksDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	principal, _ := s.auth(r) // TODO(sr): stacks per tenant?
-	if err := s.db.DeleteStack(ctx, principal, name); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.DeleteStack(ctx, principal, tenant, name); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -465,8 +465,8 @@ func (s *Server) v1StacksPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	principal, _ := s.auth(r) // TODO(sr): stacks per tenant?
-	if err := s.db.UpsertStack(ctx, principal, "", &stack); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.UpsertStack(ctx, principal, tenant, &stack); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -679,7 +679,7 @@ func authenticationMiddleware(db *database.Database) func(http.Handler) http.Han
 				return
 			}
 
-			auth := authData{principal: principalId} // TODO(sr): figure out how to select tenant
+			auth := authData{principal: principalId} // TODO(sr): figure out how to tie tenant to API requests (header?)
 			inner.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, auth)))
 		})
 	}

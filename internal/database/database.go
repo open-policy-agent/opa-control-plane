@@ -1,7 +1,6 @@
 package database
 
 import (
-	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -42,7 +41,6 @@ const (
 	mysql
 )
 
-const defaultTenant = "default"
 const SQLiteMemoryOnlyDSN = "file::memory:?cache=shared"
 
 // Database implements the database operations. It will hide any differences between the varying SQL databases from the rest of the codebase.
@@ -410,7 +408,7 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 ) func(*sql.Tx) (T, bool, error) {
 	return func(tx *sql.Tx) (T, bool, error) {
 		var zero T
-		if err := d.resourceExists(ctx, tx, defaultTenant, "sources", sourceName); err != nil {
+		if err := d.resourceExists(ctx, tx, tenant, "sources", sourceName); err != nil {
 			return zero, false, err
 		}
 
@@ -426,7 +424,7 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 
 		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
 
-		args[0], err = d.lookupID(ctx, tx, defaultTenant, "sources", sourceName)
+		args[0], err = d.lookupID(ctx, tx, tenant, "sources", sourceName)
 		if err != nil {
 			return zero, false, fmt.Errorf("lookup source name %s: %w", sourceName, err)
 		}
@@ -480,7 +478,7 @@ func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, 
 			return errors.New("unauthorized")
 		}
 
-		sourceID, err := d.lookupID(ctx, tx, defaultTenant, "sources", sourceName)
+		sourceID, err := d.lookupID(ctx, tx, tenant, "sources", sourceName)
 		if err != nil {
 			return fmt.Errorf("lookup source %s: %w", sourceName, err)
 		}
@@ -529,9 +527,7 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 // in the DB, but lookup the current field. Failing lookups are treated as errors!
 // Secrets are the exception: they are stored as-is, so if their value refers to an
 // env var, it's replaced on use.
-func (d *Database) LoadConfig(ctx context.Context, bar *progress.Bar, principal string, root *config.Root) error {
-	tenant := defaultTenant
-
+func (d *Database) LoadConfig(ctx context.Context, bar *progress.Bar, principal, tenant string, root *config.Root) error {
 	bar.AddMax(len(root.Sources) + len(root.Stacks) + len(root.Secrets) + len(root.Tokens))
 
 	// Secrets have env lookups done on access, without the secret value persisted in the databse.
@@ -887,7 +883,7 @@ func (d *Database) DeleteSource(ctx context.Context, principal, tenant, name str
 		if err := d.prepareDelete(ctx, tx, principal, tenant, "sources", name, "sources.manage"); err != nil {
 			return err
 		}
-		id, err := d.lookupID(ctx, tx, defaultTenant, "sources", name)
+		id, err := d.lookupID(ctx, tx, tenant, "sources", name)
 		if err != nil {
 			return fmt.Errorf("lookup source %s: %w", name, err)
 		}
@@ -1240,8 +1236,8 @@ func (d *Database) ListSecrets(ctx context.Context, principal, tenant string, op
 	})
 }
 
-func (d *Database) GetStack(ctx context.Context, principal string, name string) (*config.Stack, error) {
-	stacks, _, err := d.ListStacks(ctx, principal, ListOptions{name: name})
+func (d *Database) GetStack(ctx context.Context, principal, tenant, name string) (*config.Stack, error) {
+	stacks, _, err := d.ListStacks(ctx, principal, tenant, ListOptions{name: name})
 	if err != nil {
 		return nil, err
 	}
@@ -1253,8 +1249,7 @@ func (d *Database) GetStack(ctx context.Context, principal string, name string) 
 	return stacks[0], nil
 }
 
-func (d *Database) DeleteStack(ctx context.Context, principal, name string) error {
-	tenant := defaultTenant // TODO(sr): Stacks per tenant?
+func (d *Database) DeleteStack(ctx context.Context, principal, tenant, name string) error {
 	return tx1(ctx, d, func(tx *sql.Tx) error {
 		if err := d.prepareDelete(ctx, tx, principal, tenant, "stacks", name, "stacks.manage"); err != nil {
 			return err
@@ -1271,10 +1266,11 @@ func (d *Database) DeleteStack(ctx context.Context, principal, name string) erro
 	})
 }
 
-func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOptions) ([]*config.Stack, string, error) {
+func (d *Database) ListStacks(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.Stack, string, error) {
 	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.Stack, string, error) {
 		expr, err := authz.Partial(ctx, authz.Access{
 			Principal:  principal,
+			Tenant:     tenant,
 			Resource:   "stacks",
 			Permission: "stacks.view",
 		}, map[string]authz.ColumnRef{
@@ -1291,7 +1287,9 @@ func (d *Database) ListStacks(ctx context.Context, principal string, opts ListOp
 	stacks.selector,
 	stacks.exclude_selector
 FROM stacks
-WHERE (` + conditions + ")"
+JOIN tenants ON stacks.tenant_id = tenants.id
+WHERE (` + conditions + ") AND tenants.name = " + d.arg(len(args))
+		args = append(args, tenant)
 
 		if opts.name != "" {
 			stacks += fmt.Sprintf(" AND (stacks.name = %s)", d.arg(len(args)))
@@ -1411,13 +1409,12 @@ type Data struct {
 	Data []byte `sql:"data"`
 }
 
-// TODO(sr): only tests use this
-func (d *Database) QuerySourceID(ctx context.Context, sourceName string) (int64, error) {
+func (d *Database) QuerySourceID(ctx context.Context, tenant, sourceName string) (int64, error) {
 	var id int64
 	return id, d.db.QueryRowContext(ctx,
 		fmt.Sprintf("SELECT sources.id FROM sources JOIN tenants ON tenants.id = sources.tenant_id WHERE sources.name = %s AND tenants.name = %s", d.arg(0), d.arg(1)),
 		sourceName,
-		defaultTenant,
+		tenant,
 	).Scan(&id)
 }
 
@@ -1428,8 +1425,6 @@ func (d *Database) QuerySourceData(sourceID int64, sourceName string) func(conte
 }
 
 func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, bundle *config.Bundle) error {
-	tenant = cmp.Or(tenant, defaultTenant)
-
 	return tx1(ctx, d, func(tx *sql.Tx) error {
 		if err := d.prepareUpsert(ctx, tx, principal, tenant, "bundles", bundle.Name, "bundles.create", "bundles.manage"); err != nil {
 			return err
@@ -1491,7 +1486,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 
 		if bundle.ObjectStorage.AmazonS3 != nil {
 			if cred := bundle.ObjectStorage.AmazonS3.Credentials; cred != nil {
-				secretID, err := d.lookupID(ctx, tx, defaultTenant, "secrets", cred.Name)
+				secretID, err := d.lookupID(ctx, tx, tenant, "secrets", cred.Name)
 				if err != nil {
 					return fmt.Errorf("lookup id of secret %s: %w", cred.Name, err)
 				}
@@ -1504,7 +1499,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 
 		if bundle.ObjectStorage.GCPCloudStorage != nil {
 			if cred := bundle.ObjectStorage.GCPCloudStorage.Credentials; cred != nil {
-				secretID, err := d.lookupID(ctx, tx, defaultTenant, "secrets", cred.Name)
+				secretID, err := d.lookupID(ctx, tx, tenant, "secrets", cred.Name)
 				if err != nil {
 					return fmt.Errorf("lookup id of secret %s: %w", cred.Name, err)
 				}
@@ -1517,7 +1512,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 
 		if bundle.ObjectStorage.AzureBlobStorage != nil {
 			if cred := bundle.ObjectStorage.AzureBlobStorage.Credentials; cred != nil {
-				secretID, err := d.lookupID(ctx, tx, defaultTenant, "secrets", cred.Name)
+				secretID, err := d.lookupID(ctx, tx, tenant, "secrets", cred.Name)
 				if err != nil {
 					return fmt.Errorf("lookup id of secret %s: %w", cred.Name, err)
 				}
@@ -1531,7 +1526,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 		sources := make([]int, 0, len(bundle.Requirements))
 		for _, req := range bundle.Requirements {
 			if req.Source != nil {
-				reqID, err := d.lookupID(ctx, tx, defaultTenant, "sources", *req.Source)
+				reqID, err := d.lookupID(ctx, tx, tenant, "sources", *req.Source)
 				if err != nil {
 					return fmt.Errorf("lookup id of requirement source %s: %w", *req.Source, err)
 				}
@@ -1553,8 +1548,6 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 }
 
 func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, source *config.Source) error {
-	tenant = cmp.Or(tenant, defaultTenant)
-
 	return tx1(ctx, d, func(tx *sql.Tx) error {
 		if err := d.prepareUpsert(ctx, tx, principal, tenant, "sources", source.Name, "sources.create", "sources.manage"); err != nil {
 			return err
@@ -1596,7 +1589,7 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 
 			var secret sql.NullInt64
 			if datasource.Credentials != nil {
-				secretID, err := d.lookupID(ctx, tx, defaultTenant, "secrets", datasource.Credentials.Name)
+				secretID, err := d.lookupID(ctx, tx, tenant, "secrets", datasource.Credentials.Name)
 				if err != nil {
 					return err
 				}
@@ -1625,7 +1618,7 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 		var sources []int
 		for _, r := range source.Requirements {
 			if r.Source != nil {
-				reqID, err := d.lookupID(ctx, tx, defaultTenant, "sources", *r.Source)
+				reqID, err := d.lookupID(ctx, tx, tenant, "sources", *r.Source)
 				if err != nil {
 					return fmt.Errorf("lookup id of requirement source %s: %w", *r.Source, err)
 				}
@@ -1650,8 +1643,6 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 }
 
 func (d *Database) UpsertSecret(ctx context.Context, principal, tenant string, secret *config.Secret) error {
-	tenant = cmp.Or(tenant, defaultTenant)
-
 	return tx1(ctx, d, func(tx *sql.Tx) error {
 		if err := d.prepareUpsert(ctx, tx, principal, tenant, "secrets", secret.Name, "secrets.create", "secrets.manage"); err != nil {
 			return err
@@ -1673,8 +1664,6 @@ func (d *Database) UpsertSecret(ctx context.Context, principal, tenant string, s
 }
 
 func (d *Database) UpsertStack(ctx context.Context, principal, tenant string, stack *config.Stack) error {
-	tenant = cmp.Or(tenant, defaultTenant)
-
 	return tx1(ctx, d, func(tx *sql.Tx) error {
 		if err := d.prepareUpsert(ctx, tx, principal, tenant, "stacks", stack.Name, "stacks.create", "stacks.manage"); err != nil {
 			return err
@@ -1701,7 +1690,7 @@ func (d *Database) UpsertStack(ctx context.Context, principal, tenant string, st
 
 		for _, r := range stack.Requirements {
 			if r.Source != nil {
-				sourceID, err := d.lookupID(ctx, tx, defaultTenant, "sources", *r.Source)
+				sourceID, err := d.lookupID(ctx, tx, tenant, "sources", *r.Source)
 				if err != nil {
 					return fmt.Errorf("lookup source %s: %w", *r.Source, err)
 				}
@@ -1717,8 +1706,6 @@ func (d *Database) UpsertStack(ctx context.Context, principal, tenant string, st
 }
 
 func (d *Database) UpsertToken(ctx context.Context, principal, tenant string, token *config.Token) error {
-	tenant = cmp.Or(tenant, defaultTenant)
-
 	if len(token.Scopes) != 1 {
 		return fmt.Errorf("exactly one scope must be provided for token %q", token.Name)
 	}
@@ -1779,7 +1766,7 @@ func (d *Database) prepareDelete(ctx context.Context, tx *sql.Tx, principal, ten
 	}
 
 	if authz.Check(ctx, tx, d.arg, a) {
-		return d.resourceExists(ctx, tx, defaultTenant, resource, name) // only inform about existence if authorized
+		return d.resourceExists(ctx, tx, tenant, resource, name) // only inform about existence if authorized
 	}
 
 	return ErrNotAuthorized
