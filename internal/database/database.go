@@ -911,6 +911,7 @@ func (d *Database) ListSources(ctx context.Context, principal, tenant string, op
 	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.Source, string, error) {
 		expr, err := authz.Partial(ctx, authz.Access{
 			Principal:  principal,
+			Tenant:     tenant,
 			Resource:   "sources",
 			Permission: "sources.view",
 		}, map[string]authz.ColumnRef{

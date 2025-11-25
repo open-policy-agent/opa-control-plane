@@ -650,8 +650,8 @@ func TestSourcesDatasourcesSecrets(t *testing.T) {
 			{ // GET /v1/sources
 				var ownerList types.SourcesListResponseV1
 				ts.Request("GET", "/v1/sources", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
-				if len(ownerList.Result) != 1 {
-					t.Fatal("expected exactly one source")
+				if exp, act := 1, len(ownerList.Result); exp != act {
+					t.Fatalf("expected %d sources, got %d", exp, act)
 				}
 				act := ownerList.Result[0]
 				if diff := cmp.Diff(exp, act); diff != "" {
