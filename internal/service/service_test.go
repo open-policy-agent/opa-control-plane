@@ -175,7 +175,7 @@ func TestRequirementsWithConflictingOverrides(t *testing.T) {
 
 	report := oneshot(t, bs, tempDir).Report()
 
-	if report.Bundles["test_bundle"].State != service.BuildStateConfigError || report.Bundles["test_bundle"].Message != `requirements on "test_src" conflict` {
+	if report.Bundles["test_bundle"].State != service.BuildStateConfigError || report.Bundles["test_bundle"].Message != `requirements on "test_src" (default) conflict` {
 		t.Fatal(report)
 	}
 

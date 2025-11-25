@@ -36,6 +36,7 @@ import (
 
 const (
 	internalPrincipal       = "internal"
+	defaultTenant           = "default"
 	reconfigurationInterval = 15 * time.Second
 )
 
@@ -241,7 +242,7 @@ func (s *Service) initDB(ctx context.Context) error {
 		return err
 	}
 
-	if err := s.database.LoadConfig(ctx, bar, internalPrincipal, s.config); err != nil {
+	if err := s.database.LoadConfig(ctx, bar, internalPrincipal, defaultTenant, s.config); err != nil {
 		return fmt.Errorf("load config failed: %w", err)
 	}
 
@@ -274,8 +275,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			sourceDefsByName[src.Name] = src
 		}
 
-		// TODO(sr): figure out if we want stacks to be tied to tenants
-		stacks, _, err := s.database.ListStacks(ctx, internalPrincipal, database.ListOptions{})
+		stacks, _, err := s.database.ListStacks(ctx, internalPrincipal, tenant, database.ListOptions{})
 		if err != nil {
 			s.log.Errorf("error listing stacks: %s", err.Error())
 			return

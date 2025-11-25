@@ -459,7 +459,7 @@ func (tc *testCase) SourcesGetData(srcID, dataID string, expected any) *testCase
 
 func (tc *testCase) SourcesQueryData(srcID string, expected map[string][]byte) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		id, err := db.QuerySourceID(ctx, srcID)
+		id, err := db.QuerySourceID(ctx, tenant, srcID)
 		if err != nil {
 			t.Fatal(srcID, err)
 		}
@@ -510,7 +510,7 @@ func (tc *testCase) SourcesPutRequirements(id string, requirements config.Requir
 
 func (tc *testCase) LoadConfig(root config.Root) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.LoadConfig(ctx, nil, "admin", &root); err != nil {
+		if err := db.LoadConfig(ctx, nil, "admin", tenant, &root); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})
@@ -742,7 +742,7 @@ func (tc *testCase) ListStacks(expected []*config.Stack) *testCase {
 			var stacks []*config.Stack
 			var err error
 			limit := 4
-			stacks, cursor, err = db.ListStacks(ctx, "admin", database.ListOptions{Limit: limit, Cursor: cursor})
+			stacks, cursor, err = db.ListStacks(ctx, "admin", tenant, database.ListOptions{Limit: limit, Cursor: cursor})
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -763,7 +763,7 @@ func (tc *testCase) ListStacks(expected []*config.Stack) *testCase {
 
 func (tc *testCase) ListStacksPagination(limit int, expected []*config.Stack) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		stacks, _, err := db.ListStacks(ctx, "admin", database.ListOptions{Limit: limit})
+		stacks, _, err := db.ListStacks(ctx, "admin", tenant, database.ListOptions{Limit: limit})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -778,7 +778,7 @@ func (tc *testCase) ListStacksPagination(limit int, expected []*config.Stack) *t
 
 func (tc *testCase) GetStack(id string, expected *config.Stack) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		stack, err := db.GetStack(ctx, "admin", id)
+		stack, err := db.GetStack(ctx, "admin", tenant, id)
 		if err != nil && err != database.ErrNotFound {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -801,12 +801,7 @@ func (tc *testCase) GetStack(id string, expected *config.Stack) *testCase {
 }
 
 func (tc *testCase) DeleteStack(id string, expSuccess bool) *testCase {
-	tc.deleteBy(
-		func(db *database.Database, ctx context.Context, principal string, _ string, id string) error {
-			return db.DeleteStack(ctx, principal, id)
-		},
-		id,
-		expSuccess)
+	tc.deleteBy((*database.Database).DeleteStack, id, expSuccess)
 	return tc
 }
 
