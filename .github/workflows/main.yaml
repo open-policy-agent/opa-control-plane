@@ -48,6 +48,8 @@ jobs:
         if: matrix.run == 'windows-latest'
       - name: Checkout code
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          fetch-depth: 0
       - id: go_version
         name: Read go version
         run: echo "go_version=$(cat .go-version)" >> $GITHUB_OUTPUT
@@ -59,9 +61,14 @@ jobs:
           cache-dependency-path: go.sum
       - name: build
         run: make build
+      - name: build previous release
+        run: |
+          git worktree add ../prev v0.2.0
+          cd ../prev
+          make build
       - if: runner.os == 'Windows'
         name: fix windows exe ending
-        run: find . -name 'opactl_*' -exec mv {} {}.exe \;
+        run: find ../prev . -name 'opactl_*' -exec mv {} {}.exe \;
         shell: bash
       - name: e2e
         run: |
@@ -69,7 +76,11 @@ jobs:
           matches=(opactl_*)
           export OPACTL="$(pwd)/${matches[0]}"
           echo "Using OPACTL: $OPACTL" # Debugging
+          matches=(../prev/opactl_*)
+          export E2E_OPACTL_PREV="$(pwd)/${matches[0]}"
+          echo "Using E2E_OPACTL_PREV: $E2E_OPACTL_PREV"
           $OPACTL version
+          $E2E_OPACTL_PREV version
           go test -tags=e2e ./e2e/... -v
         shell: bash
         env:
