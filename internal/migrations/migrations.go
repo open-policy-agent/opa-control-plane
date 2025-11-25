@@ -4,7 +4,10 @@ package migrations
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	migrate_database "github.com/golang-migrate/migrate/v4/database"
@@ -18,6 +21,11 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+)
+
+const (
+	maxRetries = 5
+	retryDelay = "2s"
 )
 
 type Migrator struct {
@@ -56,6 +64,10 @@ func (m *Migrator) Run(ctx context.Context) (*database.Database, error) {
 	dialect, err := db.Dialect()
 	if err != nil {
 		return nil, err
+	}
+
+	if err := m.waitForDB(ctx, db.DB()); err != nil {
+		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
 	var driver migrate_database.Driver
@@ -116,6 +128,21 @@ func (m *Migrator) Run(ctx context.Context) (*database.Database, error) {
 		return nil, fmt.Errorf("database migrations: %w", err)
 	}
 	return db, nil
+}
+
+func (m *Migrator) waitForDB(ctx context.Context, db *sql.DB) error {
+	delay, _ := time.ParseDuration(retryDelay)
+	for range maxRetries {
+		err := db.PingContext(ctx)
+		if err == nil {
+			return nil
+		}
+
+		m.log.Warnf("database connection failed: %v (retrying in %s)", err, delay)
+		time.Sleep(delay)
+		delay *= 2
+	}
+	return errors.New("could not connect to database")
 }
 
 func Var(fs *pflag.FlagSet, yes *bool) {
