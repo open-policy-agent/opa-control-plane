@@ -38,7 +38,7 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 		if tbl.name == "tenants" {
 			stmts = append(stmts,
 				strings.TrimRight(tbl.SQL(kind), ";"),
-				`INSERT INTO tenants (id, name) VALUES (1, 'default')`,
+				`INSERT INTO tenants (name) VALUES ('default')`,
 			)
 			continue
 		}
@@ -223,7 +223,7 @@ func tableCopy(st sqlTable) string {
 		}
 		cols = append(cols, col.Name)
 		if col.Name == "tenant_id" {
-			colsSelect = append(colsSelect, "1 AS tenant_id")
+			colsSelect = append(colsSelect, "(SELECT id FROM tenants WHERE tenants.name = 'default')")
 			continue // this one is new
 		}
 		if col.Name == "principal_id" {
