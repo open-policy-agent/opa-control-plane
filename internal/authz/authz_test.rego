@@ -77,9 +77,13 @@ test_owners_can_edit_bundles if {
 		with data.resource_permissions.resource as "bundles"
 		with data.resource_permissions.role as "owner"
 		with data.resource_permissions.principal_id as "testuser"
+		with data.resource_permissions.tenant_id as 10
+		with data.tenants.id as 10
+		with data.tenants.name as "ten10"
 		with input.permission as "bundles.manage"
 		with input.name as "testbundle"
 		with input.resource as "bundles"
+		with input.tenant as "ten10"
 }
 
 test_explicit_permission_grant if {
@@ -89,7 +93,11 @@ test_explicit_permission_grant if {
 		with data.resource_permissions.resource as "sources"
 		with data.resource_permissions.permission as "sources.data.write"
 		with data.resource_permissions.principal_id as "testuser"
+		with data.resource_permissions.tenant_id as 10
+		with data.tenants.id as 10
+		with data.tenants.name as "ten10"
 		with input.permission as "sources.data.write"
 		with input.name as "testsource"
 		with input.resource as "sources"
+		with input.tenant as "ten10"
 }

@@ -21,6 +21,8 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/server/types"
 )
 
+const defaultTenant = "default"
+
 type Server struct {
 	router    *http.ServeMux
 	db        *database.Database
@@ -679,7 +681,7 @@ func authenticationMiddleware(db *database.Database) func(http.Handler) http.Han
 				return
 			}
 
-			auth := authData{principal: principalId} // TODO(sr): figure out how to tie tenant to API requests (header?)
+			auth := authData{principal: principalId, tenant: defaultTenant} // TODO(sr): figure out how to tie tenant to API requests (header?)
 			inner.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, auth)))
 		})
 	}
