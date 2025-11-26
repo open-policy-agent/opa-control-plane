@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
+	crdb "github.com/testcontainers/testcontainers-go/modules/cockroachdb"
 	"github.com/testcontainers/testcontainers-go/modules/mysql"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
@@ -125,6 +126,37 @@ func Configs(t *testing.T) map[string]Setup {
 					Database: &config.Database{
 						SQL: &config.SQLDatabase{
 							Driver: "mysql",
+							DSN:    dsn,
+						},
+					},
+				}
+			},
+		},
+		"cockroachdb": {
+			Setup: func(t *testing.T) testcontainers.Container {
+				ctr, err := crdb.Run(t.Context(),
+					"cockroachdb/cockroach:v25.4.0",
+					crdb.WithDatabase("db"),
+					crdb.WithUser("crdbuser"),
+					crdb.WithInsecure(),
+				)
+				if err != nil {
+					t.Fatal("failed to start crdb container:", err)
+				}
+				return ctr
+			},
+			Cleanup: tcCleanup,
+			Database: func(t *testing.T, ctr testcontainers.Container) *config.Root {
+				cc, err := ctr.(*crdb.CockroachDBContainer).ConnectionConfig(t.Context())
+				if err != nil {
+					t.Fatalf("failed to get crdb connection string: %v", err)
+				}
+				dsn := "cockroachdb" + cc.ConnString()[8:]
+
+				return &config.Root{
+					Database: &config.Database{
+						SQL: &config.SQLDatabase{
+							Driver: "cockroachdb",
 							DSN:    dsn,
 						},
 					},

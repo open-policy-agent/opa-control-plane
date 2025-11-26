@@ -17,6 +17,7 @@ func addBundleOptions(dialect string) fs.FS {
 		stmt = `ALTER TABLE bundles ADD options TEXT;`
 	case "mysql":
 		stmt = `ALTER TABLE bundles ADD options VARCHAR(255)`
+	case "cockroachdb": // nothing
 	}
 
 	return ocp_fs.MapFS(map[string]string{
@@ -31,6 +32,7 @@ func addBundleInterval(dialect string) fs.FS {
 		stmt = `ALTER TABLE bundles ADD rebuild_interval TEXT`
 	case "mysql":
 		stmt = `ALTER TABLE bundles ADD rebuild_interval VARCHAR(255)`
+	case "cockroachdb": // nothing
 	}
 
 	return ocp_fs.MapFS(map[string]string{
@@ -53,6 +55,7 @@ func addMounts(dialect string) fs.FS {
 		stmtBundles = `ALTER TABLE bundles_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
 		stmtSources = `ALTER TABLE sources_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
 		stmtStacks = `ALTER TABLE stacks_requirements ADD prefix VARCHAR(255), ADD path VARCHAR(255)`
+	case "cockroachdb": // nothing
 	}
 
 	return ocp_fs.MapFS(map[string]string{
@@ -71,11 +74,17 @@ func initialSchemaFS(dialect string) fs.FS {
 		kind = mysql
 	case "sqlite":
 		kind = sqlite
+	case "cockroachdb":
+		kind = cockroachdb
 	}
 	m := make(map[string]string, len(schema))
 	for i, tbl := range schema {
 		f := fmt.Sprintf("%03d_%s.up.sql", i, tbl.name)
-		m[f] = tbl.SQL(kind)
+		if kind == cockroachdb {
+			m[f] = ""
+		} else {
+			m[f] = tbl.SQL(kind)
+		}
 	}
 	return ocp_fs.MapFS(m)
 }
@@ -195,6 +204,7 @@ const (
 	sqlite = iota
 	postgres
 	mysql
+	cockroachdb
 )
 
 type sqlColumn struct {
@@ -221,7 +231,7 @@ func (sqlInteger) SQL(kind int) string {
 	switch kind {
 	case sqlite:
 		return "INTEGER"
-	case postgres:
+	case postgres, cockroachdb:
 		return "INTEGER"
 	case mysql:
 		return "INT"
@@ -238,7 +248,7 @@ func (sqlBlob) SQL(kind int) string {
 	switch kind {
 	case sqlite:
 		return "BLOB"
-	case postgres:
+	case postgres, cockroachdb:
 		return "BYTEA"
 	case mysql:
 		return "BLOB"
@@ -255,7 +265,7 @@ func (sqlVarChar) SQL(kind int) string {
 	switch kind {
 	case sqlite:
 		return "TEXT"
-	case postgres:
+	case postgres, cockroachdb:
 		return "VARCHAR(255)"
 	case mysql:
 		return "VARCHAR(255)"
@@ -271,7 +281,7 @@ func (c sqlColumn) SQL(kind int) string {
 		switch kind {
 		case sqlite:
 			parts = append(parts, []string{c.Name, sqlInteger{}.SQL(kind), "PRIMARY KEY", "AUTOINCREMENT"}...)
-		case postgres:
+		case postgres, cockroachdb:
 			parts = append(parts, []string{c.Name, "SERIAL", "PRIMARY KEY"}...)
 		case mysql:
 			parts = append(parts, []string{c.Name, sqlInteger{}.SQL(kind), "PRIMARY KEY", "AUTO_INCREMENT"}...)

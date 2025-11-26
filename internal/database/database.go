@@ -22,9 +22,10 @@ import (
 
 	"github.com/achille-roussel/sqlrange"
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
+	"github.com/cockroachdb/cockroach-go/v2/crdb"
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib" // database/sql compatible driver for pgx
+	pgx_stdlib "github.com/jackc/pgx/v5/stdlib" // database/sql compatible driver for pgx
 	_ "modernc.org/sqlite"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/authz"
@@ -39,16 +40,22 @@ const (
 	sqlite = iota
 	postgres
 	mysql
+	cockroach
 )
 
 const SQLiteMemoryOnlyDSN = "file::memory:?cache=shared"
 
 // Database implements the database operations. It will hide any differences between the varying SQL databases from the rest of the codebase.
 type Database struct {
-	db     *sql.DB
-	config *config.Database
-	kind   int
-	log    *logging.Logger
+	db        *sql.DB
+	config    *config.Database
+	kind      int
+	log       *logging.Logger
+	executeTx func(context.Context, *sql.DB, *sql.TxOptions, func(*sql.Tx) error) error
+}
+
+func New() *Database {
+	return &Database{executeTx: executeTx}
 }
 
 func (d *Database) DB() *sql.DB {
@@ -61,6 +68,8 @@ func (d *Database) Dialect() (string, error) {
 		return "sqlite", nil
 	case postgres:
 		return "postgresql", nil
+	case cockroach:
+		return "cockroachdb", nil
 	case mysql:
 		return "mysql", nil
 	default:
@@ -219,7 +228,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 				}
 			}
 
-			connector = stdlib.GetConnector(*cfg)
+			connector = pgx_stdlib.GetConnector(*cfg)
 			d.kind = postgres
 
 		case "mysql":
@@ -283,10 +292,8 @@ func (d *Database) InitDB(ctx context.Context) error {
 
 		d.log.Debugf("Connected to %s RDS instance at %s", drv, endpoint)
 
-	case d.config == nil:
+	case d.config == nil || d.config.SQL == nil || d.config.SQL.Driver == "sqlite3" || d.config.SQL.Driver == "sqlite":
 		// Default to memory-only SQLite3 if no config is provided.
-		fallthrough
-	case d.config != nil && d.config.SQL != nil && (d.config.SQL.Driver == "sqlite3" || d.config.SQL.Driver == "sqlite"):
 		var dsn string
 		if d.config != nil && d.config.SQL != nil && d.config.SQL.DSN != "" {
 			dsn = os.ExpandEnv(d.config.SQL.DSN)
@@ -302,9 +309,17 @@ func (d *Database) InitDB(ctx context.Context) error {
 			return err
 		}
 
-	case d.config != nil && d.config.SQL != nil && (d.config.SQL.Driver == "postgres" || d.config.SQL.Driver == "pgx"):
+	case d.config.SQL.Driver == "postgres" || d.config.SQL.Driver == "pgx" || d.config.SQL.Driver == "cockroachdb":
 		dsn := os.ExpandEnv(d.config.SQL.DSN)
 		d.kind = postgres
+		if d.config.SQL.Driver == "cockroachdb" {
+			d.kind = cockroach // for tx specials
+			d.executeTx = crdb.ExecuteTx
+			if strings.HasPrefix(dsn, "cockroach") { // "cockroachdb://" or "cockroach://"
+				idx := strings.Index(dsn, ":")
+				dsn = "postgresql" + dsn[idx:]
+			}
+		}
 		cfg, err := pgx.ParseConfig(dsn)
 		if err != nil {
 			return err
@@ -313,9 +328,9 @@ func (d *Database) InitDB(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		d.db = sql.OpenDB(stdlib.GetConnector(*cfg))
+		d.db = sql.OpenDB(pgx_stdlib.GetConnector(*cfg))
 
-	case d.config != nil && d.config.SQL != nil && d.config.SQL.Driver == "mysql":
+	case d.config.SQL.Driver == "mysql":
 		dsn := os.ExpandEnv(d.config.SQL.DSN)
 		d.kind = mysql
 		cfg, err := mysqldriver.ParseDSN(dsn)
@@ -1821,7 +1836,7 @@ func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.
 
 	var query string
 	switch d.kind {
-	case postgres, sqlite:
+	case sqlite, postgres, cockroach:
 		set := make([]string, 0, len(columns))
 		for i := range columns {
 			if !slices.Contains(primaryKey, columns[i]) { // do not update primary key columns
@@ -1900,7 +1915,8 @@ func (d *Database) deleteNotIn(ctx context.Context, tx *sql.Tx, table, keyColumn
 }
 
 func (d *Database) arg(i int) string {
-	if d.kind == postgres {
+	switch d.kind {
+	case postgres, cockroach:
 		return "$" + strconv.Itoa(i+1)
 	}
 	return "?"
@@ -1915,8 +1931,8 @@ func (d *Database) args(n int) []string {
 	return args
 }
 
-func tx1(ctx context.Context, db *Database, f func(*sql.Tx) error) error {
-	tx, err := db.db.BeginTx(ctx, nil)
+func executeTx(ctx context.Context, db *sql.DB, txOpts *sql.TxOptions, f func(*sql.Tx) error) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -1932,30 +1948,19 @@ func tx1(ctx context.Context, db *Database, f func(*sql.Tx) error) error {
 	return tx.Commit()
 }
 
+func tx1(ctx context.Context, db *Database, f func(*sql.Tx) error) error {
+	return db.executeTx(ctx, db.db, nil, f)
+}
+
 func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(*sql.Tx) (T, U, error)) (T, U, error) {
-	tx, err := db.db.BeginTx(ctx, nil)
-	if err != nil {
-		var t T
-		var u U
-		return t, u, err
-	}
-
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	result, result2, err := f(tx)
-	if err != nil {
-		var t T
-		var u U
-		return t, u, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		var t T
-		var u U
-		return t, u, err
-	}
-
-	return result, result2, nil
+	var (
+		t   T
+		u   U
+		err error
+	)
+	err = db.executeTx(ctx, db.db, nil, func(tx *sql.Tx) error {
+		t, u, err = f(tx)
+		return err
+	})
+	return t, u, err
 }

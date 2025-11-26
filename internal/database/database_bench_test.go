@@ -20,7 +20,7 @@ func BenchmarkPaginationFinalPageLatency(b *testing.B) {
 		b.Run(fmt.Sprint(n), func(b *testing.B) { //nolint:perfsprint
 
 			ctx := context.Background()
-			var db database.Database
+			db := database.New()
 			err := db.InitDB(ctx)
 			if err != nil {
 				b.Fatal(err)
