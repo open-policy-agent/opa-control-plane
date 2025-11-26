@@ -12,6 +12,7 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	migrate_database "github.com/golang-migrate/migrate/v4/database"
+	migrate_crdb "github.com/golang-migrate/migrate/v4/database/cockroachdb"
 	migrate_mysql "github.com/golang-migrate/migrate/v4/database/mysql"
 	migrate_postgres "github.com/golang-migrate/migrate/v4/database/postgres"
 	migrate_sqlite "github.com/golang-migrate/migrate/v4/database/sqlite"
@@ -68,7 +69,7 @@ func (m *Migrator) WithLogger(log *logging.Logger) *Migrator {
 }
 
 func (m *Migrator) Run(ctx context.Context) (*database.Database, error) {
-	db := (&database.Database{}).WithConfig(m.config).WithLogger(m.log)
+	db := database.New().WithConfig(m.config).WithLogger(m.log)
 	if err := db.InitDB(ctx); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
@@ -90,6 +91,8 @@ func (m *Migrator) Run(ctx context.Context) (*database.Database, error) {
 		driver, err = migrate_postgres.WithInstance(db.DB(), &migrate_postgres.Config{})
 	case "mysql":
 		driver, err = migrate_mysql.WithInstance(db.DB(), &migrate_mysql.Config{})
+	case "cockroachdb":
+		driver, err = migrate_crdb.WithInstance(db.DB(), &migrate_crdb.Config{})
 	default:
 		// future-proofing, this shouldn't happen with the result of db.Dialect()
 		err = fmt.Errorf("unknown dialect %s", dialect)

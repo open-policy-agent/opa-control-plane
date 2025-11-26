@@ -11,6 +11,7 @@ import (
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
+	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
 )
@@ -38,7 +39,10 @@ func TestDatabase(t *testing.T) {
 				}
 			}
 
-			db, err := migrations.New().WithConfig(databaseConfig.Database(t, ctr).Database).WithMigrate(true).Run(ctx)
+			db, err := migrations.New().
+				WithConfig(databaseConfig.Database(t, ctr).Database).
+				WithLogger(logging.NewLogger(logging.Config{Level: logging.LevelDebug})).
+				WithMigrate(true).Run(ctx)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}

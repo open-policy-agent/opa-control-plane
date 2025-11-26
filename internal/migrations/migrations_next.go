@@ -17,9 +17,15 @@ import (
 // in a single transaction.
 // TODO(sr): Let's change a couple of things so that this setup will be lazily evaluated. Most of the
 // service startups will not need thesse statements after all.
+// NOTE(sr): For cockroachdb, we'll only apply this, and skip all the previous migrations. That's because
+// the migrations are particularly hairy to get right on cockroachdb, and we have no need to do that,
+// since support for it was merged _after_ those migrations. So there's no cockroachdb-using OCP install
+// that would need some data migration.
 func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 	var kind int
 	switch dialect {
+	case "cockroachdb":
+		kind = cockroachdb
 	case "postgresql":
 		kind = postgres
 	case "mysql":
@@ -29,30 +35,39 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 	}
 
 	stmts := make([]string, 0, len(v2Tables)*4)
-	switch kind {
-	case postgres, mysql:
+	if kind != sqlite {
 		stmts = append(stmts, "BEGIN")
 	}
-	for _, tbl := range v2Tables {
-		if tbl.name == "tenants" {
-			stmts = append(stmts,
-				strings.TrimRight(tbl.SQL(kind), ";"),
-				`INSERT INTO tenants (name) VALUES ('default')`,
-			)
-			continue
-		}
-		stmts = append(stmts,
-			fmt.Sprintf("ALTER TABLE %[1]s RENAME TO %[1]s_old", tbl.name), // rename to old
-			strings.TrimRight(tbl.SQL(kind), ";"),                          // create new
-			tableCopy(tbl),                                                 // copy data old -> new
-		)
-	}
-	for i := len(v2Tables) - 1; i > 0; i-- { // drop stuff bottom-to-top; ignore first table ("tenants")
-		stmts = append(stmts, fmt.Sprintf("DROP TABLE %s_old", v2Tables[i].name)) // delete old
+	if kind == cockroachdb {
+		stmts = append(stmts, createSQLTable("tokens").WithIteration("ocp_v2").VarCharPrimaryKeyColumn("name").TextNonNullColumn("api_key").SQL(kind))
 	}
 
-	switch kind {
-	case postgres, mysql:
+	for _, tbl := range v2Tables {
+		oldName := tbl.name + "_old"
+		if tbl.name == "tenants" { // new table
+			stmts = append(stmts,
+				strings.TrimRight(tbl.SQL(kind), ";"),
+				fmt.Sprintf(`INSERT INTO %s (name) VALUES ('default')`, tbl.name),
+			)
+		} else {
+			if kind != cockroachdb {
+				stmts = append(stmts, fmt.Sprintf("ALTER TABLE %s RENAME TO %s", tbl.name, oldName)) // rename to old
+			}
+
+			stmts = append(stmts, strings.TrimRight(tbl.SQL(kind), ";")) // create new
+
+			if kind != cockroachdb {
+				stmts = append(stmts, tableCopy(oldName, tbl)) // copy data old -> new
+			}
+		}
+	}
+
+	if kind != cockroachdb {
+		for i := len(v2Tables) - 1; i > 0; i-- { // drop stuff bottom-to-top; ignore first table ("tenants")
+			stmts = append(stmts, fmt.Sprintf("DROP TABLE %s_old", v2Tables[i].name)) // delete old
+		}
+	}
+	if kind != sqlite {
 		stmts = append(stmts, "COMMIT;")
 	}
 	f := fmt.Sprintf("%03d_tenants.up.sql", offset)
@@ -219,7 +234,7 @@ var v2Tables = []sqlTable{
 // JOIN
 //
 //	secrets AS s ON bso.secret_name = s.name;
-func tableCopy(st sqlTable) string {
+func tableCopy(oldName string, st sqlTable) string {
 	cols := make([]string, 0, len(st.columns))
 	colsSelect := make([]string, 0, len(st.columns))
 	joins := make([]string, 0, len(st.foreignKeys))
@@ -233,7 +248,7 @@ func tableCopy(st sqlTable) string {
 			continue // this one is new
 		}
 		if col.Name == "principal_id" {
-			colsSelect = append(colsSelect, st.name+"_old."+col.Name)
+			colsSelect = append(colsSelect, oldName+"."+col.Name)
 			continue
 		}
 		if idx := slices.IndexFunc(st.foreignKeys, func(f sqlForeignKey) bool { return f.Column == col.Name }); idx != -1 { // lookup IDs by name from old table
@@ -241,16 +256,17 @@ func tableCopy(st sqlTable) string {
 			fkTbl, _, _ := strings.Cut(fk.References, "(")
 			entity, _, _ := strings.Cut(col.Name, "_")
 			joinTbl := fmt.Sprintf("%s_%d", fkTbl, idx)
-			joins = append(joins, fmt.Sprintf("JOIN %[1]s AS %[2]s ON %[3]s_old.%[4]s_name = %[2]s.name", fkTbl, joinTbl, st.name, entity, idx))
+			joins = append(joins, fmt.Sprintf("JOIN %[1]s AS %[2]s ON %[3]s.%[4]s_name = %[2]s.name", fkTbl, joinTbl, oldName, entity, idx))
 			colsSelect = append(colsSelect, fmt.Sprintf("%s.%s AS %s", joinTbl, "id", col.Name))
 			continue
 		}
-		colsSelect = append(colsSelect, st.name+"_old."+col.Name)
+		colsSelect = append(colsSelect, oldName+"."+col.Name)
 	}
-	cpy := fmt.Sprintf(`INSERT INTO %[1]s (%[2]s) SELECT %[3]s FROM %[1]s_old %[4]s`,
+	cpy := fmt.Sprintf(`INSERT INTO %s (%s) SELECT %s FROM %s %s`,
 		st.name,
 		strings.Join(cols, ", "),
 		strings.Join(colsSelect, ", "),
+		oldName,
 		strings.Join(joins, " "),
 	)
 	return cpy

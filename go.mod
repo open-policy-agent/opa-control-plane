@@ -225,6 +225,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.20.12
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.92.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
+	github.com/cockroachdb/cockroach-go/v2 v2.1.1
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/gliderlabs/ssh v0.3.8
@@ -247,6 +248,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/swaggest/jsonschema-go v0.3.79
 	github.com/testcontainers/testcontainers-go v0.40.0
+	github.com/testcontainers/testcontainers-go/modules/cockroachdb v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/mysql v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.40.0
 	github.com/thediveo/enumflag/v2 v2.0.7
