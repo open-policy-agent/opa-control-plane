@@ -1,6 +1,6 @@
 package migrations
 
-// NOTE(sr): Here, we collect the migrations up until version v0.1.0. Consider this file immutable.
+// NOTE(sr): Here, we collect the migrations up until version v0.2.0. Consider this file immutable.
 
 import (
 	"fmt"
