@@ -1,0 +1,111 @@
+[!env:E2E_OPACTL_PREV] stop 'E2E_OPACTL_PREV not set, not running migration test'
+
+# local example git repo
+cd repo
+env HOME=.
+exec git init .
+exec git branch -m main
+exec git config --global user.name "botbotbot"
+exec git config --global user.email "bot@bot.bot"
+exec git add .
+exec git commit -m initial-commit
+cd ..
+
+exec $E2E_OPACTL_PREV build --data-dir tmp --apply-migrations
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/a/bundle.tar.gz
+[!windows] cmp stdout exp/tarball
+[windows]  cmp stdout exp/tarball_windows
+exec rm bundles/a/bundle.tar.gz 
+
+exec $OPACTL build --data-dir tmp --apply-migrations --log-level debug --non-interactive
+stderr 'Finished 19/u tenants' # spot-checking post-v0.2.0 migrations
+stderr 'built and uploaded'
+! stdout .
+
+exec tar tf bundles/a/bundle.tar.gz
+[!windows] cmp stdout exp/tarball
+[windows]  cmp stdout exp/tarball_windows
+
+exec tar xf bundles/a/bundle.tar.gz /data.json
+cmp data.json exp/data.json
+-- path/foo/policy.rego --
+package foo
+import rego.v1
+allow if true
+-- repo/foo/policy.rego --
+package foo
+import rego.v1
+allow if false
+-- aux/transform.rego --
+package transform
+import rego.v1
+rule := [a, b] if {
+  some a, b
+  [_, a, b] = split(input.Authorization[0], " ")
+}
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/a/bundle.tar.gz
+    requirements:
+    - source: my-entz-system
+    - source: git+local
+    - source: http-with-transform
+    excluded_files:
+    - transform.rego
+database:
+  sql:
+    driver: sqlite
+    dsn: sqlite.db
+secrets:
+  api-token:
+    type: token_auth
+    token: open sesame
+sources:
+  http-with-transform:
+    directory: aux/
+    paths:
+    - transform.rego
+    datasources:
+    - type: http
+      name: hello
+      path: headers
+      transform_query: data.transform.rule
+      config:
+        url: http://${HTTP_ENDPOINT}/headers
+      credentials: api-token
+  my-entz-system:
+    requirements:
+      - source: template.entitlements:1.0-entrypoint-main
+  git+local:
+    git:
+      repo: ./repo/
+      reference: main
+    directory: path/
+    paths:
+    - foo/policy.rego
+-- config.d/sources.yml --
+sources:
+  template.entitlements:1.0-library:
+    builtin: entitlements-v1/library
+  template.entitlements:1.0-entrypoint-main:
+    builtin: entitlements-v1/main
+-- exp/tarball --
+/data.json
+/git+local/foo/policy.rego
+/git+local1/foo/policy.rego
+/template.entitlements#1.0-entrypoint-main/main/main.rego
+/.manifest
+-- exp/tarball_windows --
+/data.json
+/git+local1/foo/policy.rego
+/git+local/foo/policy.rego
+/template.entitlements#1.0-entrypoint-main/main/main.rego
+/.manifest
+-- exp/data.json --
+{"headers":["open","sesame"]}

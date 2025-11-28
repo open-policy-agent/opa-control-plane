@@ -1,29 +1,20 @@
 package migrations
 
+// NOTE(sr): Here, we collect the migrations up until version v0.2.0. Consider this file immutable.
+
 import (
 	"fmt"
 	"io/fs"
 	"strings"
 
-	"github.com/yalue/merged_fs"
-
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 )
-
-func Migrations(dialect string) (fs.FS, error) {
-	return merged_fs.MergeMultiple(
-		initialSchemaFS(dialect),
-		addMounts(dialect),
-		addBundleInterval(dialect),
-		addBundleOptions(dialect),
-	), nil
-}
 
 func addBundleOptions(dialect string) fs.FS {
 	var stmt string
 	switch dialect {
 	case "sqlite", "postgresql":
-		stmt = `ALTER TABLE bundles ADD options TEXT`
+		stmt = `ALTER TABLE bundles ADD options TEXT;`
 	case "mysql":
 		stmt = `ALTER TABLE bundles ADD options VARCHAR(255)`
 	}
@@ -281,7 +272,7 @@ func (c sqlColumn) SQL(kind int) string {
 		case sqlite:
 			parts = append(parts, []string{c.Name, sqlInteger{}.SQL(kind), "PRIMARY KEY", "AUTOINCREMENT"}...)
 		case postgres:
-			parts = append(parts, []string{c.Name, "SERIAL"}...)
+			parts = append(parts, []string{c.Name, "SERIAL", "PRIMARY KEY"}...)
 		case mysql:
 			parts = append(parts, []string{c.Name, sqlInteger{}.SQL(kind), "PRIMARY KEY", "AUTO_INCREMENT"}...)
 		}
@@ -311,11 +302,16 @@ type sqlForeignKey struct {
 	OnDeleteCascade bool
 }
 
+type sqlConstraint struct {
+	Columns []string
+}
+
 type sqlTable struct {
 	name              string
 	columns           []sqlColumn
 	primaryKeyColumns []string
 	foreignKeys       []sqlForeignKey
+	unique            []sqlConstraint
 }
 
 func createSQLTable(name string) sqlTable {
@@ -331,6 +327,16 @@ func (t sqlTable) WithColumn(col sqlColumn) sqlTable {
 
 func (t sqlTable) IntegerPrimaryKeyAutoincrementColumn(name string) sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlInteger{}, AutoIncrementPrimaryKey: true})
+	return t
+}
+
+func (t sqlTable) IntegerNonNullColumn(name string) sqlTable {
+	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlInteger{}, NotNull: true})
+	return t
+}
+
+func (t sqlTable) IntegerColumn(name string) sqlTable {
+	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlInteger{}})
 	return t
 }
 
@@ -397,6 +403,13 @@ func (t sqlTable) ForeignKey(column string, references string) sqlTable {
 	return t
 }
 
+func (t sqlTable) Unique(columns ...string) sqlTable {
+	t.unique = append(t.unique, sqlConstraint{
+		Columns: columns,
+	})
+	return t
+}
+
 func (t sqlTable) ForeignKeyOnDeleteCascade(column string, references string) sqlTable {
 	t.foreignKeys = append(t.foreignKeys, sqlForeignKey{
 		Column:          column,
@@ -421,10 +434,14 @@ func (t sqlTable) SQL(kind int) string {
 		if fk.OnDeleteCascade {
 			f += " ON DELETE CASCADE"
 		}
-
 		c = append(c, f)
 	}
+	for _, constraint := range t.unique {
+		// NB(sr): named constraints are easier to delete later
+		c = append(c, fmt.Sprintf("CONSTRAINT %s_unique_%s UNIQUE (%s)", t.name,
+			strings.Join(constraint.Columns, "_"),
+			strings.Join(constraint.Columns, ", ")))
+	}
 
-	return `CREATE TABLE IF NOT EXISTS ` + t.name + ` (
-			` + strings.Join(c, ",\n") + `);`
+	return `CREATE TABLE IF NOT EXISTS ` + t.name + ` (` + strings.Join(c, ", ") + `);`
 }

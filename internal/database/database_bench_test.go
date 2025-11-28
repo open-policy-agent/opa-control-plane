@@ -34,7 +34,7 @@ func BenchmarkPaginationFinalPageLatency(b *testing.B) {
 
 			for i := range n {
 				// nolint:perfsprint
-				if err := db.UpsertSource(ctx, "admin", &config.Source{Name: "source" + fmt.Sprint(i)}); err != nil {
+				if err := db.UpsertSource(ctx, "admin", tenant, &config.Source{Name: "source" + fmt.Sprint(i)}); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -45,7 +45,7 @@ func BenchmarkPaginationFinalPageLatency(b *testing.B) {
 			b.ResetTimer()
 
 			for b.Loop() {
-				result, next, err := db.ListSources(ctx, "admin", database.ListOptions{Limit: limit, Cursor: cursor})
+				result, next, err := db.ListSources(ctx, "admin", tenant, database.ListOptions{Limit: limit, Cursor: cursor})
 				if err != nil {
 					b.Fatal(err)
 				}

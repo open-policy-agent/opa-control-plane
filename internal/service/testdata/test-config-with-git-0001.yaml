@@ -75,14 +75,14 @@ cases:
     /datasource1: *datasource1_json
     /datasource2: *datasource2_json
   expected_filesystem:
-  - "/651b945976b07287063e8967060724a4/sources/TestApp/database/foo.rego"
-  - "/651b945976b07287063e8967060724a4/sources/TestApp/datasources/datasource1/data.json"
-  - "/651b945976b07287063e8967060724a4/sources/TestApp/repo/app/app.rego"
-  - "/651b945976b07287063e8967060724a4/sources/TestApp/repo/lib/lib.rego"
-  - "/651b945976b07287063e8967060724a4/sources/TestLibrary/database/bar.rego"
-  - "/651b945976b07287063e8967060724a4/sources/TestLibrary/datasources/datasource2/data.json"
-  - "/651b945976b07287063e8967060724a4/sources/TestLibrary/repo/app/app.rego"
-  - "/651b945976b07287063e8967060724a4/sources/TestLibrary/repo/lib/lib.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/database/foo.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/datasources/datasource1/data.json"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/repo/app/app.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/repo/lib/lib.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/database/bar.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/datasources/datasource2/data.json"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/repo/app/app.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/repo/lib/lib.rego"
   expected_bundle:
     rego:
       TestApp2/app.rego: *app_rego

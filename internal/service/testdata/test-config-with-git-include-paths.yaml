@@ -44,10 +44,10 @@ cases:
     app/app.rego: *app_rego
     lib/lib.rego: *lib_rego
   expected_filesystem:
-  - /651b945976b07287063e8967060724a4/sources/TestApp/repo/app/app.rego
-  - /651b945976b07287063e8967060724a4/sources/TestApp/repo/lib/lib.rego
-  - /651b945976b07287063e8967060724a4/sources/TestLibrary/repo/app/app.rego
-  - /651b945976b07287063e8967060724a4/sources/TestLibrary/repo/lib/lib.rego
+  - /be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/repo/app/app.rego
+  - /be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/repo/lib/lib.rego
+  - /be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/repo/app/app.rego
+  - /be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/repo/lib/lib.rego
   expected_bundle:
     rego:
       TestApp/app/app.rego: *app_rego
