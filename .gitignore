@@ -14,3 +14,5 @@ opactl_*
 /files
 /.go
 /dist
+
+.env

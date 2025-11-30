@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 )
@@ -15,12 +16,14 @@ import (
 type HttpDataSynchronizer struct {
 	path        string // The path where the data will be saved
 	url         string
+	method      string
+	body        string
 	headers     map[string]any // Headers to include in the HTTP request
 	credentials *config.SecretRef
 }
 
-func New(path string, url string, headers map[string]any, credentials *config.SecretRef) *HttpDataSynchronizer {
-	return &HttpDataSynchronizer{path: path, url: url, headers: headers, credentials: credentials}
+func New(path string, url string, method string, body string, headers map[string]any, credentials *config.SecretRef) *HttpDataSynchronizer {
+	return &HttpDataSynchronizer{path: path, url: url, method: method, body: body, headers: headers, credentials: credentials}
 }
 
 func (s *HttpDataSynchronizer) Execute(ctx context.Context) error {
@@ -34,8 +37,12 @@ func (s *HttpDataSynchronizer) Execute(ctx context.Context) error {
 		return err
 	}
 	defer f.Close()
+	var body io.Reader
+	if s.body != "" {
+		body = strings.NewReader(s.body)
+	}
 
-	req, err := http.NewRequest("GET", s.url, nil)
+	req, err := http.NewRequest(s.method, s.url, body)
 	if err != nil {
 		return err
 	}

@@ -481,8 +481,13 @@ func (src *source) SyncDatasources(syncs *[]Synchronizer, datasources []config.D
 		switch datasource.Type {
 		case "http":
 			url, _ := datasource.Config["url"].(string)
+			method, _ := datasource.Config["method"].(string)
+			if method == "" {
+				method = "GET"
+			}
+			body, _ := datasource.Config["body"].(string)
 			headers, _ := datasource.Config["headers"].(map[string]any)
-			*syncs = append(*syncs, httpsync.New(join(dir, datasource.Path, "data.json"), url, headers, datasource.Credentials))
+			*syncs = append(*syncs, httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials))
 		}
 
 		if datasource.TransformQuery != "" {
