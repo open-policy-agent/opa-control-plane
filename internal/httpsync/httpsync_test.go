@@ -24,7 +24,7 @@ func TestHTTPDataSynchronizer(t *testing.T) {
 	defer ts.Close()
 
 	file := path.Join(t.TempDir(), "foo/test.json")
-	synchronizer := New(file, ts.URL, nil, nil)
+	synchronizer := New(file, ts.URL, "", "", nil, nil)
 	err := synchronizer.Execute(context.Background())
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -66,7 +66,7 @@ func TestHTTPDataSynchronizer_Error_BadStatusCode(t *testing.T) {
 		t.Fatalf("failed to write current contents: %s", err.Error())
 	}
 
-	synchronizer := New(file, ts.URL, nil, nil)
+	synchronizer := New(file, ts.URL, "", "", nil, nil)
 	err = synchronizer.Execute(context.Background())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
