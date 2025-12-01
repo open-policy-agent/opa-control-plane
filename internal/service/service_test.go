@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -177,6 +179,156 @@ func TestRequirementsWithConflictingOverrides(t *testing.T) {
 		t.Fatal(report)
 	}
 
+}
+
+func TestSyncDatasourceHTTP(t *testing.T) {
+	payloadContents := `{"data": "data"}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "unexpected request method", http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(payloadContents))
+		if err != nil {
+			http.Error(w, "failed to write response", http.StatusInternalServerError)
+		}
+	}))
+	defer ts.Close()
+
+	tempDir := t.TempDir()
+
+	tmpl := `{
+		bundles: {
+			test_bundle: {
+				object_storage: {
+					filesystem: {
+						path: "{{ printf "%s/%s" .Path "bundles.tar.gz" }}",
+					}
+				},
+				requirements: [
+					{source: test_src},
+				],
+			},
+		},
+		sources: {
+			test_src: {
+				directory: "some/path",
+				datasources: [
+					{
+						name: "http_data",
+						path: "data",
+						type: "http",
+						config: {
+							url: "{{ .URL }}"
+						}
+					}
+				]
+			},
+		},
+	}`
+
+	bs := render(t, tmpl, struct {
+		Path string
+		URL  string
+		Body string
+	}{
+		Path: tempDir,
+		URL:  ts.URL,
+		Body: payloadContents,
+	})
+
+	svc := oneshot(t, bs, tempDir)
+	report := svc.Report()
+
+	if report.Bundles["test_bundle"].State != service.BuildStateSuccess {
+		t.Fatalf("expected bundle to be ready, got: %v", report.Bundles["test_bundle"].State.String())
+	}
+
+}
+
+func TestSyncDatasourceHTTP_PostMethodWithBody(t *testing.T) {
+	payloadContents := `{"data": "data"}`
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := new(bytes.Buffer)
+		_, err := buf.ReadFrom(r.Body)
+		if err != nil {
+			http.Error(w, "failed to read request body", http.StatusInternalServerError)
+			return
+		}
+		if buf.String() != payloadContents {
+			http.Error(w, "unexpected request body", http.StatusBadRequest)
+			return
+		}
+
+		if r.Method != "POST" {
+			http.Error(w, "unexpected request method", http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write([]byte(payloadContents))
+		if err != nil {
+			http.Error(w, "failed to write response", http.StatusInternalServerError)
+		}
+	}))
+	defer ts.Close()
+
+	tempDir := t.TempDir()
+
+	tmpl := `{
+		bundles: {
+			test_bundle: {
+				object_storage: {
+					filesystem: {
+						path: "{{ printf "%s/%s" .Path "bundles.tar.gz" }}",
+					}
+				},
+				requirements: [
+					{source: test_src},
+				],
+			},
+		},
+		sources: {
+			test_src: {
+				directory: "some/path",
+				datasources: [
+					{
+						name: "http_data",
+						path: "data",
+						type: "http",
+						config: {
+							url: "{{ .URL }}",
+							method: "POST",
+							body: '{{ .Body }}',
+							headers: {
+								"content-type": "application/json"
+							}
+						}
+					}
+				]
+			},
+		},
+	}`
+
+	bs := render(t, tmpl, struct {
+		Path string
+		URL  string
+		Body string
+	}{
+		Path: tempDir,
+		URL:  ts.URL,
+		Body: payloadContents,
+	})
+
+	svc := oneshot(t, bs, tempDir)
+	report := svc.Report()
+
+	if report.Bundles["test_bundle"].State != service.BuildStateSuccess {
+		t.Fatalf("expected bundle to be ready, got: %v", report.Bundles["test_bundle"].State.String())
+	}
 }
 
 func render(t *testing.T, tmpl string, params any) []byte {
