@@ -7,12 +7,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"reflect"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/goccy/go-yaml"
+	"golang.org/x/oauth2/clientcredentials"
 )
+
+// ClientSecret is the shared type of those secrets that can become effective by
+// returning a properly set-up *http.Client.
+// Note that this is not used everywhere yet, only for a those supported in the
+// HTTP datasource.
+type ClientSecret interface {
+	Client(context.Context) *http.Client
+}
 
 var wellknownFingerprints = []string{
 	"SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s", // github.com https://docs.github.com/en/github/authenticating-to-github/githubs-ssh-key-fingerprints
@@ -52,6 +62,7 @@ var wellknownFingerprints = []string{
 //   - "azure_auth" for Azure authentication. Values for keys "account_name" and "account_key" are expected.
 //   - "basic_auth" for HTTP basic authentication. Values for keys "username" and "password" are expected.
 //     "headers" (string array) is optional and can be used to set additional headers for the HTTP requests (currently only supported for git).
+//   - "oidc_client_credentials" for OIDC Client Credentials flow. Values for `token_url`, `client_id`, and `client_secret` are expected, `scopes` are optional (currently only supported for HTTP datasource).
 //   - "gcp_auth" for Google Cloud authentication. Value for a key "api_key" or "credentials" is expected.
 //   - "github_app_auth" for GitHub App authentication. Values for keys "integration_id", "installation_id", and "private_key" are expected.
 //   - "password" for password authentication. Value for key "password" is expected.
@@ -191,7 +202,7 @@ func (s *Secret) Typed(context.Context) (any, error) {
 			return nil, err
 		}
 
-		return value, nil
+		return &value, nil
 
 	case "token_auth":
 		var value SecretTokenAuth
@@ -199,7 +210,15 @@ func (s *Secret) Typed(context.Context) (any, error) {
 			return nil, err
 		}
 
-		return value, nil
+		return &value, nil
+
+	case "oidc_client_credentials":
+		var value SecretOIDCClientCredentials
+		if err := decode(m, &value); err != nil {
+			return nil, err
+		}
+
+		return &value, nil
 
 	case "password":
 		var value SecretPassword
@@ -256,9 +275,44 @@ type SecretBasicAuth struct {
 	Headers  []string `json:"headers,omitempty"` // Optional additional headers for HTTP requests.
 }
 
+var _ ClientSecret = (*SecretBasicAuth)(nil)
+
+func (s *SecretBasicAuth) Client(context.Context) *http.Client {
+	return wrappedClient(func(r *http.Request) *http.Request {
+		r.SetBasicAuth(s.Username, s.Password)
+		return r
+	})
+}
+
+type SecretOIDCClientCredentials struct {
+	TokenURL     string   `json:"token_endpoint"`
+	ClientID     string   `json:"client_id"`
+	ClientSecret string   `json:"client_secret"`
+	Scopes       []string `json:"scopes,omitempty"`
+}
+
+func (value *SecretOIDCClientCredentials) Client(ctx context.Context) *http.Client {
+	conf := &clientcredentials.Config{
+		ClientID:     value.ClientID,
+		ClientSecret: value.ClientSecret,
+		Scopes:       value.Scopes,
+		TokenURL:     value.TokenURL,
+	}
+	return conf.Client(ctx)
+}
+
 type SecretTokenAuth struct {
 	Token string `json:"token"` // Bearer token for HTTP authentication.
 }
+
+func (s *SecretTokenAuth) Client(context.Context) *http.Client {
+	return wrappedClient(func(r *http.Request) *http.Request {
+		r.Header.Set("Authorization", "Bearer "+s.Token)
+		return r
+	})
+}
+
+var _ ClientSecret = (*SecretTokenAuth)(nil)
 
 type SecretPassword struct {
 	Password string `json:"password"` // Password for authentication.
@@ -313,4 +367,19 @@ func decode(input any, output any) error {
 	}
 
 	return decoder.Decode(input)
+}
+
+func wrappedClient(f func(*http.Request) *http.Request) *http.Client {
+	return &http.Client{
+		Transport: &crt{f: f, w: http.DefaultTransport.(*http.Transport).Clone()},
+	}
+}
+
+type crt struct {
+	f func(*http.Request) *http.Request
+	w http.RoundTripper
+}
+
+func (c *crt) RoundTrip(req *http.Request) (*http.Response, error) {
+	return c.w.RoundTrip(c.f(req))
 }

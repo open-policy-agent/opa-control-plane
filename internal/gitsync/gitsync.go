@@ -209,7 +209,7 @@ func (s *Synchronizer) auth(ctx context.Context) (transport.AuthMethod, error) {
 	}
 
 	switch value := value.(type) {
-	case config.SecretBasicAuth:
+	case *config.SecretBasicAuth:
 		return &basicAuth{
 			Username: value.Username,
 			Password: value.Password,

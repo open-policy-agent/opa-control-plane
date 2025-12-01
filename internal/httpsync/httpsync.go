@@ -20,6 +20,11 @@ type HttpDataSynchronizer struct {
 	body        string
 	headers     map[string]any // Headers to include in the HTTP request
 	credentials *config.SecretRef
+	client      *http.Client
+}
+
+type HeaderSetter interface {
+	SetHeader(*http.Request) error
 }
 
 func New(path string, url string, method string, body string, headers map[string]any, credentials *config.SecretRef) *HttpDataSynchronizer {
@@ -37,22 +42,23 @@ func (s *HttpDataSynchronizer) Execute(ctx context.Context) error {
 		return err
 	}
 	defer f.Close()
+
+	if err := s.initClient(ctx); err != nil {
+		return fmt.Errorf("init client: %w", err)
+	}
+
 	var body io.Reader
 	if s.body != "" {
 		body = strings.NewReader(s.body)
 	}
-
 	req, err := http.NewRequest(s.method, s.url, body)
 	if err != nil {
 		return err
 	}
+	s.setHeaders(req)
+	req = req.WithContext(ctx)
 
-	err = s.setHeaders(ctx, req)
-	if err != nil {
-		return err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -70,29 +76,34 @@ func (*HttpDataSynchronizer) Close(context.Context) {
 	// No resources to close for HTTP synchronizer
 }
 
-func (s *HttpDataSynchronizer) setHeaders(ctx context.Context, req *http.Request) error {
+func (s *HttpDataSynchronizer) initClient(ctx context.Context) error {
+	if s.client != nil {
+		// We only do this once.  It cannot be done in the constructor
+		// since we want to return an error if need be.
+		return nil
+	}
+
+	if s.credentials == nil {
+		s.client = http.DefaultClient
+		return nil
+	}
+
+	secret, err := s.credentials.Resolve(ctx)
+	if err != nil {
+		return err
+	}
+
+	if secret, ok := secret.(config.ClientSecret); ok {
+		s.client = secret.Client(ctx)
+		return nil
+	}
+	return fmt.Errorf("unsupported secret type for http sync: %T", secret)
+}
+
+func (s *HttpDataSynchronizer) setHeaders(req *http.Request) {
 	for name, value := range s.headers {
 		if value, ok := value.(string); ok && value != "" {
 			req.Header.Set(name, value)
 		}
 	}
-
-	if s.credentials == nil {
-		return nil
-	}
-
-	value, err := s.credentials.Resolve(ctx)
-	if err != nil {
-		return err
-	}
-
-	switch value := value.(type) {
-	case config.SecretBasicAuth:
-		req.SetBasicAuth(value.Username, value.Password)
-	case config.SecretTokenAuth:
-		req.Header.Set("Authorization", "Bearer "+value.Token)
-	default:
-		return fmt.Errorf("unsupported authentication type: %T", value)
-	}
-	return nil
 }
