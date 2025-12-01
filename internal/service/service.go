@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -482,9 +483,8 @@ func (src *source) SyncDatasources(syncs *[]Synchronizer, datasources []config.D
 		case "http":
 			url, _ := datasource.Config["url"].(string)
 			method, _ := datasource.Config["method"].(string)
-			if method == "" {
-				method = "GET"
-			}
+			method = cmp.Or(method, "GET")
+
 			body, _ := datasource.Config["body"].(string)
 			headers, _ := datasource.Config["headers"].(map[string]any)
 			*syncs = append(*syncs, httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials))
