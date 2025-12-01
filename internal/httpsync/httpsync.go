@@ -94,8 +94,8 @@ func (s *HttpDataSynchronizer) initClient(ctx context.Context) error {
 	}
 
 	if secret, ok := secret.(config.ClientSecret); ok {
-		s.client = secret.Client(ctx)
-		return nil
+		s.client, err = secret.Client(ctx)
+		return err
 	}
 	return fmt.Errorf("unsupported secret type for http sync: %T", secret)
 }

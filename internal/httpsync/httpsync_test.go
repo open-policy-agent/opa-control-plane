@@ -271,6 +271,24 @@ func TestHTTPDataSynchronizer_WithInvalidAuthHeaders(t *testing.T) {
 // mockOIDCProvider simulates an OIDC provider for client credentials flow
 func mockOIDCProvider(clientID, clientSecret string) *httptest.Server {
 	mux := http.NewServeMux()
+
+	// Mock OIDC Discovery Endpoint
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		issuerURL := "http://" + r.Host // Dynamically get the issuer URL from the request host
+
+		type OIDCMetadata struct {
+			Issuer        string `json:"issuer"`
+			TokenEndpoint string `json:"token_endpoint"`
+		}
+
+		metadata := OIDCMetadata{
+			Issuer:        issuerURL,
+			TokenEndpoint: issuerURL + "/token",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(metadata)
+	})
+
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -325,30 +343,53 @@ func TestHTTPDataSynchronizer_OIDC_ClientCredentials(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 
-	secret := config.Secret{Name: "oidc",
-		Value: map[string]any{
-			"type":           "oidc_client_credentials",
-			"token_endpoint": oidc.URL + "/token",
-			"client_id":      "foobear",
-			"client_secret":  "1234",
-			"scopes":         []string{"A", "B"},
+	for _, tc := range []struct {
+		name   string
+		secret map[string]any
+	}{
+		{
+			name: "with token_endpoint",
+			secret: map[string]any{
+				"type":           "oidc_client_credentials",
+				"token_endpoint": oidc.URL + "/token",
+				"client_id":      "foobear",
+				"client_secret":  "1234",
+				"scopes":         []string{"A", "B"},
+			},
 		},
-	}
+		{
+			name: "with issuer",
+			secret: map[string]any{
+				"type":          "oidc_client_credentials",
+				"issuer":        oidc.URL,
+				"client_id":     "foobear",
+				"client_secret": "1234",
+				"scopes":        []string{"A", "B"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 
-	file := path.Join(t.TempDir(), "foo/test.json")
-	extra := map[string]any{"abc": "def"}
-	synchronizer := New(file, ts.URL, "GET", "", extra, secret.Ref())
-	err := synchronizer.Execute(context.Background())
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
+			secret := config.Secret{Name: "oidc",
+				Value: tc.secret,
+			}
 
-	data, err := os.ReadFile(file)
-	if err != nil {
-		t.Fatalf("expected no error while reading file, got: %v", err)
-	}
+			file := path.Join(t.TempDir(), "foo/test.json")
+			extra := map[string]any{"abc": "def"}
+			synchronizer := New(file, ts.URL, "GET", "", extra, secret.Ref())
+			err := synchronizer.Execute(context.Background())
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
 
-	if !bytes.Equal(data, []byte(contents)) {
-		t.Fatal("downloaded data does not match expected contents")
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("expected no error while reading file, got: %v", err)
+			}
+
+			if !bytes.Equal(data, []byte(contents)) {
+				t.Fatal("downloaded data does not match expected contents")
+			}
+		})
 	}
 }
