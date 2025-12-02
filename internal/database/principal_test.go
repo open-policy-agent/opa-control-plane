@@ -28,21 +28,29 @@ func TestCascadingDeletesForPrincipalsAndResourcePermissions(t *testing.T) {
 				t.Fatalf("expected no error, got %v", err)
 			}
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "test", Role: "administrator"}); err != nil {
+			if _, err := db.DB().ExecContext(ctx, "INSERT INTO tenants (name) VALUES ('tenant01')"); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "test", Tenant: "tenant01", Role: "administrator"}); err != nil {
 				t.Fatal(err)
 			}
 
 			var count int
-
 			if err := db.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM resource_permissions").Scan(&count); err != nil {
 				t.Fatal(err)
 			} else if count != 0 {
 				t.Fatal("expected count to be zero")
 			}
 
+			var tenantID int
+			if err := db.DB().QueryRowContext(ctx, "SELECT id FROM tenants WHERE name = 'tenant01'").Scan(&tenantID); err != nil {
+				t.Fatalf("getting tenant ID: %v", err)
+			}
+
 			for i := range 100 { // arbitrary number of perms
 				if _, err := db.DB().ExecContext(ctx,
-					fmt.Sprintf("INSERT INTO resource_permissions (name, resource, principal_id, role) VALUES ('%s', '%s', '%s', '%s')", "xyz"+strconv.Itoa(i), "bundles", "test", "owner"),
+					fmt.Sprintf("INSERT INTO resource_permissions (name, resource, principal_id, role, tenant_id) VALUES ('%s', '%s', '%s', '%s', %d)", "xyz"+strconv.Itoa(i), "bundles", "test", "owner", tenantID),
 				); err != nil {
 					t.Fatal(err)
 				}

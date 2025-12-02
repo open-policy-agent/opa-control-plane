@@ -21,6 +21,8 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/server/types"
 )
 
+const defaultTenant = "default"
+
 type Server struct {
 	router    *http.ServeMux
 	db        *database.Database
@@ -118,7 +120,8 @@ func (s *Server) v1BundlesList(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	opts := s.listOptions(r)
-	bundles, nextCursor, err := s.db.ListBundles(ctx, s.auth(r), opts)
+	principal, tenant := s.auth(r)
+	bundles, nextCursor, err := s.db.ListBundles(ctx, principal, tenant, opts)
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -151,7 +154,8 @@ func (s *Server) v1BundlesPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.db.UpsertBundle(ctx, s.auth(r), &b); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.UpsertBundle(ctx, principal, tenant, &b); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -169,7 +173,8 @@ func (s *Server) v1BundlesGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	b, err := s.db.GetBundle(ctx, s.auth(r), name)
+	principal, tenant := s.auth(r)
+	b, err := s.db.GetBundle(ctx, principal, tenant, name)
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -188,7 +193,8 @@ func (s *Server) v1BundlesDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.db.DeleteBundle(ctx, s.auth(r), name); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.DeleteBundle(ctx, principal, tenant, name); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -200,7 +206,8 @@ func (s *Server) v1BundlesDelete(w http.ResponseWriter, r *http.Request) {
 func (s *Server) v1SourcesList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	opts := s.listOptions(r)
-	sources, nextCursor, err := s.db.ListSources(ctx, s.auth(r), opts)
+	principal, tenant := s.auth(r)
+	sources, nextCursor, err := s.db.ListSources(ctx, principal, tenant, opts)
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -232,7 +239,8 @@ func (s *Server) v1SourcesPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.db.UpsertSource(ctx, s.auth(r), &src); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.UpsertSource(ctx, principal, tenant, &src); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -250,7 +258,8 @@ func (s *Server) v1SourcesGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	src, err := s.db.GetSource(ctx, s.auth(r), name)
+	principal, tenant := s.auth(r)
+	src, err := s.db.GetSource(ctx, principal, tenant, name)
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -269,7 +278,8 @@ func (s *Server) v1SourcesDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.db.DeleteSource(ctx, s.auth(r), name); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.DeleteSource(ctx, principal, tenant, name); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -288,7 +298,8 @@ func (s *Server) v1SourcesDataGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, ok, err := s.db.SourcesDataGet(ctx, name, path.Join(r.PathValue("path"), "data.json"), s.auth(r))
+	principal, tenant := s.auth(r)
+	data, ok, err := s.db.SourcesDataGet(ctx, name, path.Join(r.PathValue("path"), "data.json"), principal, tenant)
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -319,8 +330,8 @@ func (s *Server) v1SourcesDataPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.db.SourcesDataPut(ctx, name, path.Join(r.PathValue("path"), "data.json"), value, s.auth(r))
-	if err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.SourcesDataPut(ctx, name, path.Join(r.PathValue("path"), "data.json"), value, principal, tenant); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -344,7 +355,8 @@ func (s *Server) v1SourcesDataPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.db.SourcesDataPatch(ctx, name, path.Join(r.PathValue("path"), "data.json"), s.auth(r), patch); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.SourcesDataPatch(ctx, name, path.Join(r.PathValue("path"), "data.json"), principal, tenant, patch); err != nil {
 		if pe := (&jsonpatch.PatchError{}); errors.As(err, &pe) {
 			writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		} else {
@@ -367,8 +379,8 @@ func (s *Server) v1SourcesDataDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.db.SourcesDataDelete(ctx, name, path.Join(r.PathValue("path"), "data.json"), s.auth(r))
-	if err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.SourcesDataDelete(ctx, name, path.Join(r.PathValue("path"), "data.json"), principal, tenant); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -381,7 +393,8 @@ func (s *Server) v1SourcesDataDelete(w http.ResponseWriter, r *http.Request) {
 func (s *Server) v1StacksList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	opts := s.listOptions(r)
-	stacks, nextCursor, err := s.db.ListStacks(ctx, s.auth(r), opts)
+	principal, tenant := s.auth(r)
+	stacks, nextCursor, err := s.db.ListStacks(ctx, principal, tenant, opts)
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -401,7 +414,8 @@ func (s *Server) v1StacksGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stack, err := s.db.GetStack(ctx, s.auth(r), name)
+	principal, tenant := s.auth(r)
+	stack, err := s.db.GetStack(ctx, principal, tenant, name)
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -420,7 +434,8 @@ func (s *Server) v1StacksDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.db.DeleteStack(ctx, s.auth(r), name); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.DeleteStack(ctx, principal, tenant, name); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -452,7 +467,8 @@ func (s *Server) v1StacksPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.db.UpsertStack(ctx, s.auth(r), &stack); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.UpsertStack(ctx, principal, tenant, &stack); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -464,7 +480,8 @@ func (s *Server) v1StacksPut(w http.ResponseWriter, r *http.Request) {
 func (s *Server) v1SecretsList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	opts := s.listOptions(r)
-	secrets, nextCursor, err := s.db.ListSecrets(ctx, s.auth(r), opts)
+	principal, tenant := s.auth(r)
+	secrets, nextCursor, err := s.db.ListSecrets(ctx, principal, tenant, opts)
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -483,7 +500,8 @@ func (s *Server) v1SecretsGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	secret, err := s.db.GetSecret(ctx, s.auth(r), name)
+	principal, tenant := s.auth(r)
+	secret, err := s.db.GetSecret(ctx, principal, tenant, name)
 	if err != nil {
 		errorAuto(w, err)
 		return
@@ -502,7 +520,8 @@ func (s *Server) v1SecretsDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.db.DeleteSecret(ctx, s.auth(r), name); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.DeleteSecret(ctx, principal, tenant, name); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -533,7 +552,8 @@ func (s *Server) v1SecretsPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.db.UpsertSecret(ctx, s.auth(r), &secret); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.db.UpsertSecret(ctx, principal, tenant, &secret); err != nil {
 		errorAuto(w, err)
 		return
 	}
@@ -542,7 +562,11 @@ func (s *Server) v1SecretsPut(w http.ResponseWriter, r *http.Request) {
 	JSONOK(w, resp, pretty(r))
 }
 
-func (*Server) auth(r *http.Request) string {
+type authData struct {
+	principal, tenant string
+}
+
+func (*Server) auth(r *http.Request) (string, string) {
 	p := r.Context().Value(principalKey{})
 	if p == nil {
 		// NOTE(tsandall): this should never be reached because the
@@ -551,7 +575,8 @@ func (*Server) auth(r *http.Request) string {
 		// the server that must be fixed.
 		panic("unreachable")
 	}
-	return p.(string)
+	x := p.(authData)
+	return x.principal, x.tenant
 }
 
 const pageLimitMax = 100
@@ -656,7 +681,8 @@ func authenticationMiddleware(db *database.Database) func(http.Handler) http.Han
 				return
 			}
 
-			inner.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, principalId)))
+			auth := authData{principal: principalId, tenant: defaultTenant} // TODO(sr): figure out how to tie tenant to API requests (header?)
+			inner.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, auth)))
 		})
 	}
 }

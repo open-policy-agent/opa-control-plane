@@ -15,6 +15,14 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
 )
 
+const tenant = "default"
+
+var principal = database.Principal{
+	Id:     "admin",
+	Role:   "administrator",
+	Tenant: tenant,
+}
+
 func TestDatabase(t *testing.T) {
 	ctx := t.Context()
 	t.Setenv("API_TOKEN", "sesame")
@@ -25,7 +33,9 @@ func TestDatabase(t *testing.T) {
 			var ctr testcontainers.Container
 			if databaseConfig.Setup != nil {
 				ctr = databaseConfig.Setup(t)
-				t.Cleanup(databaseConfig.Cleanup(t, ctr))
+				if databaseConfig.Cleanup != nil {
+					t.Cleanup(databaseConfig.Cleanup(t, ctr))
+				}
 			}
 
 			db, err := migrations.New().WithConfig(databaseConfig.Database(t, ctr).Database).WithMigrate(true).Run(ctx)
@@ -35,7 +45,7 @@ func TestDatabase(t *testing.T) {
 
 			defer db.CloseDB()
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "admin", Role: "administrator"}); err != nil {
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
 				t.Fatal(err)
 			}
 
@@ -424,7 +434,7 @@ func (tc *testCase) GetPrincipalByToken(token, exp string) *testCase {
 			t.Fatal(err)
 		}
 		if act != exp {
-			t.Errorf("expecited %q, got %q", exp, act)
+			t.Fatalf("expected %q, got %q", exp, act)
 		}
 	})
 	return tc
@@ -432,7 +442,7 @@ func (tc *testCase) GetPrincipalByToken(token, exp string) *testCase {
 
 func (tc *testCase) SourcesGetData(srcID, dataID string, expected any) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		data, found, err := db.SourcesDataGet(ctx, srcID, dataID, "admin")
+		data, found, err := db.SourcesDataGet(ctx, srcID, dataID, "admin", tenant)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -455,8 +465,12 @@ func (tc *testCase) SourcesGetData(srcID, dataID string, expected any) *testCase
 
 func (tc *testCase) SourcesQueryData(srcID string, expected map[string][]byte) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		id, err := db.QuerySourceID(ctx, tenant, srcID)
+		if err != nil {
+			t.Fatal(srcID, err)
+		}
 		data := make(map[string][]byte)
-		for d, err := range db.QuerySourceData(srcID)(ctx) {
+		for d, err := range db.QuerySourceData(id, srcID)(ctx) {
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -472,7 +486,7 @@ func (tc *testCase) SourcesQueryData(srcID string, expected map[string][]byte) *
 
 func (tc *testCase) SourcesPutData(srcID, dataID string, data any) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.SourcesDataPut(ctx, srcID, dataID, data, "admin"); err != nil {
+		if err := db.SourcesDataPut(ctx, srcID, dataID, data, "admin", tenant); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})
@@ -481,7 +495,7 @@ func (tc *testCase) SourcesPutData(srcID, dataID string, data any) *testCase {
 
 func (tc *testCase) SourcesDeleteData(srcID, dataID string) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.SourcesDataDelete(ctx, srcID, dataID, "admin"); err != nil {
+		if err := db.SourcesDataDelete(ctx, srcID, dataID, "admin", tenant); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})
@@ -490,7 +504,7 @@ func (tc *testCase) SourcesDeleteData(srcID, dataID string) *testCase {
 
 func (tc *testCase) SourcesPutRequirements(id string, requirements config.Requirements) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.UpsertSource(ctx, "admin", &config.Source{
+		if err := db.UpsertSource(ctx, "admin", tenant, &config.Source{
 			Name:         id,
 			Requirements: requirements,
 		}); err != nil {
@@ -502,7 +516,7 @@ func (tc *testCase) SourcesPutRequirements(id string, requirements config.Requir
 
 func (tc *testCase) LoadConfig(root config.Root) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.LoadConfig(ctx, nil, "admin", &root); err != nil {
+		if err := db.LoadConfig(ctx, nil, "admin", tenant, &root); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})
@@ -518,7 +532,7 @@ func (tc *testCase) ListBundles(expected []*config.Bundle) *testCase {
 			var bundles []*config.Bundle
 			var err error
 			limit := 2
-			bundles, cursor, err = db.ListBundles(ctx, "admin", database.ListOptions{Limit: limit, Cursor: cursor})
+			bundles, cursor, err = db.ListBundles(ctx, "admin", tenant, database.ListOptions{Limit: limit, Cursor: cursor})
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -539,7 +553,7 @@ func (tc *testCase) ListBundles(expected []*config.Bundle) *testCase {
 
 func (tc *testCase) ListBundlesPagination(limit int, expected []*config.Bundle) *testCase { // NB(sr): limit large enough so that we capture system1 which has requirements
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		bundles, _, err := db.ListBundles(ctx, "admin", database.ListOptions{Limit: limit})
+		bundles, _, err := db.ListBundles(ctx, "admin", tenant, database.ListOptions{Limit: limit})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -554,7 +568,7 @@ func (tc *testCase) ListBundlesPagination(limit int, expected []*config.Bundle) 
 
 func (tc *testCase) BundlesPutRequirements(id string, requirements config.Requirements) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.UpsertBundle(ctx, "admin", &config.Bundle{
+		if err := db.UpsertBundle(ctx, "admin", tenant, &config.Bundle{
 			Name:         id,
 			Requirements: requirements,
 		}); err != nil {
@@ -566,7 +580,7 @@ func (tc *testCase) BundlesPutRequirements(id string, requirements config.Requir
 
 func (tc *testCase) GetBundle(id string, expected *config.Bundle) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		bundle, err := db.GetBundle(ctx, "admin", id)
+		bundle, err := db.GetBundle(ctx, "admin", tenant, id)
 		if err != nil && err != database.ErrNotFound {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -602,7 +616,7 @@ func (tc *testCase) ListSources(expected []*config.Source) *testCase {
 			var sources []*config.Source
 			var err error
 			limit := 2
-			sources, cursor, err = db.ListSources(ctx, "admin", database.ListOptions{Limit: limit, Cursor: cursor})
+			sources, cursor, err = db.ListSources(ctx, "admin", tenant, database.ListOptions{Limit: limit, Cursor: cursor})
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -624,7 +638,7 @@ func (tc *testCase) ListSources(expected []*config.Source) *testCase {
 
 func (tc *testCase) ListSourcesPagination(limit int, expected []*config.Source) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		sources, _, err := db.ListSources(ctx, "admin", database.ListOptions{Limit: limit})
+		sources, _, err := db.ListSources(ctx, "admin", tenant, database.ListOptions{Limit: limit})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -639,7 +653,7 @@ func (tc *testCase) ListSourcesPagination(limit int, expected []*config.Source) 
 
 func (tc *testCase) GetSource(id string, expected *config.Source) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		source, err := db.GetSource(ctx, "admin", id)
+		source, err := db.GetSource(ctx, "admin", tenant, id)
 		if err != nil && err != database.ErrNotFound {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -675,7 +689,7 @@ func (tc *testCase) ListSecrets(expected []*config.SecretRef) *testCase {
 			var secrets []*config.SecretRef
 			var err error
 			limit := 4
-			secrets, cursor, err = db.ListSecrets(ctx, "admin", database.ListOptions{Limit: limit, Cursor: cursor})
+			secrets, cursor, err = db.ListSecrets(ctx, "admin", tenant, database.ListOptions{Limit: limit, Cursor: cursor})
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -698,7 +712,7 @@ func (tc *testCase) ListSecrets(expected []*config.SecretRef) *testCase {
 
 func (tc *testCase) GetSecret(id string, expected *config.SecretRef) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		secret, err := db.GetSecret(ctx, "admin", id)
+		secret, err := db.GetSecret(ctx, "admin", tenant, id)
 		if err != nil && err != database.ErrNotFound {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -734,7 +748,7 @@ func (tc *testCase) ListStacks(expected []*config.Stack) *testCase {
 			var stacks []*config.Stack
 			var err error
 			limit := 4
-			stacks, cursor, err = db.ListStacks(ctx, "admin", database.ListOptions{Limit: limit, Cursor: cursor})
+			stacks, cursor, err = db.ListStacks(ctx, "admin", tenant, database.ListOptions{Limit: limit, Cursor: cursor})
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -755,7 +769,7 @@ func (tc *testCase) ListStacks(expected []*config.Stack) *testCase {
 
 func (tc *testCase) ListStacksPagination(limit int, expected []*config.Stack) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		stacks, _, err := db.ListStacks(ctx, "admin", database.ListOptions{Limit: limit})
+		stacks, _, err := db.ListStacks(ctx, "admin", tenant, database.ListOptions{Limit: limit})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -770,7 +784,7 @@ func (tc *testCase) ListStacksPagination(limit int, expected []*config.Stack) *t
 
 func (tc *testCase) GetStack(id string, expected *config.Stack) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		stack, err := db.GetStack(ctx, "admin", id)
+		stack, err := db.GetStack(ctx, "admin", tenant, id)
 		if err != nil && err != database.ErrNotFound {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -797,9 +811,9 @@ func (tc *testCase) DeleteStack(id string, expSuccess bool) *testCase {
 	return tc
 }
 
-func (tc *testCase) deleteBy(by func(*database.Database, context.Context, string, string) error, id string, expSuccess bool) *testCase {
+func (tc *testCase) deleteBy(by func(*database.Database, context.Context, string, string, string) error, id string, expSuccess bool) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		err := by(db, ctx, "admin", id)
+		err := by(db, ctx, "admin", tenant, id)
 		// NB(sr): we're rather loose with the error matching because these tests run
 		// with all three backends and the error types returned are driver-specific.
 		if !expSuccess && err == nil {

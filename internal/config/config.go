@@ -456,6 +456,7 @@ func (s *Bundle) Equal(other *Bundle) bool {
 
 // Source defines the configuration for an OPA Control Plane Source.
 type Source struct {
+	ID            int64        `json:"-"`
 	Name          string       `json:"name"`
 	Builtin       *string      `json:"builtin,omitempty"`
 	Git           Git          `json:"git,omitzero"`

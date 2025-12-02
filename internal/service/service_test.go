@@ -107,11 +107,20 @@ func TestRequirementsWithOverrides(t *testing.T) {
 	svc := oneshot(t, bs, tempDir)
 	_ = svc.Report()
 
-	foo, err := os.ReadFile(filepath.Join(tempDir, "data", "8d72363cb5de6ec0608d85a601a02e4c", "sources", "test_src", "repo", "foo.rego"))
+	glob := filepath.Join(tempDir, "data", "*", "sources", "test_src", "repo", "foo.rego")
+	matches, err := filepath.Glob(glob)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Failed to glob for foo.rego: %v", err)
+	}
+	if len(matches) == 0 {
+		t.Fatalf("No foo.rego file found matching pattern: %s", glob)
 	}
 
+	filePath := matches[0]
+	foo, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatalf("Failed to read file %s: %v", filePath, err)
+	}
 	if string(foo) != initialContent {
 		t.Fatal("unexpected file content")
 	}
@@ -175,7 +184,7 @@ func TestRequirementsWithConflictingOverrides(t *testing.T) {
 
 	report := oneshot(t, bs, tempDir).Report()
 
-	if report.Bundles["test_bundle"].State != service.BuildStateConfigError || report.Bundles["test_bundle"].Message != `requirements on "test_src" conflict` {
+	if report.Bundles["test_bundle"].State != service.BuildStateConfigError || report.Bundles["test_bundle"].Message != `requirements on "test_src" (default) conflict` {
 		t.Fatal(report)
 	}
 

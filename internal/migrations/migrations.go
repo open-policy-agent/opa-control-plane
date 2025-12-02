@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -17,6 +18,7 @@ import (
 	migrate_source "github.com/golang-migrate/migrate/v4/source"
 	migrate_iofs "github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/spf13/pflag"
+	"github.com/yalue/merged_fs"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
@@ -27,6 +29,16 @@ const (
 	maxRetries = 5
 	retryDelay = "2s"
 )
+
+func Migrations(dialect string) (fs.FS, error) {
+	return merged_fs.MergeMultiple(
+		initialSchemaFS(dialect),
+		addMounts(dialect),
+		addBundleInterval(dialect),
+		addBundleOptions(dialect), // up until #18
+		crossTablesWithIDPKeys(19, dialect),
+	), nil
+}
 
 type Migrator struct {
 	config  *config.Database
