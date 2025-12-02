@@ -41,7 +41,7 @@ func TestParseSecretResolve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exp := config.SecretBasicAuth{
+	exp := &config.SecretBasicAuth{
 		Username: "bob",
 		Password: "passw0rd",
 	}

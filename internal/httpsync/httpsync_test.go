@@ -3,10 +3,12 @@ package httpsync
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
@@ -251,7 +253,7 @@ func TestHTTPDataSynchronizer_WithInvalidAuthHeaders(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
-	expectedError := "unknown secret type \"invalid_auth\""
+	expectedError := "init client: unknown secret type \"invalid_auth\""
 	if err.Error() != expectedError {
 		t.Fatalf("expected error %q, got %q", expectedError, err.Error())
 	}
@@ -263,5 +265,131 @@ func TestHTTPDataSynchronizer_WithInvalidAuthHeaders(t *testing.T) {
 
 	if len(data) != 0 {
 		t.Fatal("downloaded data should be empty after an error")
+	}
+}
+
+// mockOIDCProvider simulates an OIDC provider for client credentials flow
+func mockOIDCProvider(clientID, clientSecret string) *httptest.Server {
+	mux := http.NewServeMux()
+
+	// Mock OIDC Discovery Endpoint
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		issuerURL := "http://" + r.Host // Dynamically get the issuer URL from the request host
+
+		type OIDCMetadata struct {
+			Issuer        string `json:"issuer"`
+			TokenEndpoint string `json:"token_endpoint"`
+		}
+
+		metadata := OIDCMetadata{
+			Issuer:        issuerURL,
+			TokenEndpoint: issuerURL + "/token",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(metadata)
+	})
+
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+			return
+		}
+		if r.Form.Get("grant_type") != "client_credentials" {
+			http.Error(w, "Unsupported grant type", http.StatusBadRequest)
+			return
+		}
+		if r.Form.Get("client_id") != clientID || r.Form.Get("client_secret") != clientSecret {
+			http.Error(w, "Invalid client credentials", http.StatusUnauthorized)
+			return
+		}
+
+		requestedScopes := r.Form.Get("scope")
+		tokenResponse := map[string]any{
+			"access_token": "mock_access_token_" + strings.ReplaceAll(requestedScopes, " ", "_"),
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+			"scope":        requestedScopes,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(tokenResponse)
+	})
+
+	return httptest.NewServer(mux)
+}
+
+func TestHTTPDataSynchronizer_OIDC_ClientCredentials(t *testing.T) {
+	oidc := mockOIDCProvider("foobear", "1234")
+	t.Cleanup(oidc.Close)
+
+	contents := `{"key": "value"}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		hdr := r.Header.Get("Authorization")
+		if hdr != "Bearer mock_access_token_A_B" {
+			t.Logf("unexpected header: %q", hdr)
+			http.Error(w, "failed to write response", http.StatusUnauthorized)
+			return
+		}
+
+		_, err := w.Write([]byte(contents))
+		if err != nil {
+			http.Error(w, "failed to write response", http.StatusInternalServerError)
+		}
+	}))
+	t.Cleanup(ts.Close)
+
+	for _, tc := range []struct {
+		name   string
+		secret map[string]any
+	}{
+		{
+			name: "with token_endpoint",
+			secret: map[string]any{
+				"type":           "oidc_client_credentials",
+				"token_endpoint": oidc.URL + "/token",
+				"client_id":      "foobear",
+				"client_secret":  "1234",
+				"scopes":         []string{"A", "B"},
+			},
+		},
+		{
+			name: "with issuer",
+			secret: map[string]any{
+				"type":          "oidc_client_credentials",
+				"issuer":        oidc.URL,
+				"client_id":     "foobear",
+				"client_secret": "1234",
+				"scopes":        []string{"A", "B"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+
+			secret := config.Secret{Name: "oidc",
+				Value: tc.secret,
+			}
+
+			file := path.Join(t.TempDir(), "foo/test.json")
+			extra := map[string]any{"abc": "def"}
+			synchronizer := New(file, ts.URL, "GET", "", extra, secret.Ref())
+			err := synchronizer.Execute(context.Background())
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("expected no error while reading file, got: %v", err)
+			}
+
+			if !bytes.Equal(data, []byte(contents)) {
+				t.Fatal("downloaded data does not match expected contents")
+			}
+		})
 	}
 }
