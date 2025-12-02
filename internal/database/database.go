@@ -414,6 +414,7 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 
 		expr, err := authz.Partial(ctx, authz.Access{
 			Principal:  principal,
+			Tenant:     tenant,
 			Permission: "sources.data.read",
 			Resource:   "sources",
 			Name:       sourceName,
@@ -1720,7 +1721,7 @@ func (d *Database) UpsertToken(ctx context.Context, principal, tenant string, to
 			return err
 		}
 
-		return d.UpsertPrincipalTx(ctx, tx, Principal{Id: token.Name, Role: token.Scopes[0].Role})
+		return d.UpsertPrincipalTx(ctx, tx, Principal{Id: token.Name, Role: token.Scopes[0].Role, Tenant: tenant})
 	})
 }
 

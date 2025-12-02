@@ -12,7 +12,6 @@ import (
 // NOTE(sr): We create new tables to drop constraints. It's hard to predict constraint names
 // across MySQL and Postgres if they have not been set up at creation time.
 // The only tables left untouched from before are:
-// - principals
 // - tokens
 // NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,
 // in a single transaction.
@@ -66,6 +65,13 @@ var v2Tables = []sqlTable{
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		VarCharNonNullColumn("name").
 		Unique("name"),
+
+	createSQLTable("principals").
+		VarCharPrimaryKeyColumn("id").
+		IntegerNonNullColumn("tenant_id").
+		Unique("tenant_id", "id").
+		TextNonNullColumn("role").
+		TimestampDefaultCurrentTimeColumn("created_at"),
 
 	// This is backing our ownership logic -- it's referencing other tables in a weak manner:
 	// e.g. resource = "bundles", name = "my-bundle". Since all our names are only unique in

@@ -2,9 +2,12 @@ package authz
 
 import (
 	"database/sql"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	_ "modernc.org/sqlite"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
@@ -19,38 +22,25 @@ func TestPartialStringArgs(t *testing.T) {
 	}
 
 	cond, args := result.SQL(func(int) string { return "?" }, nil)
-	expCond := `EXISTS (SELECT 1 FROM resource_permissions, tenants WHERE resource_permissions.name=sources.name AND ?=resource_permissions.resource AND ?=resource_permissions.principal_id AND ?=resource_permissions.permission AND resource_permissions.tenant_id=tenants.id AND ?=tenants.name) ` +
-		`OR EXISTS (SELECT 1 FROM resource_permissions, tenants WHERE resource_permissions.name=sources.name AND ?=resource_permissions.resource AND ?=resource_permissions.principal_id AND ?=tenants.name AND resource_permissions.tenant_id=tenants.id AND resource_permissions.role=?) ` +
-		`OR EXISTS (SELECT 1 FROM principals WHERE ?=principals.id AND principals.role=?) ` +
-		`OR EXISTS (SELECT 1 FROM principals WHERE ?=principals.id AND principals.role=?)`
+	actCond := strings.Split(cond, " OR ")
+	// split args according to ordering in actCond
+	window := args
+	var this []any
+	for i := range actCond {
+		size := strings.Count(actCond[i], "?")
+		this, window = window[:size], window[size:]
+		actCond[i] += fmt.Sprintf(" %v", this)
+	}
 
-	if diff := cmp.Diff(expCond, cond); diff != "" {
+	expCond := []string{
+		`EXISTS (SELECT 1 FROM resource_permissions, tenants WHERE resource_permissions.name=sources.name AND ?=resource_permissions.resource AND ?=resource_permissions.principal_id AND ?=resource_permissions.permission AND ?=tenants.name AND resource_permissions.tenant_id=tenants.id) [sources bob sources.view One]`,
+		`EXISTS (SELECT 1 FROM resource_permissions, tenants WHERE resource_permissions.name=sources.name AND ?=resource_permissions.resource AND ?=resource_permissions.principal_id AND ?=tenants.name AND resource_permissions.tenant_id=tenants.id AND resource_permissions.role=?) [sources bob One owner]`,
+		`EXISTS (SELECT 1 FROM principals, tenants WHERE ?=principals.id AND principals.role=? AND ?=tenants.name AND principals.tenant_id=tenants.id) [bob viewer One]`,
+		`EXISTS (SELECT 1 FROM principals, tenants WHERE ?=principals.id AND principals.role=? AND ?=tenants.name AND principals.tenant_id=tenants.id) [bob administrator One]`,
+	}
+
+	if diff := cmp.Diff(expCond, actCond, cmpopts.SortSlices(func(a, b string) bool { return a < b })); diff != "" {
 		t.Fatalf("unexpected condition (-want,+got):\n%s", diff)
-	}
-	expArgs := []any{
-		"sources",
-		"bob",
-		"sources.view",
-		"One",
-		"sources",
-		"bob",
-		"One",
-		"owner",
-	}
-	if diff := cmp.Diff(expArgs, args[:8]); diff != "" {
-		t.Fatal("unexpected first 8 args (-want, +got)", diff)
-	}
-
-	expBob1 := []any{
-		"bob", "administrator",
-		"bob", "viewer",
-	}
-	expBob2 := []any{
-		"bob", "viewer",
-		"bob", "administrator",
-	}
-	if diff1, diff2 := cmp.Diff(expBob1, args[8:]), cmp.Diff(expBob2, args[8:]); diff1 != "" && diff2 != "" {
-		t.Fatal("unexpected last 4 args (-want, +got)", diff1, diff2)
 	}
 }
 
@@ -70,13 +60,13 @@ func TestPartial(t *testing.T) {
 	}
 	query("CREATE TABLE sources (name TEXT)")
 	query("CREATE TABLE tenants (id INTEGER, name TEXT)")
-	query("CREATE TABLE principals (id TEXT, role TEXT)")
-	query("CREATE TABLE resource_permissions (name TEXT, resource TEXT, principal_id TEXT, role TEXT, permission TEXT, tenant_id INT)")
+	query("CREATE TABLE principals (id TEXT, tenant_id INTEGER, role TEXT)")
+	query("CREATE TABLE resource_permissions (name TEXT, resource TEXT, principal_id INTEGER, role TEXT, permission TEXT, tenant_id INT)")
 	query("INSERT INTO sources (name) VALUES ('source')")
 	query("INSERT INTO tenants (id, name ) VALUES (1, 'foo')")
 	query("INSERT INTO tenants (id, name ) VALUES (2, 'bar')")
-	query("INSERT INTO principals (id, role) VALUES ('alice', 'administrator')")
-	query("INSERT INTO principals (id, role) VALUES ('bob', 'viewer')")
+	query("INSERT INTO principals (id, tenant_id, role) VALUES ('alice', 1, 'administrator')")
+	query("INSERT INTO principals (id, tenant_id, role) VALUES ('bob', 1, 'viewer')")
 	query("INSERT INTO resource_permissions (name, resource, principal_id, role, permission, tenant_id) VALUES ('source', 'sources', 'bob', 'viewer', 'sources.view', 1)")
 
 	testCases := []struct {
@@ -93,7 +83,7 @@ func TestPartial(t *testing.T) {
 		{
 			name:   "allow access, other tenant",
 			access: Access{Principal: "alice", Resource: "sources", Permission: "sources.create", Tenant: "bar"},
-			allow:  true, // alice admin has full access --> admins are above tenants atm
+			allow:  false, // alise is admin in "foo", but nobody in "bar"
 		},
 		{
 			name:   "deny access",
@@ -102,7 +92,7 @@ func TestPartial(t *testing.T) {
 		},
 		{
 			name:   "allow with extra columns",
-			access: Access{Principal: "bob", Resource: "sources", Permission: "sources.viewer", Tenant: "foo"},
+			access: Access{Principal: "bob", Resource: "sources", Permission: "sources.view", Tenant: "foo"},
 			extraColumnMappings: map[string]ColumnRef{
 				"input.name": {Table: "sources", Column: "name"},
 			},
@@ -110,7 +100,7 @@ func TestPartial(t *testing.T) {
 		},
 		{
 			name:   "deny in other tenant",
-			access: Access{Principal: "bob", Resource: "sources", Permission: "sources.viewer", Tenant: "bar"},
+			access: Access{Principal: "bob", Resource: "sources", Permission: "sources.view", Tenant: "bar"},
 			extraColumnMappings: map[string]ColumnRef{
 				"input.name": {Table: "sources", Column: "name"},
 			},

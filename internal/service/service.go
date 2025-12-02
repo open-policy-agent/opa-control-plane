@@ -238,7 +238,7 @@ func (s *Service) initDB(ctx context.Context) error {
 	}
 	s.database = *db
 
-	if err := s.database.UpsertPrincipal(ctx, database.Principal{Id: internalPrincipal, Role: "administrator"}); err != nil {
+	if err := s.database.UpsertPrincipal(ctx, database.Principal{Id: internalPrincipal, Tenant: defaultTenant, Role: "administrator"}); err != nil {
 		return err
 	}
 

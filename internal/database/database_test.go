@@ -17,6 +17,12 @@ import (
 
 const tenant = "default"
 
+var principal = database.Principal{
+	Id:     "admin",
+	Role:   "administrator",
+	Tenant: tenant,
+}
+
 func TestDatabase(t *testing.T) {
 	ctx := t.Context()
 	t.Setenv("API_TOKEN", "sesame")
@@ -39,7 +45,7 @@ func TestDatabase(t *testing.T) {
 
 			defer db.CloseDB()
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "admin", Role: "administrator"}); err != nil {
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
 				t.Fatal(err)
 			}
 
@@ -428,7 +434,7 @@ func (tc *testCase) GetPrincipalByToken(token, exp string) *testCase {
 			t.Fatal(err)
 		}
 		if act != exp {
-			t.Fatalf("expecited %q, got %q", exp, act)
+			t.Fatalf("expected %q, got %q", exp, act)
 		}
 	})
 	return tc
@@ -436,7 +442,7 @@ func (tc *testCase) GetPrincipalByToken(token, exp string) *testCase {
 
 func (tc *testCase) SourcesGetData(srcID, dataID string, expected any) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		data, found, err := db.SourcesDataGet(ctx, srcID, dataID, "admin", "default")
+		data, found, err := db.SourcesDataGet(ctx, srcID, dataID, "admin", tenant)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -480,7 +486,7 @@ func (tc *testCase) SourcesQueryData(srcID string, expected map[string][]byte) *
 
 func (tc *testCase) SourcesPutData(srcID, dataID string, data any) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.SourcesDataPut(ctx, srcID, dataID, data, "admin", "default"); err != nil {
+		if err := db.SourcesDataPut(ctx, srcID, dataID, data, "admin", tenant); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})
@@ -489,7 +495,7 @@ func (tc *testCase) SourcesPutData(srcID, dataID string, data any) *testCase {
 
 func (tc *testCase) SourcesDeleteData(srcID, dataID string) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
-		if err := db.SourcesDataDelete(ctx, srcID, dataID, "admin", "default"); err != nil {
+		if err := db.SourcesDataDelete(ctx, srcID, dataID, "admin", tenant); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})

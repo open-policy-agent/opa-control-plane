@@ -22,6 +22,14 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
 )
 
+const tenant = "default"
+
+var principal = database.Principal{
+	Id:     "internal",
+	Role:   "administrator",
+	Tenant: tenant,
+}
+
 func TestServerSourcesData(t *testing.T) {
 	ctx := t.Context()
 	for databaseType, databaseConfig := range dbs.Configs(t) {
@@ -37,13 +45,13 @@ func TestServerSourcesData(t *testing.T) {
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "internaladmin", Role: "administrator"}); err != nil {
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
 				t.Fatal(err)
 			}
 
 			const adminKey = "test-admin-apikey"
 
-			if err := db.UpsertToken(ctx, "internaladmin", "default", &config.Token{Name: "admin", APIKey: adminKey, Scopes: []config.Scope{{Role: "administrator"}}}); err != nil {
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{Name: "admin", APIKey: adminKey, Scopes: []config.Scope{{Role: "administrator"}}}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -314,7 +322,7 @@ func TestServerSecretsOwners(t *testing.T) {
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "internal", Role: "administrator"}); err != nil {
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
 				t.Fatal(err)
 			}
 
@@ -400,7 +408,7 @@ func TestServerBundleOwners(t *testing.T) {
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "internal", Role: "administrator"}); err != nil {
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
 				t.Fatal(err)
 			}
 
@@ -504,7 +512,7 @@ func TestServerSourceOwners(t *testing.T) {
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "internal", Role: "administrator"}); err != nil {
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
 				t.Fatal(err)
 			}
 
@@ -597,7 +605,7 @@ func TestSourcesDatasourcesSecrets(t *testing.T) {
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "internal", Role: "administrator"}); err != nil {
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
 				t.Fatal(err)
 			}
 
@@ -726,7 +734,7 @@ func TestServerStackOwners(t *testing.T) {
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "internal", Role: "administrator"}); err != nil {
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
 				t.Fatal(err)
 			}
 
@@ -817,7 +825,7 @@ func TestServerSourcePagination(t *testing.T) {
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "internal", Role: "administrator"}); err != nil {
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
 				t.Fatal(err)
 			}
 
@@ -909,25 +917,33 @@ func TestServerTenancy(t *testing.T) {
 			ts := initTestServer(t, db)
 			defer ts.Close()
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "internal", Role: "administrator"}); err != nil {
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
+				t.Fatal(err)
+			}
+
+			const otherPrincipal = "other-internal"
+			const otherTenant = "other-tenant"
+			if _, err := db.DB().ExecContext(ctx, "INSERT INTO tenants (name) VALUES ('"+otherTenant+"')"); err != nil {
+				t.Fatal(err)
+			}
+			p2 := principal
+			p2.Id = otherPrincipal
+			p2.Tenant = otherTenant
+			if err := db.UpsertPrincipal(ctx, p2); err != nil {
 				t.Fatal(err)
 			}
 
 			{ // put bundle/stack/source/secret with same name in another tenant
-				const otherTenant = "other-tenant"
-				if _, err := db.DB().ExecContext(ctx, "INSERT INTO tenants (name) VALUES ('"+otherTenant+"')"); err != nil {
+				if err := db.UpsertBundle(ctx, "other-internal", otherTenant, &config.Bundle{Name: "foobundle"}); err != nil {
 					t.Fatal(err)
 				}
-				if err := db.UpsertBundle(ctx, "internal", otherTenant, &config.Bundle{Name: "foobundle"}); err != nil {
+				if err := db.UpsertSource(ctx, "other-internal", otherTenant, &config.Source{Name: "foosource"}); err != nil {
 					t.Fatal(err)
 				}
-				if err := db.UpsertSource(ctx, "internal", otherTenant, &config.Source{Name: "foosource"}); err != nil {
+				if err := db.UpsertSecret(ctx, "other-internal", otherTenant, &config.Secret{Name: "foosecret"}); err != nil {
 					t.Fatal(err)
 				}
-				if err := db.UpsertSecret(ctx, "internal", otherTenant, &config.Secret{Name: "foosecret"}); err != nil {
-					t.Fatal(err)
-				}
-				if err := db.UpsertStack(ctx, "internal", otherTenant, &config.Stack{Name: "foostack"}); err != nil {
+				if err := db.UpsertStack(ctx, "other-internal", otherTenant, &config.Stack{Name: "foostack"}); err != nil {
 					t.Fatal(err)
 				}
 			}
