@@ -95,7 +95,7 @@ func initialSchemaFS(dialect string) fs.FS {
 // They are the basis of all further migrations. We keep them here because it's
 // convenient to lookup the tables and there relations in one place -- the initial
 // migrations are generated from for each of the dialects we support.
-var schema = []sqlTable{
+var schema = []*sqlTable{
 	createSQLTable("bundles").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		VarCharNonNullUniqueColumn("name").
@@ -318,93 +318,93 @@ type sqlTable struct {
 	iteration         string // prefix for constraints
 }
 
-func createSQLTable(name string) sqlTable {
-	return sqlTable{
+func createSQLTable(name string) *sqlTable {
+	return &sqlTable{
 		name:      name,
 		iteration: "ocp_v1",
 	}
 }
-func (t sqlTable) WithColumn(col sqlColumn) sqlTable {
+func (t *sqlTable) WithColumn(col sqlColumn) *sqlTable {
 	t.columns = append(t.columns, col)
 	return t
 }
 
-func (t sqlTable) WithIteration(s string) sqlTable {
+func (t *sqlTable) WithIteration(s string) *sqlTable {
 	t.iteration = s
 	return t
 }
 
-func (t sqlTable) IntegerPrimaryKeyAutoincrementColumn(name string) sqlTable {
+func (t *sqlTable) IntegerPrimaryKeyAutoincrementColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlInteger{}, AutoIncrementPrimaryKey: true})
 	return t
 }
 
-func (t sqlTable) IntegerNonNullColumn(name string) sqlTable {
+func (t *sqlTable) IntegerNonNullColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlInteger{}, NotNull: true})
 	return t
 }
 
-func (t sqlTable) IntegerColumn(name string) sqlTable {
+func (t *sqlTable) IntegerColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlInteger{}})
 	return t
 }
 
-func (t sqlTable) TextNonNullUniqueColumn(name string) sqlTable {
+func (t *sqlTable) TextNonNullUniqueColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlText{}, NotNull: true, Unique: true})
 	return t
 }
 
-func (t sqlTable) VarCharNonNullUniqueColumn(name string) sqlTable {
+func (t *sqlTable) VarCharNonNullUniqueColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlVarChar{}, NotNull: true, Unique: true})
 	return t
 }
 
-func (t sqlTable) VarCharColumn(name string) sqlTable {
+func (t *sqlTable) VarCharColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlVarChar{}})
 	return t
 }
 
-func (t sqlTable) TextColumn(name string) sqlTable {
+func (t *sqlTable) TextColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlText{}})
 	return t
 }
 
-func (t sqlTable) TextPrimaryKeyColumn(name string) sqlTable {
+func (t *sqlTable) TextPrimaryKeyColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlText{}, PrimaryKey: true})
 	return t
 }
 
-func (t sqlTable) VarCharPrimaryKeyColumn(name string) sqlTable {
+func (t *sqlTable) VarCharPrimaryKeyColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlVarChar{}, PrimaryKey: true})
 	return t
 }
 
-func (t sqlTable) TextNonNullColumn(name string) sqlTable {
+func (t *sqlTable) TextNonNullColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlText{}, NotNull: true})
 	return t
 }
 
-func (t sqlTable) VarCharNonNullColumn(name string) sqlTable {
+func (t *sqlTable) VarCharNonNullColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlVarChar{}, NotNull: true})
 	return t
 }
 
-func (t sqlTable) BlobNonNullColumn(name string) sqlTable {
+func (t *sqlTable) BlobNonNullColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlBlob{}, NotNull: true})
 	return t
 }
 
-func (t sqlTable) TimestampDefaultCurrentTimeColumn(name string) sqlTable {
+func (t *sqlTable) TimestampDefaultCurrentTimeColumn(name string) *sqlTable {
 	t.columns = append(t.columns, sqlColumn{Name: name, Type: sqlTimestamp{}, Default: "CURRENT_TIMESTAMP"})
 	return t
 }
 
-func (t sqlTable) PrimaryKey(columns ...string) sqlTable {
+func (t *sqlTable) PrimaryKey(columns ...string) *sqlTable {
 	t.primaryKeyColumns = columns
 	return t
 }
 
-func (t sqlTable) ForeignKey(column string, references string) sqlTable {
+func (t *sqlTable) ForeignKey(column string, references string) *sqlTable {
 	t.foreignKeys = append(t.foreignKeys, sqlForeignKey{
 		Column:     column,
 		References: references,
@@ -412,14 +412,14 @@ func (t sqlTable) ForeignKey(column string, references string) sqlTable {
 	return t
 }
 
-func (t sqlTable) Unique(columns ...string) sqlTable {
+func (t *sqlTable) Unique(columns ...string) *sqlTable {
 	t.unique = append(t.unique, sqlConstraint{
 		Columns: columns,
 	})
 	return t
 }
 
-func (t sqlTable) ForeignKeyOnDeleteCascade(column string, references string) sqlTable {
+func (t *sqlTable) ForeignKeyOnDeleteCascade(column string, references string) *sqlTable {
 	t.foreignKeys = append(t.foreignKeys, sqlForeignKey{
 		Column:          column,
 		References:      references,
@@ -428,7 +428,7 @@ func (t sqlTable) ForeignKeyOnDeleteCascade(column string, references string) sq
 	return t
 }
 
-func (t sqlTable) SQL(kind int) string {
+func (t *sqlTable) SQL(kind int) string {
 	c := make([]string, len(t.columns))
 	for i := range t.columns {
 		c[i] = t.columns[i].SQL(kind)
