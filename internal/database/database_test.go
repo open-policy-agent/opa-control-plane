@@ -3,9 +3,11 @@ package database_test
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/achille-roussel/sqlrange"
 	"github.com/google/go-cmp/cmp"
 	"github.com/testcontainers/testcontainers-go"
 
@@ -22,6 +24,69 @@ var principal = database.Principal{
 	Id:     "admin",
 	Role:   "administrator",
 	Tenant: tenant,
+}
+
+func TestDatabaseSQLConstraints(t *testing.T) {
+	ctx := t.Context()
+
+	for databaseType, databaseConfig := range dbs.Configs(t) {
+		if strings.HasPrefix(databaseType, "sqlite") {
+			continue // skip, sqlite doesn't expose the schemas like we need them
+		}
+		t.Run(databaseType, func(t *testing.T) {
+			t.Parallel()
+			var ctr testcontainers.Container
+			if databaseConfig.Setup != nil {
+				ctr = databaseConfig.Setup(t)
+				if databaseConfig.Cleanup != nil {
+					t.Cleanup(databaseConfig.Cleanup(t, ctr))
+				}
+			}
+
+			db, err := migrations.New().
+				WithConfig(databaseConfig.Database(t, ctr).Database).
+				WithLogger(logging.NewLogger(logging.Config{Level: logging.LevelDebug})).
+				WithMigrate(true).Run(ctx)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			t.Cleanup(db.CloseDB)
+
+			query := `
+SELECT
+  constraint_name,
+  table_name,
+  constraint_type
+FROM
+  information_schema.table_constraints
+WHERE
+  table_schema = 'public'
+  AND constraint_type IN ('PRIMARY KEY', 'UNIQUE', 'FOREIGN KEY', 'CHECK')
+  AND constraint_name NOT LIKE '%_not_null' -- We cannot name "NOT NULL" constraints
+ORDER BY
+  table_name, constraint_name
+`
+
+			type row struct {
+				ConstraintName string `sql:"constraint_name"`
+				ConstraintType string `sql:"constraint_type"`
+				TableName      string `sql:"table_name"`
+			}
+
+			for r, err := range sqlrange.QueryContext[row](ctx, db.DB(), query) {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.HasPrefix(r.TableName, "schema_") { // migrations tables
+					continue
+				}
+				if !strings.HasPrefix(r.ConstraintName, "ocp_v2_") {
+					t.Errorf("constraint without prefix (uncontrolled name): %s (table %s, type %s)", r.ConstraintName, r.TableName, r.ConstraintType)
+				}
+			}
+		})
+	}
 }
 
 func TestDatabase(t *testing.T) {

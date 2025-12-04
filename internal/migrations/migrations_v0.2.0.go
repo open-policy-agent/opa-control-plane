@@ -280,23 +280,16 @@ func (c sqlColumn) SQL(kind int) string {
 	if c.AutoIncrementPrimaryKey {
 		switch kind {
 		case sqlite:
-			parts = append(parts, []string{c.Name, sqlInteger{}.SQL(kind), "PRIMARY KEY", "AUTOINCREMENT"}...)
+			parts = append(parts, c.Name, sqlInteger{}.SQL(kind))
 		case postgres, cockroachdb:
-			parts = append(parts, []string{c.Name, "SERIAL", "PRIMARY KEY"}...)
+			parts = append(parts, c.Name, "SERIAL")
 		case mysql:
-			parts = append(parts, []string{c.Name, sqlInteger{}.SQL(kind), "PRIMARY KEY", "AUTO_INCREMENT"}...)
+			parts = append(parts, c.Name, sqlInteger{}.SQL(kind), "AUTO_INCREMENT")
 		}
 	} else {
-		parts = append(parts, []string{c.Name, c.Type.SQL(kind)}...)
-
-		if c.PrimaryKey {
-			parts = append(parts, "PRIMARY KEY")
-		}
+		parts = append(parts, c.Name, c.Type.SQL(kind))
 		if c.NotNull {
 			parts = append(parts, "NOT NULL")
-		}
-		if c.Unique {
-			parts = append(parts, "UNIQUE")
 		}
 		if c.Default != "" {
 			parts = append(parts, "DEFAULT", c.Default)
@@ -322,16 +315,22 @@ type sqlTable struct {
 	primaryKeyColumns []string
 	foreignKeys       []sqlForeignKey
 	unique            []sqlConstraint
+	iteration         string // prefix for constraints
 }
 
 func createSQLTable(name string) sqlTable {
 	return sqlTable{
-		name: name,
+		name:      name,
+		iteration: "ocp_v1",
 	}
 }
-
 func (t sqlTable) WithColumn(col sqlColumn) sqlTable {
 	t.columns = append(t.columns, col)
+	return t
+}
+
+func (t sqlTable) WithIteration(s string) sqlTable {
+	t.iteration = s
 	return t
 }
 
@@ -435,23 +434,50 @@ func (t sqlTable) SQL(kind int) string {
 		c[i] = t.columns[i].SQL(kind)
 	}
 
+	// NOTE(sr): All constraints have names we control. That makes them easier to work
+	// with in future migrations: you can remove them during the migration, for example.
+	// If we don't control them here, MySQL/Postgres/SQLite/CRDB will pick names for us
+	// and they're unlikely to match across all four of them.
+
+	for i := range t.columns {
+		if t.columns[i].AutoIncrementPrimaryKey || t.columns[i].PrimaryKey {
+			c = append(c, fmt.Sprintf("CONSTRAINT %[1]s_%[2]s_%[3]s_pkey PRIMARY KEY (%[3]s)", t.iteration, t.name, t.columns[i].Name))
+		}
+		if t.columns[i].Unique {
+			c = append(c, fmt.Sprintf("CONSTRAINT %[1]s_%[2]s_%[3]s_unique UNIQUE (%[3]s)", t.iteration, t.name, t.columns[i].Name))
+		}
+	}
+
 	if len(t.primaryKeyColumns) > 0 {
-		c = append(c, "PRIMARY KEY ("+strings.Join(t.primaryKeyColumns, ", ")+")")
+		c = append(c, fmt.Sprintf("CONSTRAINT %s_%s_%s_pkey PRIMARY KEY (%s)",
+			t.iteration,
+			t.name,
+			strings.Join(t.primaryKeyColumns, "_"),
+			strings.Join(t.primaryKeyColumns, ", "),
+		))
 	}
 
 	for _, fk := range t.foreignKeys {
-		f := "FOREIGN KEY (" + fk.Column + ") REFERENCES " + fk.References
+		// refs look like "table(col)"
+		open, closed := strings.Index(fk.References, "("), len(fk.References)-1
+		fTbl, fCol := fk.References[:open], fk.References[open+1:closed]
+		f := fmt.Sprintf("CONSTRAINT %s_%s_%s_%s_%s_fkey FOREIGN KEY (%s) REFERENCES %s",
+			t.iteration,
+			t.name, fk.Column, fTbl, fCol,
+			fk.Column,
+			fk.References,
+		)
 		if fk.OnDeleteCascade {
 			f += " ON DELETE CASCADE"
 		}
 		c = append(c, f)
 	}
 	for _, constraint := range t.unique {
-		// NB(sr): named constraints are easier to delete later
-		c = append(c, fmt.Sprintf("CONSTRAINT %s_unique_%s UNIQUE (%s)", t.name,
+		c = append(c, fmt.Sprintf("CONSTRAINT %s_%s_%s_unique UNIQUE (%s)",
+			t.iteration,
+			t.name,
 			strings.Join(constraint.Columns, "_"),
 			strings.Join(constraint.Columns, ", ")))
 	}
-
 	return `CREATE TABLE IF NOT EXISTS ` + t.name + ` (` + strings.Join(c, ", ") + `);`
 }
