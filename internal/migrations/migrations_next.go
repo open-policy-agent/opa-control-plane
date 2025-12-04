@@ -11,8 +11,6 @@ import (
 
 // NOTE(sr): We create new tables to drop constraints. It's hard to predict constraint names
 // across MySQL and Postgres if they have not been set up at creation time.
-// The only tables left untouched from before are:
-// - tokens
 // NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,
 // in a single transaction.
 // TODO(sr): Let's change a couple of things so that this setup will be lazily evaluated. Most of the
@@ -37,9 +35,6 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 	stmts := make([]string, 0, len(v2Tables)*4)
 	if kind != sqlite {
 		stmts = append(stmts, "BEGIN")
-	}
-	if kind == cockroachdb {
-		stmts = append(stmts, createSQLTable("tokens").WithIteration("ocp_v2").VarCharPrimaryKeyColumn("name").TextNonNullColumn("api_key").SQL(kind))
 	}
 
 	for _, tbl := range v2Tables {
@@ -77,11 +72,18 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 var v2Tables = []sqlTable{
 	// tenants, new
 	createSQLTable("tenants").
+		WithIteration("ocp_v2").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		VarCharNonNullColumn("name").
 		Unique("name"),
 
+	createSQLTable("tokens").
+		WithIteration("ocp_v2").
+		VarCharPrimaryKeyColumn("name").
+		TextNonNullColumn("api_key"),
+
 	createSQLTable("principals").
+		WithIteration("ocp_v2").
 		VarCharPrimaryKeyColumn("id").
 		IntegerNonNullColumn("tenant_id").
 		Unique("tenant_id", "id").
@@ -92,6 +94,7 @@ var v2Tables = []sqlTable{
 	// e.g. resource = "bundles", name = "my-bundle". Since all our names are only unique in
 	// a single tenant, this table needs to be tenant-indexed, too.
 	createSQLTable("resource_permissions").
+		WithIteration("ocp_v2").
 		VarCharNonNullColumn("name").
 		VarCharNonNullColumn("resource").
 		VarCharNonNullColumn("principal_id").
@@ -105,6 +108,7 @@ var v2Tables = []sqlTable{
 
 	// entity tables
 	createSQLTable("bundles").
+		WithIteration("ocp_v2").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		IntegerNonNullColumn("tenant_id").
 		ForeignKeyOnDeleteCascade("tenant_id", "tenants(id)").
@@ -125,6 +129,7 @@ var v2Tables = []sqlTable{
 		TextColumn("rebuild_interval").
 		TextColumn("options"),
 	createSQLTable("sources").
+		WithIteration("ocp_v2").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		IntegerNonNullColumn("tenant_id").
 		ForeignKeyOnDeleteCascade("tenant_id", "tenants(id)").
@@ -138,6 +143,7 @@ var v2Tables = []sqlTable{
 		TextColumn("git_included_files").
 		TextColumn("git_excluded_files"),
 	createSQLTable("stacks").
+		WithIteration("ocp_v2").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		IntegerNonNullColumn("tenant_id").
 		ForeignKeyOnDeleteCascade("tenant_id", "tenants(id)").
@@ -146,6 +152,7 @@ var v2Tables = []sqlTable{
 		TextNonNullColumn("selector").
 		TextColumn("exclude_selector"),
 	createSQLTable("secrets").
+		WithIteration("ocp_v2").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		IntegerNonNullColumn("tenant_id").
 		ForeignKeyOnDeleteCascade("tenant_id", "tenants(id)").
@@ -155,6 +162,7 @@ var v2Tables = []sqlTable{
 
 	// cross tables
 	createSQLTable("bundles_secrets").
+		WithIteration("ocp_v2").
 		IntegerNonNullColumn("bundle_id").
 		IntegerNonNullColumn("secret_id").
 		TextNonNullColumn("ref_type").
@@ -162,6 +170,7 @@ var v2Tables = []sqlTable{
 		ForeignKey("bundle_id", "bundles(id)").
 		ForeignKey("secret_id", "secrets(id)"),
 	createSQLTable("bundles_requirements").
+		WithIteration("ocp_v2").
 		IntegerNonNullColumn("bundle_id").
 		IntegerNonNullColumn("source_id").
 		TextColumn("gitcommit").
@@ -171,6 +180,7 @@ var v2Tables = []sqlTable{
 		ForeignKey("bundle_id", "bundles(id)").
 		ForeignKey("source_id", "sources(id)"),
 	createSQLTable("stacks_requirements").
+		WithIteration("ocp_v2").
 		IntegerNonNullColumn("stack_id").
 		IntegerNonNullColumn("source_id").
 		TextColumn("gitcommit").
@@ -180,6 +190,7 @@ var v2Tables = []sqlTable{
 		ForeignKey("stack_id", "stacks(id)").
 		ForeignKey("source_id", "sources(id)"),
 	createSQLTable("sources_requirements").
+		WithIteration("ocp_v2").
 		IntegerNonNullColumn("source_id").
 		IntegerNonNullColumn("requirement_id").
 		TextColumn("gitcommit").
@@ -189,6 +200,7 @@ var v2Tables = []sqlTable{
 		ForeignKey("source_id", "sources(id)").
 		ForeignKey("requirement_id", "sources(id)"),
 	createSQLTable("sources_secrets").
+		WithIteration("ocp_v2").
 		IntegerNonNullColumn("source_id").
 		IntegerNonNullColumn("secret_id").
 		TextNonNullColumn("ref_type").
@@ -196,12 +208,14 @@ var v2Tables = []sqlTable{
 		ForeignKey("source_id", "sources(id)").
 		ForeignKey("secret_id", "secrets(id)"),
 	createSQLTable("sources_data").
+		WithIteration("ocp_v2").
 		IntegerNonNullColumn("source_id").
 		VarCharNonNullColumn("path").
 		BlobNonNullColumn("data").
 		PrimaryKey("source_id", "path").
 		ForeignKey("source_id", "sources(id)"),
 	createSQLTable("sources_datasources").
+		WithIteration("ocp_v2").
 		VarCharNonNullColumn("name").
 		IntegerNonNullColumn("source_id").
 		IntegerColumn("secret_id"). // optional

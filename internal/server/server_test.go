@@ -910,7 +910,9 @@ func TestServerTenancy(t *testing.T) {
 			var ctr testcontainers.Container
 			if databaseConfig.Setup != nil {
 				ctr = databaseConfig.Setup(t)
-				t.Cleanup(databaseConfig.Cleanup(t, ctr))
+				if databaseConfig.Cleanup != nil {
+					t.Cleanup(databaseConfig.Cleanup(t, ctr))
+				}
 			}
 
 			db := initTestDB(t, databaseConfig.Database(t, ctr).Database)
