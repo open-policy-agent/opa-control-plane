@@ -69,7 +69,7 @@ func crossTablesWithIDPKeys(offset int, dialect string) fs.FS {
 	return ocp_fs.MapFS(map[string]string{f: strings.Join(stmts, "; ")})
 }
 
-var v2Tables = []sqlTable{
+var v2Tables = []*sqlTable{
 	// tenants, new
 	createSQLTable("tenants").
 		WithIteration("ocp_v2").
@@ -248,7 +248,7 @@ var v2Tables = []sqlTable{
 // JOIN
 //
 //	secrets AS s ON bso.secret_name = s.name;
-func tableCopy(oldName string, st sqlTable) string {
+func tableCopy(oldName string, st *sqlTable) string {
 	cols := make([]string, 0, len(st.columns))
 	colsSelect := make([]string, 0, len(st.columns))
 	joins := make([]string, 0, len(st.foreignKeys))
