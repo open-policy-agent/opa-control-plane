@@ -17,19 +17,24 @@ import (
 type Pool struct {
 	mu    sync.Mutex
 	queue []*task
-	reg   map[string]*task
+	reg   map[tenantName]*task
 	wait  chan struct{}
 }
 
+type tenantName struct {
+	tenant string
+	name   string
+}
+
 type task struct {
-	name     string
+	name     tenantName
 	fn       func(context.Context) time.Time
 	deadline time.Time
 	rerun    bool
 }
 
 func New(workers int) *Pool {
-	pool := Pool{reg: make(map[string]*task)}
+	pool := Pool{reg: make(map[tenantName]*task)}
 
 	for range workers {
 		go pool.work()
@@ -38,8 +43,8 @@ func New(workers int) *Pool {
 	return &pool
 }
 
-func (p *Pool) Add(name string, fn func(context.Context) time.Time) {
-	p.enqueue(&task{name: name, fn: fn, deadline: time.Now()})
+func (p *Pool) Add(tenant, name string, fn func(context.Context) time.Time) {
+	p.enqueue(&task{name: tenantName{name: name, tenant: tenant}, fn: fn, deadline: time.Now()})
 }
 
 // work is the main loop for each worker goroutine.
@@ -55,22 +60,22 @@ func (p *Pool) work() {
 // task is not queued, it's running. In that case, we'll have it override its
 // next deadline to NOW, causing an immediate re-run after the current run.
 // Subsequent runs will use the deadline returned by the task's `fn`.
-func (p *Pool) Trigger(n string) error {
+func (p *Pool) Trigger(tenant, name string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if i := slices.IndexFunc(p.queue, func(t *task) bool { return t.name == n }); i != -1 {
+	if i := slices.IndexFunc(p.queue, func(t *task) bool { return t.name.name == name && t.name.tenant == tenant }); i != -1 {
 		p.queue[i].deadline = time.Now()
 		p.sortAndWake()
 		return nil
 	}
 	// if it's not in p.queue, it must be running at the moment
-	if t, ok := p.reg[n]; ok {
+	if t, ok := p.reg[tenantName{tenant: tenant, name: name}]; ok {
 		t.rerun = true
 		return nil
 	}
 
-	return fmt.Errorf("no task with name %s", n)
+	return fmt.Errorf("no task with name %s (tenant %s)", name, tenant)
 }
 
 // sortAndWake is used in multiple places, but always needs to be run
@@ -110,7 +115,10 @@ func (p *Pool) dequeue() *task {
 
 		var t *task
 		if len(p.queue) == 0 {
-			t = &task{name: "dummy", deadline: time.Now().Add(time.Hour * 24 * 365)} // Default to a far future deadline
+			t = &task{
+				name:     tenantName{tenant: "dummy", name: "dummy"},
+				deadline: time.Now().Add(time.Hour * 24 * 365), // Default to a far future deadline
+			}
 		} else {
 			t = p.queue[0]
 		}

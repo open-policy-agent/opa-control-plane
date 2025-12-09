@@ -201,7 +201,8 @@ func (s *Server) v1BundlesPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.svc.Trigger(ctx, s.auth(r), name); err != nil {
+	principal, tenant := s.auth(r)
+	if err := s.svc.Trigger(ctx, principal, tenant, name); err != nil {
 		errorAuto(w, err)
 		return
 	}

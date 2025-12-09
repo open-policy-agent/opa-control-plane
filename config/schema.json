@@ -310,7 +310,8 @@
             "administrator",
             "viewer",
             "owner",
-            "stack_owner"
+            "stack_owner",
+            "automation"
           ],
           "type": "string"
         }
@@ -337,16 +338,10 @@
           "type": "string"
         },
         "bundle_rebuild_interval": {
-          "type": [
-            "null",
-            "integer"
-          ]
+          "type": "string"
         },
         "reconfiguration_interval": {
-          "type": [
-            "null",
-            "integer"
-          ]
+          "type": "string"
         }
       },
       "type": "object"

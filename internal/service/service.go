@@ -46,11 +46,19 @@ var (
 	defaultStackMountPrefix = ast.DefaultRootRef.Append(ast.StringTerm("stacks"))
 )
 
+type TenantName struct {
+	Tenant, Name string
+}
+
+func (tn *TenantName) String() string {
+	return tn.Tenant + ":" + tn.Name
+}
+
 type Service struct {
 	config                  *config.Root
 	persistenceDir          string
 	pool                    *pool.Pool
-	workers                 map[string]*BundleWorker
+	workers                 map[TenantName]*BundleWorker
 	readyMutex              sync.Mutex
 	ready                   bool
 	failures                map[string]Status
@@ -111,7 +119,7 @@ type Status struct {
 func New() *Service {
 	return &Service{
 		pool:                    pool.New(10),
-		workers:                 make(map[string]*BundleWorker),
+		workers:                 make(map[TenantName]*BundleWorker),
 		failures:                make(map[string]Status),
 		noninteractive:          true,
 		migrateDB:               false,
@@ -129,11 +137,11 @@ func (s *Service) WithConfig(config *config.Root) *Service {
 	s.config = config
 	s.database = *s.database.WithConfig(config.Database)
 	if s.config.Service != nil {
-		if s.config.Service.ReconfigurationInterval != nil {
-			s.reconfigurationInterval = *s.config.Service.ReconfigurationInterval
+		if s.config.Service.ReconfigurationInterval != 0 {
+			s.reconfigurationInterval = time.Duration(s.config.Service.ReconfigurationInterval)
 		}
-		if s.config.Service.BundleRebuildInterval != nil {
-			s.buildInterval = *s.config.Service.BundleRebuildInterval
+		if s.config.Service.BundleRebuildInterval != 0 {
+			s.buildInterval = time.Duration(s.config.Service.BundleRebuildInterval)
 		}
 	}
 	return s
@@ -220,6 +228,8 @@ shutdown:
 		for _, w := range s.workers {
 			s.report.Bundles[w.bundleConfig.Name] = w.status
 		}
+
+		// For singleshot, we don't need to worry about tenants:
 		maps.Copy(s.report.Bundles, s.failures)
 	}
 
@@ -230,9 +240,10 @@ func (s *Service) Report() *Report {
 	return s.report
 }
 
-func (s *Service) Trigger(ctx context.Context, principal, name string) error {
+func (s *Service) Trigger(ctx context.Context, principal, tenant, name string) error {
 	a := authz.Access{
 		Principal:  principal,
+		Tenant:     tenant,
 		Resource:   "bundles",
 		Permission: "bundles.trigger",
 		Name:       name,
@@ -241,7 +252,7 @@ func (s *Service) Trigger(ctx context.Context, principal, name string) error {
 		return err
 	}
 
-	err := s.pool.Trigger(name)
+	err := s.pool.Trigger(tenant, name)
 	if err != nil {
 		s.log.Errorf("trigger bundle build for %s: %v", name, err)
 	} else {
@@ -316,9 +327,9 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			return
 		}
 
-		activeBundles := make(map[string]struct{})
+		activeBundles := make(map[TenantName]struct{})
 		for _, b := range bundles {
-			bName := tenant + "_" + b.Name
+			bName := TenantName{Tenant: tenant, Name: b.Name}
 			activeBundles[bName] = struct{}{}
 		}
 
@@ -353,7 +364,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 		failures := make(map[string]Status)
 
 		for _, b := range bundles {
-			bName := tenant + "_" + b.Name
+			bName := TenantName{Tenant: tenant, Name: b.Name}
 			if w, ok := s.workers[bName]; ok {
 				w.UpdateConfig(b, sourceDefs, stacks)
 				continue
@@ -392,7 +403,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 			syncs := []Synchronizer{}
 			sources := []*builder.Source{&root.Source}
-			bundleDir := join(s.persistenceDir, md5sum(bName))
+			bundleDir := join(s.persistenceDir, md5sum(bName.String()))
 
 			for _, dep := range deps {
 				// NB(sr): dep.Name could contain a `:` which cause build errors in OPA's bundle build machinery
@@ -421,7 +432,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				WithStorage(storage).
 				WithInterval(b.Interval).
 				WithSingleShot(s.singleShot)
-			s.pool.Add(b.Name, w.Execute) // TODO(sr): name not unique
+			s.pool.Add(tenant, b.Name, w.Execute)
 
 			s.workers[bName] = w
 		}
