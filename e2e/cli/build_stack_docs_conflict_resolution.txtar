@@ -1,0 +1,115 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^2/2 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/notifications-svc/bundle.tar.gz
+cmp stdout exp/notifications-svc/tarball
+
+mkdir n
+cd n
+exec tar xf ../bundles/notifications-svc/bundle.tar.gz
+cmp ../exp/notifications-svc/.manifest .manifest
+cd ..
+
+exec tar tf bundles/petshop-svc/bundle.tar.gz
+cmp stdout exp/petshop-svc/tarball
+
+mkdir n
+cd n
+exec tar xf ../bundles/notifications-svc/bundle.tar.gz
+cmp ../exp/notifications-svc/.manifest .manifest
+cd ..
+
+-- petshop-svc/rules.rego --
+package service
+import rego.v1
+
+allow if {
+  input.action == "view_pets"
+}
+
+allow if {
+  input.action == "update_pets"
+  input.principal.is_employee
+}
+-- globalsecurity/rules.rego --
+package globalsecurity
+import rego.v1
+
+deny if {
+  input.principal.username in data.blocklist
+}
+-- main/rules.rego --
+package main
+import rego.v1
+
+main if {
+  data.service.allow
+  not data.globalsecurity.deny
+}
+-- notifications-svc/rules.rego --
+package service
+import rego.v1
+
+allow if {
+  input.action == "subscribe_to_newsletter"
+  input.principal.is_customer
+}
+-- config.d/bundle.yml --
+bundles:
+  petshop-svc:
+    labels:
+      environment: prod
+    requirements:
+    - source: petshop-svc
+    object_storage:
+      filesystem:
+        path: bundles/petshop-svc/bundle.tar.gz
+    options:
+      no_default_stack_mount: true
+  notifications-svc:
+    labels:
+      environment: prod
+    requirements:
+    - source: notifications-svc
+    object_storage:
+      filesystem:
+        path: bundles/notifications-svc/bundle.tar.gz
+    options:
+      no_default_stack_mount: true
+stacks:
+  globalsecurity:
+    selector:
+      environment: [prod]
+    requirements:
+    - source: main
+    - source: globalsecurity
+sources:
+  notifications-svc:
+    directory: notifications-svc/
+    paths: [rules.rego]
+  petshop-svc:
+    directory: petshop-svc/
+    paths: [rules.rego]
+  main:
+    directory: main/
+    paths: [rules.rego]
+  globalsecurity:
+    directory: globalsecurity/
+    paths: [rules.rego]
+-- exp/notifications-svc/tarball --
+/data.json
+/globalsecurity/rules.rego
+/main/rules.rego
+/notifications-svc/rules.rego
+/.manifest
+-- exp/notifications-svc/.manifest --
+{"revision":"","roots":["service","globalsecurity","main"],"rego_version":0}
+-- exp/petshop-svc/tarball --
+/data.json
+/globalsecurity/rules.rego
+/main/rules.rego
+/petshop-svc/rules.rego
+/.manifest
+-- exp/petshop-svc/.manifest --
+{"revision":"","roots":["service","globalsecurity","main"],"rego_version":0}
