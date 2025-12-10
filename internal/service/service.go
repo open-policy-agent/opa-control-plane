@@ -331,7 +331,8 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				if stack.Selector.Matches(b.Labels) && !stack.ExcludeSelector.PtrMatches(b.Labels) {
 					reqs := make([]config.Requirement, len(stack.Requirements))
 					for i, req := range stack.Requirements {
-						if !b.Options.NoDefaultStackMount {
+						if !b.Options.NoDefaultStackMount && // per-bundle opt-out not set
+							(req.AutoMount == nil || *req.AutoMount) { // per-source override is unset or true
 							req.Prefix = addPrefix(defaultStackMountPrefix, stack.Name, req.Prefix)
 						}
 						reqs[i] = req

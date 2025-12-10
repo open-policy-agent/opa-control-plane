@@ -122,6 +122,8 @@ func TestDatabase(t *testing.T) {
 			data2 := map[string]any{"key": "value2"}
 			dur, _ := time.ParseDuration("1h20m")
 
+			f := false
+
 			root := config.Root{
 				Tokens: map[string]*config.Token{
 					"api-token": {
@@ -143,7 +145,12 @@ func TestDatabase(t *testing.T) {
 							},
 						},
 						Requirements: config.Requirements{
-							config.Requirement{Source: newString("system1"), Path: "data", Prefix: "data.imported"},
+							config.Requirement{
+								Source:    newString("system1"),
+								Path:      "data",
+								Prefix:    "data.imported",
+								AutoMount: &f,
+							},
 						},
 						ExcludedFiles: config.StringSet{"excluded-file1.txt", "excluded-file2.txt"},
 					},
@@ -236,7 +243,7 @@ func TestDatabase(t *testing.T) {
 						Requirements: config.Requirements{
 							config.Requirement{Source: newString("system1")},
 							config.Requirement{Source: newString("system2")},
-							config.Requirement{Source: newString("source-b"), Path: "data", Prefix: "data.b"},
+							config.Requirement{Source: newString("source-b"), Path: "data", Prefix: "data.b", AutoMount: &f},
 						},
 					},
 					"stack2": {
@@ -254,7 +261,7 @@ func TestDatabase(t *testing.T) {
 					"system1": {
 						Name: "system1",
 						Requirements: config.Requirements{
-							config.Requirement{Source: newString("system2")},
+							config.Requirement{Source: newString("system2"), AutoMount: &f},
 							config.Requirement{Source: newString("system3")},
 							config.Requirement{Source: newString("system4")},
 						},
