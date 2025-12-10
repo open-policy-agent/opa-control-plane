@@ -299,10 +299,11 @@ func (d Duration) String() string {
 type Labels map[string]string
 
 type Requirement struct {
-	Source *string        `json:"source,omitempty"`
-	Git    GitRequirement `json:"git,omitzero"`
-	Path   string         `json:"path,omitzero"`
-	Prefix string         `json:"prefix,omitzero"`
+	Source    *string        `json:"source,omitempty"`
+	Git       GitRequirement `json:"git,omitzero"`
+	Path      string         `json:"path,omitzero"`
+	Prefix    string         `json:"prefix,omitzero"`
+	AutoMount *bool          `json:"automount,omitempty"`
 
 	_ struct{} `additionalProperties:"false"`
 }
@@ -314,22 +315,26 @@ type GitRequirement struct {
 }
 
 func (a Requirement) Equal(b Requirement) bool {
-	return stringPtrEqual(a.Source, b.Source) &&
-		stringPtrEqual(a.Git.Commit, b.Git.Commit) &&
+	return ptrEqual(a.Source, b.Source) &&
+		ptrEqual(a.Git.Commit, b.Git.Commit) &&
 		a.Path == b.Path &&
-		a.Prefix == b.Prefix
+		a.Prefix == b.Prefix &&
+		ptrEqual(a.AutoMount, b.AutoMount)
 }
 func (a Requirement) Compare(b Requirement) int {
-	if x := stringPtrCompare(a.Source, b.Source); x != 0 {
+	if x := ptrCompare(a.Source, b.Source); x != 0 {
 		return x
 	}
-	if x := stringPtrCompare(a.Git.Commit, b.Git.Commit); x != 0 {
+	if x := ptrCompare(a.Git.Commit, b.Git.Commit); x != 0 {
 		return x
 	}
 	if x := strings.Compare(a.Path, b.Path); x != 0 {
 		return x
 	}
 	if x := strings.Compare(a.Prefix, b.Prefix); x != 0 {
+		return x
+	}
+	if x := boolPtrCompare(a.AutoMount, b.AutoMount); x != 0 {
 		return x
 	}
 	return 0
@@ -476,7 +481,7 @@ type Source struct {
 func (s *Source) Equal(other *Source) bool {
 	return fastEqual(s, other, func(s, other *Source) bool {
 		return s.Name == other.Name &&
-			stringPtrEqual(s.Builtin, other.Builtin) &&
+			ptrEqual(s.Builtin, other.Builtin) &&
 			s.Git.Equal(&other.Git) &&
 			s.Datasources.Equal(other.Datasources) &&
 			s.EmbeddedFiles.Equal(other.EmbeddedFiles) &&
@@ -724,9 +729,9 @@ type Git struct {
 
 func (g *Git) Equal(other *Git) bool {
 	return fastEqual(g, other, func(g, other *Git) bool {
-		return stringPtrEqual(g.Reference, other.Reference) &&
-			stringPtrEqual(g.Commit, other.Commit) &&
-			stringPtrEqual(g.Path, other.Path) &&
+		return ptrEqual(g.Reference, other.Reference) &&
+			ptrEqual(g.Commit, other.Commit) &&
+			ptrEqual(g.Path, other.Path) &&
 			g.Credentials.Equal(other.Credentials) &&
 			g.IncludedFiles.Equal(other.IncludedFiles) &&
 			g.ExcludedFiles.Equal(other.ExcludedFiles)
@@ -1095,26 +1100,38 @@ func setEqual[K comparable, V any](a, b []V, key func(V) K, eq func(a, b V) bool
 	return maps.EqualFunc(m, n, eq)
 }
 
-func stringPtrEqual(a, b *string) bool {
-	return fastEqual(a, b, func(a, b *string) bool { return *a == *b })
+func ptrEqual[T comparable](a, b *T) bool {
+	return fastEqual(a, b, func(a, b *T) bool { return *a == *b })
 }
 
-func stringPtrCompare(a, b *string) int {
-	if a == nil && b == nil {
+func boolPtrCompare(a, b *bool) int {
+	switch {
+	case a == nil && b == nil:
 		return 0
-	}
-	if a == nil {
+	case a == nil:
 		return -1
-	}
-	if b == nil {
+	case b == nil:
+		return 1
+	case !*a && *b:
+		return -1
+	case *a && !*b:
 		return 1
 	}
 
-	if *a < *b {
-		return -1
-	}
+	return 0
+}
 
-	if *a > *b {
+func ptrCompare[T cmp.Ordered](a, b *T) int {
+	switch {
+	case a == nil && b == nil:
+		return 0
+	case a == nil:
+		return -1
+	case b == nil:
+		return 1
+	case *a < *b:
+		return -1
+	case *a > *b:
 		return 1
 	}
 

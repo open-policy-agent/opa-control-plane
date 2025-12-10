@@ -9,6 +9,26 @@ import (
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 )
 
+func addRequirementsOptions(offset int, dialect string) fs.FS {
+	var stmtBundles, stmtSources, stmtStacks string
+	switch dialect {
+	case "sqlite", "postgresql", "cockroachdb":
+		stmtBundles = `ALTER TABLE bundles_requirements ADD options TEXT`
+		stmtSources = `ALTER TABLE sources_requirements ADD options TEXT`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD options TEXT`
+	case "mysql":
+		stmtBundles = `ALTER TABLE bundles_requirements ADD options VARCHAR(255)`
+		stmtSources = `ALTER TABLE sources_requirements ADD options VARCHAR(255)`
+		stmtStacks = `ALTER TABLE stacks_requirements ADD options VARCHAR(255)`
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_bundles_requirements_add_options.up.sql", offset):   stmtBundles,
+		fmt.Sprintf("%03d_sources_requirements_add_options.up.sql", offset+1): stmtSources,
+		fmt.Sprintf("%03d_stacks_requirements_add_options.up.sql", offset+2):  stmtStacks,
+	})
+}
+
 // NOTE(sr): We create new tables to drop constraints. It's hard to predict constraint names
 // across MySQL and Postgres if they have not been set up at creation time.
 // NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,

@@ -527,21 +527,29 @@ func TestServerSourceOwners(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			ts.Request("PUT", "/v1/sources/testsrc", `{"datasources": [{"name": "ds"}]}`, ownerKey).ExpectStatus(200)
+			ts.Request("PUT", "/v1/sources/required", `{}`, ownerKey).ExpectStatus(200)
+			ts.Request("PUT", "/v1/sources/testsrc", `{"datasources": [{"name": "ds"}], "requirements": [{"source": "required", "automount": false}]}`, ownerKey).ExpectStatus(200)
 
 			{
 				var ownerList types.SourcesListResponseV1
 				ts.Request("GET", "/v1/sources", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
-				if len(ownerList.Result) != 1 {
+				if len(ownerList.Result) != 2 {
 					t.Fatal("expected exactly one source")
 				}
+				src, f := "required", false
 				exp := &config.Source{
 					Name: "testsrc",
 					Datasources: []config.Datasource{
 						{Name: "ds"},
 					},
+					Requirements: []config.Requirement{
+						{
+							Source:    &src,
+							AutoMount: &f,
+						},
+					},
 				}
-				if !ownerList.Result[0].Equal(exp) {
+				if !ownerList.Result[1].Equal(exp) {
 					t.Fatalf("unexpected response, expected %v, got %v", exp, ownerList.Result[0])
 				}
 			}
@@ -549,10 +557,17 @@ func TestServerSourceOwners(t *testing.T) {
 			{
 				var src types.SourcesGetResponseV1
 				ts.Request("GET", "/v1/sources/testsrc", "", ownerKey).ExpectStatus(200).ExpectBody(&src)
+				srcN, f := "required", false
 				exp := &config.Source{
 					Name: "testsrc",
 					Datasources: []config.Datasource{
 						{Name: "ds"},
+					},
+					Requirements: []config.Requirement{
+						{
+							Source:    &srcN,
+							AutoMount: &f,
+						},
 					},
 				}
 				act := src.Result
@@ -580,6 +595,7 @@ func TestServerSourceOwners(t *testing.T) {
 			}
 			{ // deleting as owner
 				ts.Request("DELETE", "/v1/sources/testsrc", "", ownerKey).ExpectStatus(200)
+				ts.Request("DELETE", "/v1/sources/required", "", ownerKey).ExpectStatus(200)
 				var ownerList types.SourcesListResponseV1
 				ts.Request("GET", "/v1/sources", "", ownerKey).ExpectStatus(200).ExpectBody(&ownerList)
 				if len(ownerList.Result) != 0 {

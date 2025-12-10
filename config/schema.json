@@ -264,6 +264,12 @@
     "ConfigRequirement": {
       "additionalProperties": false,
       "properties": {
+        "automount": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        },
         "git": {
           "$ref": "#/definitions/ConfigGitRequirement"
         },

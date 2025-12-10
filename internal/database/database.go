@@ -713,6 +713,7 @@ WHERE (` + conditions + ") AND tenants.name = " + d.arg(len(args))
 		sources.name AS req_src,
 		bundles_requirements.path AS req_path,
 		bundles_requirements.prefix AS req_prefix,
+		bundles_requirements.options AS req_options,
 		bundles_requirements.gitcommit AS req_commit
 FROM (%s) AS bundles
 LEFT JOIN
@@ -745,6 +746,7 @@ LEFT JOIN
 			secretName, secretValue                    *string
 			reqSrc, reqCommit                          *string
 			reqPath, reqPrefix                         sql.Null[string]
+			reqOpts                                    sql.Null[string] // JSON
 		}
 		bundleMap := make(map[string]*config.Bundle)
 		idMap := make(map[string]int64)
@@ -761,7 +763,10 @@ LEFT JOIN
 				&row.interval,
 				&row.options,
 				&row.secretName, &row.secretValue,
-				&row.reqSrc, &row.reqPath, &row.reqPrefix, &row.reqCommit); err != nil {
+				&row.reqSrc,
+				&row.reqPath, &row.reqPrefix,
+				&row.reqOpts,
+				&row.reqCommit); err != nil {
 				return nil, "", err
 			}
 
@@ -851,11 +856,29 @@ LEFT JOIN
 			}
 
 			if row.reqSrc != nil {
+				var automount *bool
+				if row.reqOpts.Valid {
+					var m map[string]any
+					if err := json.Unmarshal([]byte(row.reqOpts.V), &m); err != nil {
+						return nil, "", fmt.Errorf("failed to unmarshal options for requirement %s of bundle %s: %w", *row.reqSrc, bundle.Name, err)
+					}
+					if am, ok := m["automount"]; ok {
+						if am, ok := am.(bool); ok {
+							automount = &am
+							delete(m, "automount")
+						}
+					}
+					if len(m) > 0 {
+						return nil, "", fmt.Errorf("unknown options for requirement %s of bundle %s: %v", *row.reqSrc, bundle.Name, m)
+					}
+
+				}
 				bundle.Requirements = append(bundle.Requirements, config.Requirement{
-					Source: row.reqSrc,
-					Git:    config.GitRequirement{Commit: row.reqCommit},
-					Path:   row.reqPath.V, // if null, use ""
-					Prefix: row.reqPrefix.V,
+					Source:    row.reqSrc,
+					Git:       config.GitRequirement{Commit: row.reqCommit},
+					Path:      row.reqPath.V, // if null, use ""
+					Prefix:    row.reqPrefix.V,
+					AutoMount: automount,
 				})
 			}
 
@@ -972,12 +995,13 @@ WHERE (` + conditions + ") AND tenants.name = " + d.arg(len(args))
 		query := fmt.Sprintf(`SELECT
 	sources.*,
 	secrets.name AS secret_name,
-	sources_secrets.ref_type AS secret_ref_type,
-	secrets.value AS secret_value,
+	sources_secrets.ref_type,
+	secrets.value,
 	required_sources.name,
 	sources_requirements.gitcommit,
-	sources_requirements.path AS req_path,
-	sources_requirements.prefix AS req_prefix
+	sources_requirements.path,
+	sources_requirements.prefix,
+	sources_requirements.options
 FROM (%s) AS sources
 LEFT JOIN
 	sources_secrets ON sources.id = sources_secrets.source_id
@@ -1005,6 +1029,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			secretName, secretRefType, secretValue           *string
 			requirementName, requirementCommit               *string
 			reqPath, reqPrefix                               sql.Null[string]
+			reqOpts                                          sql.Null[string] // JSON
 		}
 
 		srcMap := make(map[string]*config.Source)
@@ -1013,7 +1038,24 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 
 		for rows.Next() {
 			var row sourceRow
-			if err := rows.Scan(&row.id, &row.sourceName, &row.builtin, &row.repo, &row.ref, &row.gitCommit, &row.path, &row.includePaths, &row.excludePaths, &row.secretName, &row.secretRefType, &row.secretValue, &row.requirementName, &row.requirementCommit, &row.reqPath, &row.reqPrefix); err != nil {
+			if err := rows.Scan(&row.id,
+				&row.sourceName,
+				&row.builtin,
+				&row.repo,
+				&row.ref,
+				&row.gitCommit,
+				&row.path,
+				&row.includePaths,
+				&row.excludePaths,
+				&row.secretName,
+				&row.secretRefType,
+				&row.secretValue,
+				&row.requirementName,
+				&row.requirementCommit,
+				&row.reqPath,
+				&row.reqPrefix,
+				&row.reqOpts,
+			); err != nil {
 				return nil, "", err
 			}
 
@@ -1062,11 +1104,29 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			}
 
 			if row.requirementName != nil {
+				var automount *bool
+				if row.reqOpts.Valid {
+					var m map[string]any
+					if err := json.Unmarshal([]byte(row.reqOpts.V), &m); err != nil {
+						return nil, "", fmt.Errorf("failed to unmarshal options for requirement %s of source %s: %w", *row.requirementName, row.sourceName, err)
+					}
+					if am, ok := m["automount"]; ok {
+						if am, ok := am.(bool); ok {
+							automount = &am
+							delete(m, "automount")
+						}
+					}
+					if len(m) > 0 {
+						return nil, "", fmt.Errorf("unknown options for requirement %s of source %s: %v", *row.requirementName, row.sourceName, m)
+					}
+
+				}
 				src.Requirements = append(src.Requirements, config.Requirement{
-					Source: row.requirementName,
-					Git:    config.GitRequirement{Commit: row.requirementCommit},
-					Path:   row.reqPath.V,
-					Prefix: row.reqPrefix.V,
+					Source:    row.requirementName,
+					Git:       config.GitRequirement{Commit: row.requirementCommit},
+					Path:      row.reqPath.V,
+					Prefix:    row.reqPrefix.V,
+					AutoMount: automount,
 				})
 			}
 
@@ -1328,7 +1388,8 @@ WHERE (` + conditions + ") AND tenants.name = " + d.arg(len(args))
 	sources.name,
 	stacks_requirements.gitcommit,
 	stacks_requirements.path AS req_path,
-	stacks_requirements.prefix AS req_prefix
+	stacks_requirements.prefix AS req_prefix,
+	stacks_requirements.options AS req_options
 FROM (%s) AS stacks
 LEFT JOIN
 	stacks_requirements ON stacks.id = stacks_requirements.stack_id
@@ -1348,6 +1409,7 @@ LEFT JOIN
 			excludeSelector          *string
 			sourceName, sourceCommit *string
 			path, prefix             sql.Null[string]
+			reqOpts                  sql.Null[string] // JSON
 		}
 
 		stacksMap := map[string]*config.Stack{}
@@ -1356,7 +1418,7 @@ LEFT JOIN
 
 		for rows.Next() {
 			var row stackRow
-			if err := rows.Scan(&row.id, &row.stackName, &row.selector, &row.excludeSelector, &row.sourceName, &row.sourceCommit, &row.path, &row.prefix); err != nil {
+			if err := rows.Scan(&row.id, &row.stackName, &row.selector, &row.excludeSelector, &row.sourceName, &row.sourceCommit, &row.path, &row.prefix, &row.reqOpts); err != nil {
 				return nil, "", err
 			}
 
@@ -1383,11 +1445,29 @@ LEFT JOIN
 			}
 
 			if row.sourceName != nil {
+				var automount *bool
+				if row.reqOpts.Valid {
+					var m map[string]any
+					if err := json.Unmarshal([]byte(row.reqOpts.V), &m); err != nil {
+						return nil, "", fmt.Errorf("failed to unmarshal options for requirement %s of stack %s: %w", *row.sourceName, row.stackName, err)
+					}
+					if am, ok := m["automount"]; ok {
+						if am, ok := am.(bool); ok {
+							automount = &am
+							delete(m, "automount")
+						}
+					}
+					if len(m) > 0 {
+						return nil, "", fmt.Errorf("unknown options for requirement %s of stack %s: %v", *row.sourceName, row.stackName, m)
+					}
+
+				}
 				stack.Requirements = append(stack.Requirements, config.Requirement{
-					Source: row.sourceName,
-					Git:    config.GitRequirement{Commit: row.sourceCommit},
-					Path:   row.path.V,
-					Prefix: row.prefix.V,
+					Source:    row.sourceName,
+					Git:       config.GitRequirement{Commit: row.sourceCommit},
+					Path:      row.path.V,
+					Prefix:    row.prefix.V,
+					AutoMount: automount,
 				})
 			}
 
@@ -1547,8 +1627,20 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 				if err != nil {
 					return fmt.Errorf("lookup id of requirement source %s: %w", *req.Source, err)
 				}
-				if err := d.upsertRel(ctx, tx, "bundles_requirements", []string{"bundle_id", "source_id", "gitcommit", "path", "prefix"}, []string{"bundle_id", "source_id"},
-					id, reqID, req.Git.Commit, req.Path, req.Prefix); err != nil {
+				var opts sql.Null[string]
+				var m map[string]any
+				if req.AutoMount != nil {
+					m = map[string]any{"automount": *req.AutoMount}
+				}
+				if len(m) > 0 {
+					opts0, err := json.Marshal(m)
+					if err != nil {
+						return err
+					}
+					opts.V, opts.Valid = string(opts0), true
+				}
+				if err := d.upsertRel(ctx, tx, "bundles_requirements", []string{"bundle_id", "source_id", "gitcommit", "path", "prefix", "options"}, []string{"bundle_id", "source_id"},
+					id, reqID, req.Git.Commit, req.Path, req.Prefix, opts); err != nil {
 					return fmt.Errorf("table bundles_requirements: %w", err)
 				}
 				sources = append(sources, reqID)
@@ -1639,9 +1731,21 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 				if err != nil {
 					return fmt.Errorf("lookup id of requirement source %s: %w", *r.Source, err)
 				}
-				if err := d.upsertRel(ctx, tx, "sources_requirements", []string{"source_id", "requirement_id", "gitcommit", "path", "prefix"},
+				var opts sql.Null[string]
+				var m map[string]any
+				if r.AutoMount != nil {
+					m = map[string]any{"automount": *r.AutoMount}
+				}
+				if len(m) > 0 {
+					opts0, err := json.Marshal(m)
+					if err != nil {
+						return err
+					}
+					opts.V, opts.Valid = string(opts0), true
+				}
+				if err := d.upsertRel(ctx, tx, "sources_requirements", []string{"source_id", "requirement_id", "gitcommit", "path", "prefix", "options"},
 					[]string{"source_id", "requirement_id"},
-					id, reqID, r.Git.Commit, r.Path, r.Prefix,
+					id, reqID, r.Git.Commit, r.Path, r.Prefix, opts,
 				); err != nil {
 					return fmt.Errorf("upsert of requirement source link %s: %w", *r.Source, err)
 				}
@@ -1711,8 +1815,20 @@ func (d *Database) UpsertStack(ctx context.Context, principal, tenant string, st
 				if err != nil {
 					return fmt.Errorf("lookup source %s: %w", *r.Source, err)
 				}
-				if err := d.upsertRel(ctx, tx, "stacks_requirements", []string{"stack_id", "source_id", "gitcommit", "path", "prefix"}, []string{"stack_id", "source_id"},
-					id, sourceID, r.Git.Commit, r.Path, r.Prefix); err != nil {
+				var opts sql.Null[string]
+				var m map[string]any
+				if r.AutoMount != nil {
+					m = map[string]any{"automount": *r.AutoMount}
+				}
+				if len(m) > 0 {
+					opts0, err := json.Marshal(m)
+					if err != nil {
+						return err
+					}
+					opts.V, opts.Valid = string(opts0), true
+				}
+				if err := d.upsertRel(ctx, tx, "stacks_requirements", []string{"stack_id", "source_id", "gitcommit", "path", "prefix", "options"}, []string{"stack_id", "source_id"},
+					id, sourceID, r.Git.Commit, r.Path, r.Prefix, opts); err != nil {
 					return err
 				}
 			}

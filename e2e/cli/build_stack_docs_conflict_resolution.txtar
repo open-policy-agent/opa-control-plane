@@ -65,8 +65,6 @@ bundles:
     object_storage:
       filesystem:
         path: bundles/petshop-svc/bundle.tar.gz
-    options:
-      no_default_stack_mount: true
   notifications-svc:
     labels:
       environment: prod
@@ -75,14 +73,13 @@ bundles:
     object_storage:
       filesystem:
         path: bundles/notifications-svc/bundle.tar.gz
-    options:
-      no_default_stack_mount: true
 stacks:
   globalsecurity:
     selector:
       environment: [prod]
     requirements:
     - source: main
+      automount: false # want predictable entrypoint
     - source: globalsecurity
 sources:
   notifications-svc:
@@ -104,7 +101,7 @@ sources:
 /notifications-svc/rules.rego
 /.manifest
 -- exp/notifications-svc/.manifest --
-{"revision":"","roots":["service","globalsecurity","main"],"rego_version":0}
+{"revision":"","roots":["service","stacks/globalsecurity/globalsecurity","main"],"rego_version":0}
 -- exp/petshop-svc/tarball --
 /data.json
 /globalsecurity/rules.rego
@@ -112,4 +109,4 @@ sources:
 /petshop-svc/rules.rego
 /.manifest
 -- exp/petshop-svc/.manifest --
-{"revision":"","roots":["service","globalsecurity","main"],"rego_version":0}
+{"revision":"","roots":["service","stacks/globalsecurity/globalsecurity","main"],"rego_version":0}

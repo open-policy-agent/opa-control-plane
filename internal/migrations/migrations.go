@@ -38,6 +38,7 @@ func Migrations(dialect string) (fs.FS, error) {
 		addBundleInterval(dialect),
 		addBundleOptions(dialect), // up until #18
 		crossTablesWithIDPKeys(19, dialect),
+		addRequirementsOptions(20, dialect), // adds 3, next is 23.
 	), nil
 }
 
