@@ -583,7 +583,7 @@ func TestBundleOptionsTargetParsing(t *testing.T) {
 				if err == nil {
 					t.Fatalf("Expected error for invalid target")
 				}
-				if !strings.Contains(err.Error(), "value must be one of 'rego', 'ir', 'wasm'") {
+				if !strings.Contains(err.Error(), "value must be one of 'rego', 'ir', 'plan', 'wasm'") {
 					t.Errorf("Expected error to contain schema validation message, got %v", err)
 				}
 				return

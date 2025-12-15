@@ -262,6 +262,7 @@
           "enum": [
             "rego",
             "ir",
+            "plan",
             "wasm"
           ],
           "type": "string"

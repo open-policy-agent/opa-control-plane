@@ -1,8 +1,10 @@
 exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
-stderr '^1/1 bundles built and pushed successfully$'
+stderr '^2/2 bundles built and pushed successfully$'
 ! stdout .
 
 exec tar tf bundles/ir-bundle/bundle.tar.gz
+cmp stdout exp/tarball
+exec tar tf bundles/plan-bundle/bundle.tar.gz
 cmp stdout exp/tarball
 
 exec tar xf bundles/ir-bundle/bundle.tar.gz
@@ -22,6 +24,14 @@ bundles:
         path: bundles/ir-bundle/bundle.tar.gz
     options:
       target: "ir"
+    requirements:
+    - source: source0
+  plan-bundle:
+    object_storage:
+      filesystem:
+        path: bundles/plan-bundle/bundle.tar.gz
+    options:
+      target: "plan"
     requirements:
     - source: source0
 sources:
