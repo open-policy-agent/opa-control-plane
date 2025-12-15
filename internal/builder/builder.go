@@ -2,6 +2,7 @@ package builder
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -161,6 +162,7 @@ type Builder struct {
 	sources  []*Source
 	output   io.Writer
 	excluded []string
+	target   string
 }
 
 func New() *Builder {
@@ -179,6 +181,11 @@ func (b *Builder) WithSources(srcs []*Source) *Builder {
 
 func (b *Builder) WithExcluded(excluded []string) *Builder {
 	b.excluded = excluded
+	return b
+}
+
+func (b *Builder) WithTarget(target string) *Builder {
+	b.target = target
 	return b
 }
 
@@ -357,9 +364,16 @@ func (b *Builder) Build(ctx context.Context) error {
 	fsBuild := mountfs.New(buildSources.fs())
 	paths := slices.Collect(maps.Keys(fsBuild))
 
+	target := cmp.Or(b.target, "rego")
+	if target == "ir" { // fix naming convention
+		target = "plan"
+	}
+
 	c := compile.New().
 		WithRoots(roots...).
 		WithFS(fsBuild).
+		WithTarget(target).
+		WithRegoAnnotationEntrypoints(true).
 		WithPaths(paths...)
 	if err := c.Build(ctx); err != nil {
 		return fmt.Errorf("build: %w", err)

@@ -243,7 +243,8 @@ func Validate(data []byte) error {
 }
 
 type Options struct {
-	NoDefaultStackMount bool `json:"no_default_stack_mount"`
+	NoDefaultStackMount bool   `json:"no_default_stack_mount"`
+	Target              string `json:"target,omitzero" enum:"rego,ir,plan,wasm"`
 
 	_ struct{} `additionalProperties:"false"`
 }

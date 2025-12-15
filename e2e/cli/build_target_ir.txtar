@@ -1,0 +1,48 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^2/2 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/ir-bundle/bundle.tar.gz
+cmp stdout exp/tarball
+exec tar tf bundles/plan-bundle/bundle.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/ir-bundle/bundle.tar.gz
+cmp .manifest exp/.manifest
+
+-- files/sources/test/rules/rules.rego --
+package pkg
+import rego.v1
+# METADATA
+# entrypoint: true
+r := true
+-- config.d/bundle.yml --
+bundles:
+  ir-bundle:
+    object_storage:
+      filesystem:
+        path: bundles/ir-bundle/bundle.tar.gz
+    options:
+      target: "ir"
+    requirements:
+    - source: source0
+  plan-bundle:
+    object_storage:
+      filesystem:
+        path: bundles/plan-bundle/bundle.tar.gz
+    options:
+      target: "plan"
+    requirements:
+    - source: source0
+sources:
+  source0:
+    directory: files/sources/test
+    paths:
+    - rules/rules.rego
+-- exp/tarball --
+/data.json
+/source0/rules/rules.rego
+/plan.json
+/.manifest
+-- exp/.manifest --
+{"revision":"","roots":["pkg"],"rego_version":0}

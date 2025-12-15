@@ -257,6 +257,15 @@
       "properties": {
         "no_default_stack_mount": {
           "type": "boolean"
+        },
+        "target": {
+          "enum": [
+            "rego",
+            "ir",
+            "plan",
+            "wasm"
+          ],
+          "type": "string"
         }
       },
       "type": "object"
