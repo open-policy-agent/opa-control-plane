@@ -503,3 +503,104 @@ func TestRequirementsEqual(t *testing.T) {
 		})
 	}
 }
+
+func TestBundleOptionsTargetParsing(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   string
+		expected string
+		hasError bool
+	}{
+		{
+			name: "default target (empty string defaults to rego)",
+			config: `{
+				bundles: {
+					test: {
+						options: {}
+					}
+				}
+			}`,
+			expected: "",
+		},
+		{
+			name: "explicit rego target",
+			config: `{
+				bundles: {
+					test: {
+						options: {
+							target: "rego"
+						}
+					}
+				}
+			}`,
+			expected: "rego",
+		},
+		{
+			name: "ir target",
+			config: `{
+				bundles: {
+					test: {
+						options: {
+							target: "ir"
+						}
+					}
+				}
+			}`,
+			expected: "ir",
+		},
+		{
+			name: "wasm target",
+			config: `{
+				bundles: {
+					test: {
+						options: {
+							target: "wasm"
+						}
+					}
+				}
+			}`,
+			expected: "wasm",
+		},
+		{
+			name: "invalid target",
+			config: `{
+				bundles: {
+					test: {
+						options: {
+							target: "invalid"
+						}
+					}
+				}
+			}`,
+			hasError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Parse([]byte(tt.config))
+			if tt.hasError {
+				if err == nil {
+					t.Fatalf("Expected error for invalid target")
+				}
+				if !strings.Contains(err.Error(), "value must be one of 'rego', 'ir', 'wasm'") {
+					t.Errorf("Expected error to contain schema validation message, got %v", err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+
+			bundle := cfg.Bundles["test"]
+			if bundle == nil {
+				t.Fatal("Expected bundle 'test' to exist")
+			}
+
+			if bundle.Options.Target != tt.expected {
+				t.Errorf("Expected target %q, got %q", tt.expected, bundle.Options.Target)
+			}
+		})
+	}
+}

@@ -242,8 +242,21 @@ func Validate(data []byte) error {
 	return rootSchema.Validate(config)
 }
 
+// Target represents the bundle compilation target type.
+type Target string
+
+const (
+	// TargetRego compiles to Rego format (zero value/default).
+	TargetRego Target = "rego"
+	// TargetIR compiles to intermediate representation format.
+	TargetIR Target = "ir"
+	// TargetWasm compiles to WebAssembly format.
+	TargetWasm Target = "wasm"
+)
+
 type Options struct {
-	NoDefaultStackMount bool `json:"no_default_stack_mount"`
+	NoDefaultStackMount bool   `json:"no_default_stack_mount"`
+	Target              string `json:"target,omitzero" enum:"rego,ir,wasm"`
 
 	_ struct{} `additionalProperties:"false"`
 }
