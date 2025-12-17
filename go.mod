@@ -27,7 +27,7 @@ require (
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/aws/aws-sdk-go v1.49.6 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.4 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.5 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.6 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.16 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.16 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.16 // indirect
@@ -38,7 +38,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.16 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.16 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.30.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.30.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.12 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.5 // indirect
 	github.com/aws/smithy-go v1.24.0 // indirect
@@ -219,10 +219,10 @@ require (
 	github.com/achille-roussel/sqlrange v1.0.0
 	github.com/akedrou/textdiff v0.1.0
 	github.com/aws/aws-sdk-go-v2 v1.41.0
-	github.com/aws/aws-sdk-go-v2/config v1.32.5
+	github.com/aws/aws-sdk-go-v2/config v1.32.6
 	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.6.16
-	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.20.15
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.93.2
+	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.20.17
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.94.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
 	github.com/cockroachdb/cockroach-go/v2 v2.4.3
 	github.com/coreos/go-oidc/v3 v3.17.0
@@ -232,14 +232,14 @@ require (
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/gobwas/glob v0.2.3
-	github.com/goccy/go-yaml v1.19.0
+	github.com/goccy/go-yaml v1.19.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/golang-lru v1.0.2
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/johannesboyne/gofakes3 v0.0.0-20250402064820-d479899d8cbe
 	github.com/olekukonko/tablewriter v1.1.0
-	github.com/open-policy-agent/opa v1.11.0
+	github.com/open-policy-agent/opa v1.11.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rogpeppe/go-internal v1.14.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
