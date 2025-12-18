@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/go-git/go-git/v5"
 	gitconfig "github.com/go-git/go-git/v5/config"
@@ -27,6 +28,7 @@ import (
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/oauth2/clientcredentials"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
@@ -226,6 +228,9 @@ func (s *Synchronizer) auth(ctx context.Context) (transport.AuthMethod, error) {
 
 	case config.SecretSSHKey:
 		return newSSHAuth(value.Key, value.Passphrase, value.Fingerprints)
+
+	case *config.SecretOIDCClientCredentials:
+		return newOIDCBearerAuth(ctx, value)
 	}
 
 	return nil, fmt.Errorf("unsupported authentication type: %T", value)
@@ -348,4 +353,48 @@ func (a *basicAuth) SetAuth(r *gohttp.Request) {
 			r.Header.Set(strings.TrimSpace(name), strings.TrimSpace(value))
 		}
 	}
+}
+
+type bearerAuth struct {
+	token string
+}
+
+func (a *bearerAuth) String() string {
+	return fmt.Sprintf("%s - ******", a.Name())
+}
+
+func (*bearerAuth) Name() string {
+	return "http-bearer-auth"
+}
+
+func (a *bearerAuth) SetAuth(r *gohttp.Request) {
+	r.Header.Set("Authorization", "Bearer "+a.token)
+}
+
+func newOIDCBearerAuth(ctx context.Context, secret *config.SecretOIDCClientCredentials) (transport.AuthMethod, error) {
+	tokenURL := secret.TokenURL
+	if tokenURL == "" {
+		prov, err := oidc.NewProvider(ctx, secret.Issuer)
+		if err != nil {
+			return nil, fmt.Errorf("oidc discovery: %w", err)
+		}
+		tokenURL = prov.Endpoint().TokenURL
+	}
+
+	conf := &clientcredentials.Config{
+		ClientID:     secret.ClientID,
+		ClientSecret: secret.ClientSecret,
+		Scopes:       secret.Scopes,
+		TokenURL:     tokenURL,
+	}
+
+	token, err := conf.Token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if token.AccessToken == "" {
+		return nil, errors.New("oidc: received empty access token")
+	}
+
+	return &bearerAuth{token: token.AccessToken}, nil
 }
