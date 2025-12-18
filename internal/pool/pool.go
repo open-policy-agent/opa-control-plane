@@ -2,6 +2,7 @@ package pool
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -15,17 +16,25 @@ import (
 // the waiting goroutine to process the new task immediately.
 type Pool struct {
 	mu    sync.Mutex
-	tasks []*task
+	queue []*task
+	reg   map[tenantName]*task
 	wait  chan struct{}
 }
 
+type tenantName struct {
+	tenant string
+	name   string
+}
+
 type task struct {
+	name     tenantName
 	fn       func(context.Context) time.Time
 	deadline time.Time
+	rerun    bool
 }
 
 func New(workers int) *Pool {
-	var pool Pool
+	pool := Pool{reg: make(map[tenantName]*task)}
 
 	for range workers {
 		go pool.work()
@@ -34,8 +43,8 @@ func New(workers int) *Pool {
 	return &pool
 }
 
-func (p *Pool) Add(fn func(context.Context) time.Time) {
-	p.enqueue(&task{fn: fn, deadline: time.Now()})
+func (p *Pool) Add(tenant, name string, fn func(context.Context) time.Time) {
+	p.enqueue(&task{name: tenantName{name: name, tenant: tenant}, fn: fn, deadline: time.Now()})
 }
 
 // work is the main loop for each worker goroutine.
@@ -46,18 +55,34 @@ func (p *Pool) work() {
 	}
 }
 
-func (p *Pool) enqueue(t *task) {
-	if t.deadline.IsZero() {
-		// Task requested removal from the pool.
-		return
-	}
-
+// Trigger runs the named task NOW, if it is in the queue, regardless of the
+// previous deadline, by pulling it into the front of the queue. If the named
+// task is not queued, it's running. In that case, we'll have it override its
+// next deadline to NOW, causing an immediate re-run after the current run.
+// Subsequent runs will use the deadline returned by the task's `fn`.
+func (p *Pool) Trigger(tenant, name string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if i := slices.IndexFunc(p.queue, func(t *task) bool { return t.name.name == name && t.name.tenant == tenant }); i != -1 {
+		p.queue[i].deadline = time.Now()
+		p.sortAndWake()
+		return nil
+	}
+	// if it's not in p.queue, it must be running at the moment
+	if t, ok := p.reg[tenantName{tenant: tenant, name: name}]; ok {
+		t.rerun = true
+		return nil
+	}
+
+	return fmt.Errorf("no task with name %s (tenant %s)", name, tenant)
+}
+
+// sortAndWake is used in multiple places, but always needs to be run
+// within a p.mu lock!
+func (p *Pool) sortAndWake() {
 	// Maintain the tasks in deadline order.
-	p.tasks = append(p.tasks, t)
-	slices.SortFunc(p.tasks, func(a, b *task) int {
+	slices.SortFunc(p.queue, func(a, b *task) int {
 		return a.deadline.Compare(b.deadline)
 	})
 
@@ -68,6 +93,20 @@ func (p *Pool) enqueue(t *task) {
 	}
 }
 
+func (p *Pool) enqueue(t *task) {
+	if t.deadline.IsZero() {
+		// Task requested removal from the pool.
+		delete(p.reg, t.name)
+		return
+	}
+
+	p.mu.Lock()
+	p.reg[t.name] = t
+	p.queue = append(p.queue, t)
+	p.sortAndWake()
+	p.mu.Unlock()
+}
+
 func (p *Pool) dequeue() *task {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -75,10 +114,13 @@ func (p *Pool) dequeue() *task {
 	for {
 
 		var t *task
-		if len(p.tasks) == 0 {
-			t = &task{deadline: time.Now().Add(time.Hour * 24 * 365)} // Default to a far future deadline
+		if len(p.queue) == 0 {
+			t = &task{
+				name:     tenantName{tenant: "dummy", name: "dummy"},
+				deadline: time.Now().Add(time.Hour * 24 * 365), // Default to a far future deadline
+			}
 		} else {
-			t = p.tasks[0]
+			t = p.queue[0]
 		}
 
 		if t.deadline.After(time.Now()) {
@@ -105,12 +147,16 @@ func (p *Pool) dequeue() *task {
 		break
 	}
 
-	t := p.tasks[0]
-	p.tasks = slices.Delete(p.tasks, 0, 1)
+	var t *task
+	t, p.queue = p.queue[0], p.queue[1:]
 	return t
 }
 
 func (t *task) Execute(ctx context.Context) *task {
 	t.deadline = t.fn(ctx)
+	if t.rerun {
+		t.rerun = false
+		t.deadline = time.Now()
+	}
 	return t
 }

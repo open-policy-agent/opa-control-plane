@@ -1,0 +1,42 @@
+! exec $OPACTL run --config config.d/bundle.yml --data-dir tmp --addr 127.0.0.1:8285 --log-level debug &opactl&
+! stderr .
+! stdout .
+
+exec curl --retry 5 --retry-all-errors http://127.0.0.1:8285/health
+
+# automation token
+exec curl -H 'Authorization: bearer sesame' http://127.0.0.1:8285/v1/bundles/hello-world -XPOST
+
+# admin token
+exec curl -H 'Authorization: bearer admin' http://127.0.0.1:8285/v1/bundles/hello-world -XPOST
+
+kill opactl
+wait opactl
+stderr 'triggered bundle build for hello-world'
+
+-- data/common.json --
+{ "common": true }
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: global-data
+sources:
+  global-data:
+    paths:
+    - data/common.json
+service:
+  bundle_rebuild_interval: 1h
+  reconfiguration_interval: 1h
+tokens:
+  admin-user:
+    api_key: admin
+    scopes:
+    - role: administrator
+  trigger-token:
+    api_key: sesame
+    scopes:
+    - role: automation
