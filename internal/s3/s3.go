@@ -127,7 +127,7 @@ func New(ctx context.Context, c config.ObjectStorage) (ObjectStorage, error) {
 					return nil, err
 				}
 			} else if auth.Credentials != "" {
-				client, err = storage.NewClient(ctx, option.WithCredentialsJSON([]byte(auth.Credentials)))
+				client, err = storage.NewClient(ctx, option.WithAuthCredentialsJSON(option.ServiceAccount, []byte(auth.Credentials)))
 				if err != nil {
 					return nil, err
 				}
