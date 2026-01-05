@@ -25,6 +25,13 @@ type ClientSecret interface {
 	Client(context.Context) (*http.Client, error)
 }
 
+// TokenSecret is the shared type of those secrets that can become effective by
+// returning a bearer token string. This is used for token-based authentication
+// in various contexts like git repositories and HTTP requests.
+type TokenSecret interface {
+	Token(context.Context) (string, error)
+}
+
 var wellknownFingerprints = []string{
 	"SHA256:uNiVztksCsDhcc0u9e8BujQXVUpKZIDTMczCvj3tD2s", // github.com https://docs.github.com/en/github/authenticating-to-github/githubs-ssh-key-fingerprints
 	"SHA256:p2QAMXNIC1TJYWeIOttrVc98/R1BUFWu3/LiyKgUfQM", // github.com
@@ -285,44 +292,114 @@ func (s *SecretBasicAuth) Client(context.Context) (*http.Client, error) {
 	}), nil
 }
 
+// SecretOIDCClientCredentials represents OIDC Client Credentials flow configuration.
+// It supports both explicit token endpoint configuration and automatic discovery via issuer.
 type SecretOIDCClientCredentials struct {
-	Issuer       string   `json:"issuer"`
-	TokenURL     string   `json:"token_endpoint"`
-	ClientID     string   `json:"client_id"`
-	ClientSecret string   `json:"client_secret"`
-	Scopes       []string `json:"scopes,omitempty"`
+	Issuer       string   `json:"issuer"`           // OIDC issuer URL for automatic discovery (required if TokenURL is not provided)
+	TokenURL     string   `json:"token_endpoint"`   // Explicit token endpoint URL (optional if Issuer is provided)
+	ClientID     string   `json:"client_id"`        // OAuth2 client ID (required)
+	ClientSecret string   `json:"client_secret"`    // OAuth2 client secret (required)
+	Scopes       []string `json:"scopes,omitempty"` // Optional OAuth2 scopes
 }
 
-func (value *SecretOIDCClientCredentials) Client(ctx context.Context) (*http.Client, error) {
-	tokenURL := value.TokenURL
-	if tokenURL == "" { // check discovery
-		prov, err := oidc.NewProvider(ctx, value.Issuer)
-		if err != nil {
-			return nil, fmt.Errorf("oidc discovery: %w", err)
-		}
-		tokenURL = prov.Endpoint().TokenURL
+// validate performs upfront validation of the OIDC credentials configuration.
+// This helps catch configuration errors early and provides clear error messages.
+func (value *SecretOIDCClientCredentials) validate() error {
+	if value.ClientID == "" {
+		return errors.New("client_id is required")
 	}
-	conf := &clientcredentials.Config{
+	if value.ClientSecret == "" {
+		return errors.New("client_secret is required")
+	}
+	if value.TokenURL == "" && value.Issuer == "" {
+		return errors.New("either issuer or token_endpoint must be provided")
+	}
+	return nil
+}
+
+// getClientCredentialsConfig creates and returns a properly configured clientcredentials.Config.
+// This method handles token URL discovery if needed and centralizes the configuration logic.
+func (value *SecretOIDCClientCredentials) getClientCredentialsConfig(ctx context.Context) (*clientcredentials.Config, error) {
+	if err := value.validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	tokenURL := value.TokenURL
+
+	if tokenURL == "" {
+		provider, err := oidc.NewProvider(ctx, value.Issuer)
+		if err != nil {
+			return nil, fmt.Errorf("discovery failed for issuer %q: %w", value.Issuer, err)
+		}
+
+		endpoint := provider.Endpoint()
+		tokenURL = endpoint.TokenURL
+
+		if tokenURL == "" {
+			return nil, fmt.Errorf("discovery did not return a token endpoint for issuer %q", value.Issuer)
+		}
+	}
+
+	return &clientcredentials.Config{
 		ClientID:     value.ClientID,
 		ClientSecret: value.ClientSecret,
 		Scopes:       value.Scopes,
 		TokenURL:     tokenURL,
-	}
-	return conf.Client(ctx), nil
+	}, nil
 }
 
+// Client returns an HTTP client configured with OIDC Client Credentials flow authentication.
+// The returned client automatically handles token acquisition and refresh.
+func (value *SecretOIDCClientCredentials) Client(ctx context.Context) (*http.Client, error) {
+	config, err := value.getClientCredentialsConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure client: %w", err)
+	}
+
+	return config.Client(ctx), nil
+}
+
+// Token obtains and returns an access token using OIDC Client Credentials flow.
+// This method is useful when you need just the token string rather than a configured HTTP client.
+func (value *SecretOIDCClientCredentials) Token(ctx context.Context) (string, error) {
+	config, err := value.getClientCredentialsConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to configure client: %w", err)
+	}
+
+	tokenSource := config.TokenSource(ctx)
+	token, err := tokenSource.Token()
+	if err != nil {
+		return "", fmt.Errorf("failed to acquire access token: %w", err)
+	}
+
+	if token.AccessToken == "" {
+		return "", errors.New("received empty access token from provider")
+	}
+
+	return token.AccessToken, nil
+}
+
+var _ ClientSecret = (*SecretOIDCClientCredentials)(nil)
+var _ TokenSecret = (*SecretOIDCClientCredentials)(nil)
+
 type SecretTokenAuth struct {
-	Token string `json:"token"` // Bearer token for HTTP authentication.
+	BearerToken string `json:"token"` // Bearer token for HTTP authentication.
 }
 
 func (s *SecretTokenAuth) Client(context.Context) (*http.Client, error) {
 	return wrappedClient(func(r *http.Request) *http.Request {
-		r.Header.Set("Authorization", "Bearer "+s.Token)
+		r.Header.Set("Authorization", "Bearer "+s.BearerToken)
 		return r
 	}), nil
 }
 
+func (s *SecretTokenAuth) Token(context.Context) (string, error) {
+	return s.BearerToken, nil
+}
+
 var _ ClientSecret = (*SecretTokenAuth)(nil)
+var _ TokenSecret = (*SecretTokenAuth)(nil)
 
 type SecretPassword struct {
 	Password string `json:"password"` // Password for authentication.
