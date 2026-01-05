@@ -1,13 +1,17 @@
 package gitsync_test
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/go-git/go-git/v5"
@@ -117,8 +121,8 @@ func TestGitsyncLocal(t *testing.T) {
 func TestGitsyncSSH(t *testing.T) {
 	// Create a git repository to use for testing. Note, it's not a bare repository, but it will be used as such by pointing to .git directory.
 	tmpRootDir := t.TempDir()
-	testRepositoryPath := tmpRootDir + "/testing"
 
+	testRepositoryPath := tmpRootDir + "/testing"
 	repository, err := git.PlainInit(testRepositoryPath, false)
 	if err != nil {
 		t.Fatalf("expected no error while initializing test repository: %v", err)
@@ -286,4 +290,147 @@ func TestGitsyncSSH(t *testing.T) {
 			t.Errorf("expected %d fetches, got %d", exp, act)
 		}
 	})
+}
+
+// mockOIDCProvider simulates an OIDC provider for client credentials flow
+func mockOIDCProvider(clientID, clientSecret string) *httptest.Server {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		metadata := map[string]string{
+			"issuer":         "http://" + r.Host,
+			"token_endpoint": "http://" + r.Host + "/token",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(metadata)
+	})
+
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		if r.Form.Get("client_id") != clientID || r.Form.Get("client_secret") != clientSecret {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		scopes := r.Form.Get("scope")
+		tokenResponse := map[string]any{
+			"access_token": "git_access_token_" + strings.ReplaceAll(scopes, " ", "_"),
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(tokenResponse)
+	})
+
+	return httptest.NewServer(mux)
+}
+
+func TestGitsync_TokenBasedAuth(t *testing.T) {
+
+	tests := []struct {
+		name           string
+		secretConfig   map[string]any
+		setupOIDC      func() (*httptest.Server, func())
+		expectedPrefix string
+	}{
+		{
+			name: "static_token_auth",
+			secretConfig: map[string]any{
+				"type":  "token_auth",
+				"token": "static_bearer_token_123",
+			},
+			expectedPrefix: "static_bearer_token_123",
+		},
+		{
+			name: "oidc_with_token_endpoint",
+			secretConfig: map[string]any{
+				"type":           "oidc_client_credentials",
+				"token_endpoint": "", // Set dynamically
+				"client_id":      "test_client",
+				"client_secret":  "test_secret",
+				"scopes":         []string{"git", "repo"},
+			},
+			setupOIDC: func() (*httptest.Server, func()) {
+				server := mockOIDCProvider("test_client", "test_secret")
+				return server, server.Close
+			},
+			expectedPrefix: "git_access_token_",
+		},
+		{
+			name: "oidc_with_issuer",
+			secretConfig: map[string]any{
+				"type":          "oidc_client_credentials",
+				"issuer":        "", // Set dynamically
+				"client_id":     "test_client",
+				"client_secret": "test_secret",
+				"scopes":        []string{"git", "repo"},
+			},
+			setupOIDC: func() (*httptest.Server, func()) {
+				server := mockOIDCProvider("test_client", "test_secret")
+				return server, server.Close
+			},
+			expectedPrefix: "git_access_token_",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup OIDC provider if needed
+			if tt.setupOIDC != nil {
+				oidcServer, cleanup := tt.setupOIDC()
+				t.Cleanup(cleanup)
+
+				if tt.secretConfig["token_endpoint"] == "" {
+					tt.secretConfig["issuer"] = oidcServer.URL
+				} else {
+					tt.secretConfig["token_endpoint"] = oidcServer.URL + "/token"
+				}
+			}
+
+			secret := config.Secret{
+				Name:  "test_secret",
+				Value: tt.secretConfig,
+			}
+
+			// Test token retrieval
+			token := testTokenRetrieval(t, &secret, tt.expectedPrefix)
+			t.Logf("Got token: %s", token)
+		})
+	}
+}
+
+// testTokenRetrieval tests that tokens can be retrieved from secrets
+func testTokenRetrieval(t *testing.T, secret *config.Secret, expectedPrefix string) string {
+	ctx := context.Background()
+
+	resolved, err := secret.Ref().Resolve(ctx)
+	if err != nil {
+		t.Fatalf("failed to resolve secret: %v", err)
+	}
+
+	var token string
+	switch v := resolved.(type) {
+	case *config.SecretTokenAuth:
+		token, err = v.Token(ctx)
+	case *config.SecretOIDCClientCredentials:
+		token, err = v.Token(ctx)
+	default:
+		t.Fatalf("unexpected secret type: %T", v)
+	}
+
+	if err != nil {
+		t.Fatalf("failed to get token: %v", err)
+	}
+	if token == "" {
+		t.Fatal("got empty token")
+	}
+	if !strings.HasPrefix(token, expectedPrefix) {
+		t.Fatalf("expected token to start with %q, got: %s", expectedPrefix, token)
+	}
+
+	return token
 }

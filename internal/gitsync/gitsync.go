@@ -226,6 +226,20 @@ func (s *Synchronizer) auth(ctx context.Context) (transport.AuthMethod, error) {
 
 	case config.SecretSSHKey:
 		return newSSHAuth(value.Key, value.Passphrase, value.Fingerprints)
+
+	case *config.SecretOIDCClientCredentials:
+		// Use the TokenSecret interface for OAuth2 token-based authentication
+		return &tokenAuth{
+			tokenSecret: value,
+			name:        "oidc-client-credentials",
+		}, nil
+
+	case *config.SecretTokenAuth:
+		// Use the TokenSecret interface for static token-based authentication
+		return &tokenAuth{
+			tokenSecret: value,
+			name:        "bearer-token",
+		}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported authentication type: %T", value)
@@ -348,4 +362,31 @@ func (a *basicAuth) SetAuth(r *gohttp.Request) {
 			r.Header.Set(strings.TrimSpace(name), strings.TrimSpace(value))
 		}
 	}
+}
+
+// tokenAuth provides HTTP bearer token authentication using any TokenSecret.
+// It works with both static tokens and dynamic tokens (like OIDC client credentials).
+type tokenAuth struct {
+	tokenSecret config.TokenSecret
+	name        string
+}
+
+func (a *tokenAuth) String() string {
+	return a.Name() + " - token-based"
+}
+
+func (a *tokenAuth) Name() string {
+	return "http-" + a.name
+}
+
+func (a *tokenAuth) SetAuth(r *gohttp.Request) {
+	// Get a token using the TokenSecret interface
+	token, err := a.tokenSecret.Token(r.Context())
+	if err != nil {
+		// If we can't get a token, we can't set auth
+		// This will likely result in an authentication error downstream
+		return
+	}
+
+	r.Header.Set("Authorization", "Bearer "+token)
 }
