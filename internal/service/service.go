@@ -24,7 +24,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
-	"github.com/open-policy-agent/opa-control-plane/internal/gitsync"
+	"github.com/open-policy-agent/opa-control-plane/pkg/gitsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/httpsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
