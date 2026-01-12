@@ -17,7 +17,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
-	"github.com/open-policy-agent/opa-control-plane/internal/gitsync"
+	"github.com/open-policy-agent/opa-control-plane/pkg/gitsync"
 	"golang.org/x/crypto/ssh"
 )
 

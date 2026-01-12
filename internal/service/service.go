@@ -24,7 +24,6 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
-	"github.com/open-policy-agent/opa-control-plane/pkg/gitsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/httpsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
@@ -32,6 +31,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
 	"github.com/open-policy-agent/opa-control-plane/internal/sqlsync"
+	"github.com/open-policy-agent/opa-control-plane/pkg/gitsync"
 )
 
 const (
