@@ -9,6 +9,7 @@ import (
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
+	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
 )
 
 func BenchmarkPaginationFinalPageLatency(b *testing.B) {
@@ -20,15 +21,14 @@ func BenchmarkPaginationFinalPageLatency(b *testing.B) {
 		b.Run(fmt.Sprint(n), func(b *testing.B) { //nolint:perfsprint
 
 			ctx := context.Background()
-			db := database.New()
-			err := db.InitDB(ctx)
+			db, err := migrations.New().WithMigrate(true).Run(ctx)
 			if err != nil {
-				b.Fatal(err)
+				b.Fatal("db init and migrations: ", err)
 			}
 
 			defer db.CloseDB()
 
-			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "admin", Role: "administrator"}); err != nil {
+			if err := db.UpsertPrincipal(ctx, database.Principal{Id: "admin", Role: "administrator", Tenant: tenant}); err != nil {
 				b.Fatal(err)
 			}
 
