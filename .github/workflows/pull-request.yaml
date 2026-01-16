@@ -23,6 +23,27 @@ jobs:
           make generate
           git diff --exit-code
 
+  benchmarks:
+    name: Run Benchmarks
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - id: go_version
+        name: Read go version
+        run: echo "go_version=$(cat .go-version)" >> $GITHUB_OUTPUT
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: ${{ steps.go_version.outputs.go_version }}
+          cache-dependency-path: go.sum
+
+      - name: Run benchmarks
+        run: make go-bench
+        timeout-minutes: 15
+
   examples:
     name: Check examples
     runs-on: ubuntu-24.04
