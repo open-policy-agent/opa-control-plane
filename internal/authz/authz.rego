@@ -60,3 +60,9 @@ in_tenant(tenant_id) if {
 	data.tenants.name == input.tenant
 	tenant_id == data.tenants.id
 }
+
+allow if {
+	data.principals.id == input.principal
+	data.principals.role == "automation"
+	input.permission == "bundles.trigger"
+}
