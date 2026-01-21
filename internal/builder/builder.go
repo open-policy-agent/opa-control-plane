@@ -164,7 +164,7 @@ type Builder struct {
 	output   io.Writer
 	excluded []string
 	target   string
-	revision config.Revision
+	revision string
 }
 
 func New() *Builder {
@@ -191,7 +191,7 @@ func (b *Builder) WithTarget(target string) *Builder {
 	return b
 }
 
-func (b *Builder) WithRevision(revision config.Revision) *Builder {
+func (b *Builder) WithRevision(revision string) *Builder {
 	b.revision = revision
 	return b
 }
@@ -377,7 +377,7 @@ func (b *Builder) Build(ctx context.Context) error {
 	}
 
 	revision := ""
-	if b.revision == config.RevisionTimeNowNS {
+	if b.revision == "time.now_ns()" {
 		revision = strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
 

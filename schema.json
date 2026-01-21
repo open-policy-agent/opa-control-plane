@@ -1,6 +1,8 @@
 {
+  "additionalProperties": false,
   "definitions": {
     "ConfigAmazonRDS": {
+      "additionalProperties": false,
       "properties": {
         "credentials": {
           "type": "string"
@@ -67,7 +69,6 @@
       "type": "object"
     },
     "ConfigBundle": {
-      "description": "Bundle object",
       "additionalProperties": false,
       "properties": {
         "excluded_files": {
@@ -82,6 +83,9 @@
         "object_storage": {
           "$ref": "#/definitions/ConfigObjectStorage"
         },
+        "options": {
+          "$ref": "#/definitions/ConfigOptions"
+        },
         "rebuild_interval": {
           "type": "string"
         },
@@ -95,6 +99,7 @@
       "type": "object"
     },
     "ConfigDatabase": {
+      "additionalProperties": false,
       "properties": {
         "aws_rds": {
           "$ref": "#/definitions/ConfigAmazonRDS"
@@ -106,6 +111,7 @@
       "type": "object"
     },
     "ConfigDatasource": {
+      "additionalProperties": false,
       "properties": {
         "config": {
           "additionalProperties": {},
@@ -167,6 +173,7 @@
       "type": "object"
     },
     "ConfigGit": {
+      "additionalProperties": false,
       "properties": {
         "commit": {
           "type": [
@@ -202,6 +209,7 @@
       "type": "object"
     },
     "ConfigGitRequirement": {
+      "additionalProperties": false,
       "properties": {
         "commit": {
           "type": [
@@ -219,6 +227,7 @@
       "type": "object"
     },
     "ConfigMetadata": {
+      "additionalProperties": false,
       "properties": {
         "exported_at": {
           "type": "string"
@@ -246,8 +255,33 @@
       },
       "type": "object"
     },
-    "ConfigRequirement": {
+    "ConfigOptions": {
+      "additionalProperties": false,
       "properties": {
+        "no_default_stack_mount": {
+          "type": "boolean"
+        },
+        "target": {
+          "enum": [
+            "rego",
+            "ir",
+            "plan",
+            "wasm"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigRequirement": {
+      "additionalProperties": false,
+      "properties": {
+        "automount": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        },
         "git": {
           "$ref": "#/definitions/ConfigGitRequirement"
         },
@@ -273,6 +307,18 @@
       "type": "array"
     },
     "ConfigSQLDatabase": {
+      "additionalProperties": false,
+      "properties": {
+        "credentials": {
+          "type": "string"
+        },
+        "driver": {
+          "type": "string"
+        },
+        "dsn": {
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "ConfigScope": {
@@ -302,6 +348,7 @@
       "type": "object"
     },
     "ConfigService": {
+      "additionalProperties": false,
       "properties": {
         "api_prefix": {
           "pattern": "^/([^/].*[^/])?$",
@@ -346,6 +393,7 @@
       ]
     },
     "ConfigStack": {
+      "additionalProperties": false,
       "properties": {
         "exclude_selector": {
           "$ref": "#/definitions/ConfigSelector"
@@ -369,6 +417,7 @@
       "type": "array"
     },
     "ConfigToken": {
+      "additionalProperties": false,
       "properties": {
         "api_key": {
           "type": "string"
