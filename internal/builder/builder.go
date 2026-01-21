@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yalue/merged_fs"
 
@@ -374,7 +375,8 @@ func (b *Builder) Build(ctx context.Context) error {
 		WithFS(fsBuild).
 		WithTarget(target).
 		WithRegoAnnotationEntrypoints(true).
-		WithPaths(paths...)
+		WithPaths(paths...).
+		WithRevision(fmt.Sprintf("%d", time.Now().Unix()))
 	if err := c.Build(ctx); err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
