@@ -376,7 +376,7 @@ func (b *Builder) Build(ctx context.Context) error {
 		WithTarget(target).
 		WithRegoAnnotationEntrypoints(true).
 		WithPaths(paths...).
-		WithRevision(fmt.Sprintf("%d", time.Now().Unix()))
+		WithRevision(strconv.FormatInt(time.Now().Unix(), 10))
 	if err := c.Build(ctx); err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
