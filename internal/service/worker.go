@@ -145,7 +145,8 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		WithSources(w.sources).
 		WithExcluded(w.bundleConfig.ExcludedFiles).
 		WithTarget(w.bundleConfig.Options.Target).
-		WithOutput(buffer)
+		WithOutput(buffer).
+		WithRevision(w.bundleConfig.Revision)
 
 	err := b.Build(ctx)
 	if err != nil {

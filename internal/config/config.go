@@ -253,6 +253,13 @@ func (o Options) Empty() bool {
 	return o == Options{}
 }
 
+type Revision string
+
+const (
+	RevisionEmpty     Revision = ""
+	RevisionTimeNowNS Revision = "time.now_ns()"
+)
+
 // Bundle defines the configuration for an OPA Control Plane Bundle.
 type Bundle struct {
 	Name          string        `json:"name"`
@@ -262,6 +269,7 @@ type Bundle struct {
 	ExcludedFiles StringSet     `json:"excluded_files,omitempty"`
 	Interval      Duration      `json:"rebuild_interval,omitzero"`
 	Options       Options       `json:"options,omitzero"`
+	Revision      Revision      `json:"revision,omitempty"`
 
 	_ struct{} `additionalProperties:"false"`
 }

@@ -164,6 +164,7 @@ type Builder struct {
 	output   io.Writer
 	excluded []string
 	target   string
+	revision config.Revision
 }
 
 func New() *Builder {
@@ -187,6 +188,11 @@ func (b *Builder) WithExcluded(excluded []string) *Builder {
 
 func (b *Builder) WithTarget(target string) *Builder {
 	b.target = target
+	return b
+}
+
+func (b *Builder) WithRevision(revision config.Revision) *Builder {
+	b.revision = revision
 	return b
 }
 
@@ -370,13 +376,18 @@ func (b *Builder) Build(ctx context.Context) error {
 		target = "plan"
 	}
 
+	revision := ""
+	if b.revision == config.RevisionTimeNowNS {
+		revision = strconv.FormatInt(time.Now().UnixNano(), 10)
+	}
+
 	c := compile.New().
 		WithRoots(roots...).
 		WithFS(fsBuild).
 		WithTarget(target).
 		WithRegoAnnotationEntrypoints(true).
 		WithPaths(paths...).
-		WithRevision(strconv.FormatInt(time.Now().Unix(), 10))
+		WithRevision(revision)
 	if err := c.Build(ctx); err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
