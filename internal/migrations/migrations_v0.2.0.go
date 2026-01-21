@@ -110,7 +110,8 @@ var schema = []*sqlTable{
 		TextColumn("azure_container").
 		TextColumn("azure_path").
 		TextColumn("filepath").
-		TextColumn("excluded"),
+		TextColumn("excluded").
+		TextColumn("revision"),
 	createSQLTable("sources").
 		IntegerPrimaryKeyAutoincrementColumn("id").
 		VarCharNonNullUniqueColumn("name").

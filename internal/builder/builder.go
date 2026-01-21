@@ -376,6 +376,7 @@ func (b *Builder) Build(ctx context.Context) error {
 		target = "plan"
 	}
 
+	fmt.Println("Building bundle with revision:", b.revision)
 	revision := ""
 	if b.revision == "time.now_ns()" {
 		revision = strconv.FormatInt(time.Now().UnixNano(), 10)

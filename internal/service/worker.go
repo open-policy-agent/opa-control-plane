@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/builder"
@@ -84,6 +85,11 @@ func (worker *BundleWorker) WithInterval(d config.Duration) *BundleWorker {
 	return worker
 }
 
+func (worker *BundleWorker) WithRevision(revision string) *BundleWorker {
+	worker.bundleConfig.Revision = revision
+	return worker
+}
+
 func (worker *BundleWorker) Done() bool {
 	select {
 	case <-worker.done:
@@ -141,6 +147,8 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 
 	buffer := bytes.NewBuffer(nil)
 
+	fmt.Println("Building bundle:", w.bundleConfig.Name)
+	fmt.Println("w.bundleConfig.Revision", w.bundleConfig.Revision)
 	b := builder.New().
 		WithSources(w.sources).
 		WithExcluded(w.bundleConfig.ExcludedFiles).
