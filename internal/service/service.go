@@ -20,6 +20,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/ast"
 	_ "modernc.org/sqlite"
 
+	"github.com/open-policy-agent/opa-control-plane/internal/authz"
 	"github.com/open-policy-agent/opa-control-plane/internal/builder"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
@@ -35,31 +36,42 @@ import (
 )
 
 const (
-	internalPrincipal       = "internal"
-	defaultTenant           = "default"
-	reconfigurationInterval = 15 * time.Second
+	internalPrincipal              = "internal"
+	defaultTenant                  = "default"
+	defaultReconfigurationInterval = 15 * time.Second
+	defaultBuildInterval           = 30 * time.Second
 )
 
 var (
 	defaultStackMountPrefix = ast.DefaultRootRef.Append(ast.StringTerm("stacks"))
 )
 
+type TenantName struct {
+	Tenant, Name string
+}
+
+func (tn *TenantName) String() string {
+	return tn.Tenant + ":" + tn.Name
+}
+
 type Service struct {
-	config         *config.Root
-	persistenceDir string
-	pool           *pool.Pool
-	workers        map[string]*BundleWorker
-	readyMutex     sync.Mutex
-	ready          bool
-	failures       map[string]Status
-	database       database.Database
-	builtinFS      fs.FS
-	singleShot     bool
-	report         *Report
-	log            *logging.Logger
-	noninteractive bool
-	migrateDB      bool
-	initialized    bool
+	config                  *config.Root
+	persistenceDir          string
+	pool                    *pool.Pool
+	workers                 map[TenantName]*BundleWorker
+	readyMutex              sync.Mutex
+	ready                   bool
+	failures                map[string]Status
+	database                database.Database
+	builtinFS               fs.FS
+	singleShot              bool
+	report                  *Report
+	log                     *logging.Logger
+	noninteractive          bool
+	migrateDB               bool
+	initialized             bool
+	reconfigurationInterval time.Duration
+	buildInterval           time.Duration
 }
 
 type Report struct {
@@ -106,11 +118,13 @@ type Status struct {
 
 func New() *Service {
 	return &Service{
-		pool:           pool.New(10),
-		workers:        make(map[string]*BundleWorker),
-		failures:       make(map[string]Status),
-		noninteractive: true,
-		migrateDB:      false,
+		pool:                    pool.New(10),
+		workers:                 make(map[TenantName]*BundleWorker),
+		failures:                make(map[string]Status),
+		noninteractive:          true,
+		migrateDB:               false,
+		reconfigurationInterval: defaultReconfigurationInterval,
+		buildInterval:           defaultBuildInterval,
 	}
 }
 
@@ -122,6 +136,14 @@ func (s *Service) WithPersistenceDir(d string) *Service {
 func (s *Service) WithConfig(config *config.Root) *Service {
 	s.config = config
 	s.database = *s.database.WithConfig(config.Database)
+	if s.config.Service != nil {
+		if s.config.Service.ReconfigurationInterval != 0 {
+			s.reconfigurationInterval = time.Duration(s.config.Service.ReconfigurationInterval)
+		}
+		if s.config.Service.BundleRebuildInterval != 0 {
+			s.buildInterval = time.Duration(s.config.Service.BundleRebuildInterval)
+		}
+	}
 	return s
 }
 
@@ -184,11 +206,12 @@ shutdown:
 				break shutdown
 			}
 
+			// NB(sr): if a worker fails to shut down, we'll be stuck here forever
 			time.Sleep(100 * time.Millisecond)
 		}
 
 		select {
-		case <-time.After(reconfigurationInterval):
+		case <-time.After(s.reconfigurationInterval):
 		case <-ctx.Done():
 			break shutdown
 		}
@@ -205,6 +228,8 @@ shutdown:
 		for _, w := range s.workers {
 			s.report.Bundles[w.bundleConfig.Name] = w.status
 		}
+
+		// For singleshot, we don't need to worry about tenants:
 		maps.Copy(s.report.Bundles, s.failures)
 	}
 
@@ -213,6 +238,27 @@ shutdown:
 
 func (s *Service) Report() *Report {
 	return s.report
+}
+
+func (s *Service) Trigger(ctx context.Context, principal, tenant, name string) error {
+	a := authz.Access{
+		Principal:  principal,
+		Tenant:     tenant,
+		Resource:   "bundles",
+		Permission: "bundles.trigger",
+		Name:       name,
+	}
+	if err := s.database.Check(ctx, a); err != nil {
+		return err
+	}
+
+	err := s.pool.Trigger(tenant, name)
+	if err != nil {
+		s.log.Errorf("trigger bundle build for %s: %v", name, err)
+	} else {
+		s.log.Debugf("triggered bundle build for %s", name)
+	}
+	return err
 }
 
 func (s *Service) Ready(context.Context) error {
@@ -281,9 +327,9 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			return
 		}
 
-		activeBundles := make(map[string]struct{})
+		activeBundles := make(map[TenantName]struct{})
 		for _, b := range bundles {
-			bName := tenant + "_" + b.Name
+			bName := TenantName{Tenant: tenant, Name: b.Name}
 			activeBundles[bName] = struct{}{}
 		}
 
@@ -302,7 +348,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 		// Start any new workers for bundles that are in the current configuration but not yet running. Inform any existing
 		// workers of the current configuration, which will cause them to shutdown if configuration has changed.
 		//
-		// For each bundle, create the following directory structure under persistencyDir for the builder to use
+		// For each bundle, create the following directory structure under persistenceDir for the builder to use
 		// when constructing bundles:
 		//
 		// persistenceDir/
@@ -318,7 +364,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 		failures := make(map[string]Status)
 
 		for _, b := range bundles {
-			bName := tenant + "_" + b.Name
+			bName := TenantName{Tenant: tenant, Name: b.Name}
 			if w, ok := s.workers[bName]; ok {
 				w.UpdateConfig(b, sourceDefs, stacks)
 				continue
@@ -358,7 +404,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 			syncs := []Synchronizer{}
 			sources := []*builder.Source{&root.Source}
-			bundleDir := join(s.persistenceDir, md5sum(bName))
+			bundleDir := join(s.persistenceDir, md5sum(bName.String()))
 
 			for _, dep := range deps {
 				// NB(sr): dep.Name could contain a `:` which cause build errors in OPA's bundle build machinery
@@ -381,13 +427,13 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				continue
 			}
 
-			w := NewBundleWorker(bundleDir, b, sourceDefs, stacks, s.log, bar).
+			w := NewBundleWorker(bundleDir, b, sourceDefs, stacks, s.log, bar, s.buildInterval).
 				WithSources(sources).
 				WithSynchronizers(syncs).
 				WithStorage(storage).
 				WithInterval(b.Interval).
 				WithSingleShot(s.singleShot)
-			s.pool.Add(w.Execute)
+			s.pool.Add(tenant, b.Name, w.Execute)
 
 			s.workers[bName] = w
 		}
@@ -466,6 +512,7 @@ func (src *source) addFS(fsys fs.FS) {
 }
 
 func (src *source) SyncGit(syncs *[]Synchronizer, sourceName string, git config.Git, repoDir string, reqCommit string) *source {
+	// Q(sr): Why errorDelay if we use this function to report BuildStateSuccess, too?
 	if git.Repo != "" {
 		srcDir := repoDir
 		if git.Path != nil {
