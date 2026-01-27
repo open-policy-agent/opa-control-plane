@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"iter"
 	"maps"
 	"os"
@@ -19,6 +20,8 @@ import (
 
 	"github.com/gobwas/glob"
 	"github.com/goccy/go-yaml"
+
+	internalfs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 )
 
 // Internal configuration data structures for OPA Control Plane.
@@ -500,13 +503,39 @@ func (s *Source) Files() (map[string]string, error) {
 	m := make(map[string]string, len(s.EmbeddedFiles))
 	maps.Copy(m, s.EmbeddedFiles)
 
-	for _, path := range s.Paths {
-		data, err := os.ReadFile(filepath.Join(s.Directory, path))
+	if len(s.Paths) == 0 {
+		return m, nil
+	}
+
+	baseDir := cmp.Or(s.Directory, ".") // CWD if unset
+	baseFS := os.DirFS(baseDir)
+	filteredFS, err := internalfs.NewFilterFS(baseFS, s.Paths, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create filtered filesystem for source %q: %w", s.Name, err)
+	}
+
+	if err := fs.WalkDir(filteredFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil, fmt.Errorf("failed to read file %q for source %q: %w", path, s.Name, err)
+			return err
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		data, err := fs.ReadFile(filteredFS, path)
+		if err != nil {
+			return fmt.Errorf("failed to read file %q: %w", path, err)
 		}
 
 		m[path] = string(data)
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed to walk source %q: %w", s.Name, err)
+	}
+
+	if len(m) == len(s.EmbeddedFiles) {
+		return nil, fmt.Errorf("no files matched patterns for source %q", s.Name)
 	}
 
 	return m, nil

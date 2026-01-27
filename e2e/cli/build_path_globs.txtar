@@ -1,0 +1,45 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/hello-world/bundle.tar.gz
+cmp stdout exp/tarball
+
+exec tar xf bundles/hello-world/bundle.tar.gz /data.json
+cmp data.json exp/data.json
+
+-- files/sources/hello-world/prefix/data.json --
+{ "some": "thing" }
+-- files/sources/hello-world/rules/policy.rego --
+package rules
+import rego.v1
+result if input.yay
+-- files/sources/hello-world/rules/helpers.rego --
+package rules.helpers
+import rego.v1
+helper := true
+-- files/sources/hello-world/data/users.json --
+{"users": ["alice", "bob"]}
+-- files/sources/hello-world/other.txt --
+this should not be included
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: glob-paths
+sources:
+  glob-paths:
+    directory: files/sources/hello-world
+    paths:
+    - "**/*.rego"
+    - "**/*.json"
+-- exp/tarball --
+/data.json
+/glob-paths/rules/helpers.rego
+/glob-paths/rules/policy.rego
+/.manifest
+-- exp/data.json --
+{"data":{"users":["alice","bob"]},"prefix":{"some":"thing"}}
