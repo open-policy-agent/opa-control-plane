@@ -25,14 +25,16 @@ import (
 	"github.com/open-policy-agent/opa/v1/refactor"
 	"github.com/open-policy-agent/opa/v1/topdown"
 
-	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/fs/mountfs"
 )
 
+// Source represents a collection of policy and data files with dependencies.
+// Sources can depend on other sources via Requirements and apply transformations
+// to data files before building.
 type Source struct {
 	Name         string
-	Requirements []config.Requirement
+	Requirements []Requirement
 	Transforms   []Transform
 
 	// dirs record the underlying OS directories, used for `Wipe` and `Transform`
@@ -43,11 +45,6 @@ type Source struct {
 	fses []fs.FS
 }
 
-type Transform struct {
-	Query string
-	Path  string
-}
-
 func NewSource(name string) *Source {
 	return &Source{
 		Name: name,
@@ -56,7 +53,7 @@ func NewSource(name string) *Source {
 
 func (s *Source) Equal(other *Source) bool {
 	return s.Name == other.Name &&
-		slices.EqualFunc(s.Requirements, other.Requirements, config.Requirement.Equal) &&
+		slices.EqualFunc(s.Requirements, other.Requirements, Requirement.Equal) &&
 		slices.Equal(s.Transforms, other.Transforms)
 }
 
@@ -151,13 +148,7 @@ func (s *Source) Transform(ctx context.Context) (*bytes.Buffer, error) {
 	return &buf, nil
 }
 
-type Dir struct {
-	Path          string   // local fs path to source files
-	Wipe          bool     // bit indicates if worker should delete directory before synchronization
-	IncludedFiles []string // inclusion filter on files to load from path
-	ExcludedFiles []string // exclusion filter on files to skip from path
-}
-
+// Builder compiles OPA bundles from multiple sources with namespace isolation.
 type Builder struct {
 	sources  []*Source
 	output   io.Writer

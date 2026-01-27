@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/open-policy-agent/opa-control-plane/internal/builder"
+	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
