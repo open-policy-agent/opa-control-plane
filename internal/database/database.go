@@ -34,6 +34,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
+	pkgAuthz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
 )
 
 const (
@@ -47,15 +48,21 @@ const SQLiteMemoryOnlyDSN = "file::memory:?cache=shared"
 
 // Database implements the database operations. It will hide any differences between the varying SQL databases from the rest of the codebase.
 type Database struct {
-	db        *sql.DB
-	config    *config.Database
-	kind      int
-	log       *logging.Logger
-	executeTx func(context.Context, *sql.DB, *sql.TxOptions, func(*sql.Tx) error) error
+	db            *sql.DB
+	config        *config.Database
+	kind          int
+	log           *logging.Logger
+	executeTx     func(context.Context, *sql.DB, *sql.TxOptions, func(*sql.Tx) error) error
+	authorizer    pkgAuthz.Authorizer
+	accessFactory pkgAuthz.AccessFactory
 }
 
 func New() *Database {
-	return &Database{executeTx: executeTx}
+	return &Database{
+		executeTx:     executeTx,
+		authorizer:    &authz.OPAuthorizer{},
+		accessFactory: defaultAccessFactory,
+	}
 }
 
 func (d *Database) DB() *sql.DB {
@@ -427,13 +434,8 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 			return zero, false, err
 		}
 
-		expr, err := authz.Partial(ctx, authz.Access{
-			Principal:  principal,
-			Tenant:     tenant,
-			Permission: "sources.data.read",
-			Resource:   "sources",
-			Name:       sourceName,
-		}, nil)
+		ad := d.accessFactory(principal, tenant, "sources", "sources.data.read", sourceName)
+		expr, err := d.authorizer.Partial(ctx, ad, nil)
 		if err != nil {
 			return zero, false, err
 		}
@@ -483,13 +485,8 @@ func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, 
 			return err
 		}
 
-		allowed := authz.Check(ctx, tx, d.arg, authz.Access{
-			Principal:  principal,
-			Tenant:     tenant,
-			Permission: "sources.data.write",
-			Resource:   "sources",
-			Name:       sourceName,
-		})
+		ad := d.accessFactory(principal, tenant, "sources", "sources.data.write", sourceName)
+		allowed := d.authorizer.Check(ctx, tx, d.arg, ad)
 		if !allowed {
 			return errors.New("unauthorized")
 		}
@@ -515,13 +512,8 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 			return err
 		}
 
-		expr, err := authz.Partial(ctx, authz.Access{
-			Principal:  principal,
-			Tenant:     tenant,
-			Permission: "sources.data.write",
-			Resource:   "sources",
-			Name:       sourceName,
-		}, nil)
+		ad := d.accessFactory(principal, tenant, "sources", "sources.data.write", sourceName)
+		expr, err := d.authorizer.Partial(ctx, ad, nil)
 		if err != nil {
 			return err
 		}
@@ -651,12 +643,10 @@ func (d *Database) DeleteBundle(ctx context.Context, principal, tenant, name str
 
 func (d *Database) ListBundles(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.Bundle, string, error) {
 	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.Bundle, string, error) {
-		expr, err := authz.Partial(ctx, authz.Access{
-			Principal:  principal,
-			Tenant:     tenant,
-			Resource:   "bundles",
-			Permission: "bundles.view",
-		}, map[string]authz.ColumnRef{
+
+		ad := d.accessFactory(principal, tenant, "bundles", "bundles.view", "")
+
+		expr, err := d.authorizer.Partial(ctx, ad, map[string]pkgAuthz.SQLColumnRef{
 			"input.name": {Table: "bundles", Column: "name"},
 		})
 		if err != nil {
@@ -948,12 +938,9 @@ func (d *Database) DeleteSource(ctx context.Context, principal, tenant, name str
 // ListSources returns a list of sources in the database. Note it does not return the source data.
 func (d *Database) ListSources(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.Source, string, error) {
 	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.Source, string, error) {
-		expr, err := authz.Partial(ctx, authz.Access{
-			Principal:  principal,
-			Tenant:     tenant,
-			Resource:   "sources",
-			Permission: "sources.view",
-		}, map[string]authz.ColumnRef{
+
+		ad := d.accessFactory(principal, tenant, "sources", "sources.view", "")
+		expr, err := d.authorizer.Partial(ctx, ad, map[string]pkgAuthz.SQLColumnRef{
 			"input.name": {Table: "sources", Column: "name"},
 		})
 		if err != nil {
@@ -1241,12 +1228,9 @@ func (d *Database) DeleteSecret(ctx context.Context, principal, tenant, name str
 
 func (d *Database) ListSecrets(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.SecretRef, string, error) {
 	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.SecretRef, string, error) {
-		expr, err := authz.Partial(ctx, authz.Access{
-			Principal:  principal,
-			Tenant:     tenant,
-			Resource:   "secrets",
-			Permission: "secrets.view",
-		}, map[string]authz.ColumnRef{
+
+		ad := d.accessFactory(principal, tenant, "secrets", "secrets.view", "")
+		expr, err := d.authorizer.Partial(ctx, ad, map[string]pkgAuthz.SQLColumnRef{
 			"input.name": {Table: "secrets", Column: "name"},
 		})
 		if err != nil {
@@ -1345,12 +1329,9 @@ func (d *Database) DeleteStack(ctx context.Context, principal, tenant, name stri
 
 func (d *Database) ListStacks(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.Stack, string, error) {
 	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.Stack, string, error) {
-		expr, err := authz.Partial(ctx, authz.Access{
-			Principal:  principal,
-			Tenant:     tenant,
-			Resource:   "stacks",
-			Permission: "stacks.view",
-		}, map[string]authz.ColumnRef{
+
+		ad := d.accessFactory(principal, tenant, "stacks", "stacks.view", "")
+		expr, err := d.authorizer.Partial(ctx, ad, map[string]pkgAuthz.SQLColumnRef{
 			"input.name": {Table: "stacks", Column: "name"},
 		})
 		if err != nil {
@@ -1358,6 +1339,7 @@ func (d *Database) ListStacks(ctx context.Context, principal, tenant string, opt
 		}
 
 		conditions, args := expr.SQL(d.arg, nil)
+
 		stacks := `SELECT
 	stacks.id,
 	stacks.name,
@@ -1858,23 +1840,12 @@ func (d *Database) UpsertToken(ctx context.Context, principal, tenant string, to
 
 func (d *Database) prepareUpsert(ctx context.Context, tx *sql.Tx, principal, tenant, resource, name string, permCreate, permUpdate string) error {
 
-	var a authz.Access
+	var ad pkgAuthz.AccessDescriptor
 
 	if err := d.resourceExists(ctx, tx, tenant, resource, name); err == nil {
-		a = authz.Access{
-			Principal:  principal,
-			Tenant:     tenant,
-			Resource:   resource,
-			Permission: permUpdate,
-			Name:       name,
-		}
+		ad = d.accessFactory(principal, tenant, resource, permUpdate, name)
 	} else if errors.Is(err, ErrNotFound) {
-		a = authz.Access{
-			Principal:  principal,
-			Tenant:     tenant,
-			Resource:   resource,
-			Permission: permCreate,
-		}
+		ad = d.accessFactory(principal, tenant, resource, permCreate, "")
 		if err := d.upsertNoID(ctx, tx, tenant, "resource_permissions", []string{"name", "resource", "principal_id", "role"}, []string{"name", "resource"}, name, resource, principal, "owner"); err != nil {
 			return err
 		}
@@ -1882,7 +1853,7 @@ func (d *Database) prepareUpsert(ctx context.Context, tx *sql.Tx, principal, ten
 		return err
 	}
 
-	if !authz.Check(ctx, tx, d.arg, a) {
+	if !d.authorizer.Check(ctx, tx, d.arg, ad) {
 		return ErrNotAuthorized
 	}
 
@@ -1890,15 +1861,9 @@ func (d *Database) prepareUpsert(ctx context.Context, tx *sql.Tx, principal, ten
 }
 
 func (d *Database) prepareDelete(ctx context.Context, tx *sql.Tx, principal, tenant, resource, name string, permUpdate string) error {
-	a := authz.Access{
-		Principal:  principal,
-		Tenant:     tenant,
-		Resource:   resource,
-		Permission: permUpdate,
-		Name:       name,
-	}
 
-	if authz.Check(ctx, tx, d.arg, a) {
+	ad := d.accessFactory(principal, tenant, resource, permUpdate, name)
+	if d.authorizer.Check(ctx, tx, d.arg, ad) {
 		return d.resourceExists(ctx, tx, tenant, resource, name) // only inform about existence if authorized
 	}
 
@@ -2079,4 +2044,8 @@ func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(*sql.
 		return err
 	})
 	return t, u, err
+}
+
+func defaultAccessFactory(principal, tenant, resource, permission, name string) pkgAuthz.AccessDescriptor {
+	return authz.NewAccess(principal, tenant, resource, permission, name)
 }
