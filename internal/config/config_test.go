@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -600,6 +602,159 @@ func TestBundleOptionsTargetParsing(t *testing.T) {
 
 			if bundle.Options.Target != tt.expected {
 				t.Errorf("Expected target %q, got %q", tt.expected, bundle.Options.Target)
+			}
+		})
+	}
+}
+
+func TestSourceFilesWithGlobs(t *testing.T) {
+	tests := []struct {
+		name       string
+		setupFiles map[string]string // path -> content
+		paths      []string
+		expected   map[string]string
+		errorMsg   string
+	}{
+		{
+			name: "literal file path",
+			setupFiles: map[string]string{
+				"foo.rego": "package foo",
+			},
+			paths: []string{"foo.rego"},
+			expected: map[string]string{
+				"foo.rego": "package foo",
+			},
+		},
+		{
+			name: "simple glob pattern",
+			setupFiles: map[string]string{
+				"foo.rego": "package foo",
+				"bar.rego": "package bar",
+				"baz.json": `{"data": "value"}`,
+			},
+			paths: []string{"*.rego"},
+			expected: map[string]string{
+				"foo.rego": "package foo",
+				"bar.rego": "package bar",
+			},
+		},
+		{
+			name: "recursive glob pattern",
+			setupFiles: map[string]string{
+				"foo.rego":             "package foo",
+				"subdir/bar.rego":      "package bar",
+				"subdir/deep/baz.rego": "package baz",
+			},
+			paths: []string{"**/*.rego"},
+			expected: map[string]string{
+				"subdir/bar.rego":      "package bar",
+				"subdir/deep/baz.rego": "package baz",
+			},
+		},
+		{
+			name: "match all rego files including root",
+			setupFiles: map[string]string{
+				"foo.rego":             "package foo",
+				"subdir/bar.rego":      "package bar",
+				"subdir/deep/baz.rego": "package baz",
+			},
+			paths: []string{"*.rego", "**/*.rego"},
+			expected: map[string]string{
+				"foo.rego":             "package foo",
+				"subdir/bar.rego":      "package bar",
+				"subdir/deep/baz.rego": "package baz",
+			},
+		},
+		{
+			name: "multiple patterns",
+			setupFiles: map[string]string{
+				"foo.rego":        "package foo",
+				"data/data.json":  `{"data": "value"}`,
+				"other/other.txt": "text",
+			},
+			paths: []string{"*.rego", "data/*.json"},
+			expected: map[string]string{
+				"foo.rego":       "package foo",
+				"data/data.json": `{"data": "value"}`,
+			},
+		},
+		{
+			name: "directory glob",
+			setupFiles: map[string]string{
+				"dir1/file.rego": "package dir1",
+				"dir2/file.rego": "package dir2",
+			},
+			paths: []string{"dir*/file.rego"},
+			expected: map[string]string{
+				"dir1/file.rego": "package dir1",
+				"dir2/file.rego": "package dir2",
+			},
+		},
+		{
+			name: "no matches error",
+			setupFiles: map[string]string{
+				"foo.txt": "text",
+			},
+			paths:    []string{"*.rego"},
+			errorMsg: "no files matched patterns",
+		},
+		{
+			name:       "file does not exist error",
+			setupFiles: map[string]string{},
+			paths:      []string{"nonexistent.rego"},
+			errorMsg:   "no files matched patterns",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			for path, content := range tt.setupFiles {
+				fullPath := filepath.Join(tempDir, path)
+				dir := filepath.Dir(fullPath)
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					t.Fatalf("Failed to create directory: %v", err)
+				}
+				if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+					t.Fatalf("Failed to write file: %v", err)
+				}
+			}
+
+			source := &config.Source{
+				Name:      "test",
+				Directory: tempDir,
+				Paths:     tt.paths,
+			}
+
+			files, err := source.Files()
+
+			if tt.errorMsg != "" {
+				if err == nil {
+					t.Fatalf("Expected error but got none")
+				}
+				if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Fatalf("Expected error containing %q but got: %v", tt.errorMsg, err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if len(files) != len(tt.expected) {
+				t.Fatalf("Expected %d files, got %d: %v", len(tt.expected), len(files), files)
+			}
+
+			for path, expectedContent := range tt.expected {
+				actualContent, ok := files[path]
+				if !ok {
+					t.Errorf("Expected file %q not found in results", path)
+					continue
+				}
+				if actualContent != expectedContent {
+					t.Errorf("File %q: expected content %q, got %q", path, expectedContent, actualContent)
+				}
 			}
 		})
 	}
