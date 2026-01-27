@@ -15,8 +15,7 @@ import (
 	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
 
-	"github.com/open-policy-agent/opa-control-plane/internal/builder"
-	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/tempfs"
 )
 
@@ -664,9 +663,9 @@ func TestBuilder(t *testing.T) {
 
 				var srcs []*builder.Source
 				for i, src := range tc.sources {
-					var rs []config.Requirement
+					var rs []builder.Requirement
 					for _, r := range src.requirements {
-						rs = append(rs, config.Requirement{
+						rs = append(rs, builder.Requirement{
 							Source: &r.name,
 							Path:   r.path,
 							Prefix: r.prefix,

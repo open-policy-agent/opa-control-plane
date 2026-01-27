@@ -20,7 +20,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/ast"
 	_ "modernc.org/sqlite"
 
-	"github.com/open-policy-agent/opa-control-plane/internal/builder"
+	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
@@ -341,7 +341,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				}
 			}
 
-			deps, overrides, conflicts := getDeps(root.Requirements, sourceDefsByName)
+			deps, overrides, conflicts := getDeps(root.requirements, sourceDefsByName)
 			if len(conflicts) > 0 {
 				sorted := slices.Collect(maps.Keys(conflicts))
 				sort.Strings(sorted)
@@ -357,7 +357,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			}
 
 			syncs := []Synchronizer{}
-			sources := []*builder.Source{&root.Source}
+			sources := []*builder.Source{root.toBuilderSource()}
 			bundleDir := join(s.persistenceDir, md5sum(bName))
 
 			for _, dep := range deps {
@@ -444,12 +444,29 @@ func getDeps(rs config.Requirements, byName map[string]*config.Source) ([]*confi
 
 type source struct {
 	builder.Source
+
+	// requirements stores config.Requirement internally for dependency resolution
+	// and git commit overrides. These are converted to builder.Requirement when
+	// the Source is used with the builder.
+	requirements []config.Requirement
 }
 
 func newSource(name string) *source {
 	return &source{
 		Source: *builder.NewSource(name),
 	}
+}
+
+// toBuilderSource converts the source to a builder.Source with converted requirements
+func (src *source) toBuilderSource() *builder.Source {
+	builderReqs := make([]builder.Requirement, 0, len(src.requirements))
+	for _, r := range src.requirements {
+		if r.Source != nil {
+			builderReqs = append(builderReqs, toBuilderRequirement(r))
+		}
+	}
+	src.Source.Requirements = builderReqs
+	return &src.Source
 }
 
 func (src *source) addDir(dir string, wipe bool, includedFiles []string, excludedFiles []string) {
@@ -526,10 +543,19 @@ func (src *source) SyncSourceSQL(syncs *[]Synchronizer, sourceID int64, name str
 func (src *source) AddRequirements(requirements []config.Requirement) *source {
 	for _, r := range requirements {
 		if r.Source != nil {
-			src.Requirements = append(src.Requirements, r)
+			src.requirements = append(src.requirements, r)
 		}
 	}
 	return src
+}
+
+// toBuilderRequirement converts internal config.Requirement to public builder.Requirement
+func toBuilderRequirement(r config.Requirement) builder.Requirement {
+	return builder.Requirement{
+		Source: r.Source,
+		Path:   r.Path,
+		Prefix: r.Prefix,
+	}
 }
 
 func md5sum(s string) string {
