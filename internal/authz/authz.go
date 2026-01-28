@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/open-policy-agent/opa-control-plane/pkg/authz"
 	"github.com/open-policy-agent/opa/ast"          // nolint:staticcheck
 	"github.com/open-policy-agent/opa/dependencies" // nolint:staticcheck
 	"github.com/open-policy-agent/opa/rego"         // nolint:staticcheck
@@ -28,7 +29,7 @@ var partialCache = newCache(cacheSize)
 //
 // This function extracts the unknowns and column references from the policy for the
 // partial evaluation and query translation (respectively) below.
-var defaultUnknowns, defaultColumnMappings = func() ([]string, map[string]ColumnRef) {
+var defaultUnknowns, defaultColumnMappings = func() ([]string, map[string]authz.SQLColumnRef) {
 
 	deps, err := dependencies.Minimal(ast.MustParseModule(src))
 	if err != nil {
@@ -36,13 +37,13 @@ var defaultUnknowns, defaultColumnMappings = func() ([]string, map[string]Column
 	}
 
 	var unknowns []string
-	columns := make(map[string]ColumnRef)
+	columns := make(map[string]authz.SQLColumnRef)
 
 	for _, dep := range deps {
 		if dep[0].Equal(ast.DefaultRootDocument) {
 			table := string(dep[1].Value.(ast.String))
 			column := string(dep[2].Value.(ast.String))
-			columns[dep.String()] = ColumnRef{Table: table, Column: column}
+			columns[dep.String()] = authz.SQLColumnRef{Table: table, Column: column}
 			unknowns = append(unknowns, dep[:2].String())
 		}
 	}
@@ -51,61 +52,54 @@ var defaultUnknowns, defaultColumnMappings = func() ([]string, map[string]Column
 }()
 
 type sqlSelect struct {
-	Select []Expr
-	From   []sqlTableRef
+	Select []authz.Expr
+	From   []authz.SQLTableRef
 	Where  sqlWhere
 }
 
 type sqlWhere struct {
-	expr Expr
+	expr authz.Expr
 }
 
-func (x sqlWhere) And(other Expr) sqlWhere {
+func (x sqlWhere) And(other authz.Expr) sqlWhere {
 	if x.expr == nil {
 		return sqlWhere{other}
 	}
 	return sqlWhere{sqlExprAnd{x.expr, other}}
 }
 
-func (x sqlWhere) Or(other Expr) sqlWhere {
+func (x sqlWhere) Or(other authz.Expr) sqlWhere {
 	if x.expr == nil {
 		return sqlWhere{other}
 	}
 	return sqlWhere{sqlExprOr{x.expr, other}}
 }
 
-func (x sqlWhere) Tables() []sqlTableRef { return x.expr.Tables() }
-
-type ArgFn func(int) string
-
-type Expr interface {
-	SQL(ArgFn, []any) (string, []any)
-	Tables() []sqlTableRef
-}
+func (x sqlWhere) Tables() []authz.SQLTableRef { return x.expr.Tables() }
 
 type sqlExprExists struct {
 	Query sqlSelect
 }
 
-func (x sqlExprExists) Tables() []sqlTableRef {
+func (x sqlExprExists) Tables() []authz.SQLTableRef {
 	return x.Query.From
 }
 
 type sqlExprAnd struct {
-	LHS Expr
-	RHS Expr
+	LHS authz.Expr
+	RHS authz.Expr
 }
 
-func (x sqlExprAnd) Tables() []sqlTableRef {
+func (x sqlExprAnd) Tables() []authz.SQLTableRef {
 	return append(x.LHS.Tables(), x.RHS.Tables()...)
 }
 
 type sqlExprOr struct {
-	LHS Expr
-	RHS Expr
+	LHS authz.Expr
+	RHS authz.Expr
 }
 
-func (x sqlExprOr) Tables() []sqlTableRef {
+func (x sqlExprOr) Tables() []authz.SQLTableRef {
 	return append(x.LHS.Tables(), x.RHS.Tables()...)
 }
 
@@ -114,34 +108,21 @@ type sqlExprEq struct {
 	RHS sqlOperand
 }
 
-func (x sqlExprEq) Tables() []sqlTableRef {
+func (x sqlExprEq) Tables() []authz.SQLTableRef {
 	return append(x.LHS.Tables(), x.RHS.Tables()...)
 }
 
 type sqlExprIsNotNull struct {
-	Column ColumnRef
+	Column authz.SQLColumnRef
 }
 
-func (e sqlExprIsNotNull) Tables() []sqlTableRef {
-	return e.Column.Tables()
-}
-
-type sqlTableRef struct {
-	Table string
+func (e sqlExprIsNotNull) Tables() []authz.SQLTableRef {
+	return []authz.SQLTableRef{{Table: e.Column.Table}}
 }
 
 type sqlOperand interface {
-	Tables() []sqlTableRef
-	SQL(ArgFn, []any) (string, []any)
-}
-
-type ColumnRef struct {
-	Table  string
-	Column string
-}
-
-func (c ColumnRef) Tables() []sqlTableRef {
-	return []sqlTableRef{{Table: c.Table}}
+	Tables() []authz.SQLTableRef
+	SQL(authz.ArgFn, []any) (string, []any)
 }
 
 type sqlString struct {
@@ -152,7 +133,7 @@ type sqlInt struct {
 	Value int
 }
 
-func (x sqlSelect) SQL(fn ArgFn, args []any) (string, []any) {
+func (x sqlSelect) SQL(fn authz.ArgFn, args []any) (string, []any) {
 	tables := make([]string, len(x.From))
 	for i := range tables {
 		tables[i], args = x.From[i].SQL(fn, args)
@@ -165,43 +146,42 @@ func (x sqlSelect) SQL(fn ArgFn, args []any) (string, []any) {
 	return "SELECT " + strings.Join(selects, ", ") + " FROM " + strings.Join(tables, ", ") + " WHERE " + conditions, args
 }
 
-func (x sqlExprExists) SQL(fn ArgFn, args []any) (string, []any) {
+func (x sqlExprExists) SQL(fn authz.ArgFn, args []any) (string, []any) {
 	conditions, args := x.Query.SQL(fn, args)
 	return "EXISTS (" + conditions + ")", args
 }
 
-func (x sqlExprAnd) SQL(fn ArgFn, args []any) (string, []any) {
+func (x sqlExprAnd) SQL(fn authz.ArgFn, args []any) (string, []any) {
 	lhs, args := x.LHS.SQL(fn, args)
 	rhs, args := x.RHS.SQL(fn, args)
 	return lhs + " AND " + rhs, args
 }
 
-func (x sqlExprOr) SQL(fn ArgFn, args []any) (string, []any) {
+func (x sqlExprOr) SQL(fn authz.ArgFn, args []any) (string, []any) {
 	lhs, args := x.LHS.SQL(fn, args)
 	rhs, args := x.RHS.SQL(fn, args)
 	return lhs + " OR " + rhs, args
 }
 
-func (x sqlExprEq) SQL(fn ArgFn, args []any) (string, []any) {
+func (x sqlExprEq) SQL(fn authz.ArgFn, args []any) (string, []any) {
 	lhs, args := x.LHS.SQL(fn, args)
 	rhs, args := x.RHS.SQL(fn, args)
 	return lhs + "=" + rhs, args
 }
 
-func (x sqlExprIsNotNull) SQL(fn ArgFn, args []any) (string, []any) {
+func (x sqlExprIsNotNull) SQL(fn authz.ArgFn, args []any) (string, []any) {
 	cond, args := x.Column.SQL(fn, args)
 	return cond + " IS NOT NULL", args
 }
-func (x sqlTableRef) SQL(fn ArgFn, args []any) (string, []any) { return x.Table, args }
-func (x ColumnRef) SQL(fn ArgFn, args []any) (string, []any)   { return x.Table + "." + x.Column, args }
-func (x sqlInt) SQL(fn ArgFn, args []any) (string, []any)      { return strconv.Itoa(x.Value), args }
 
-func (x sqlString) SQL(fn ArgFn, args []any) (string, []any) {
+func (x sqlInt) SQL(fn authz.ArgFn, args []any) (string, []any) { return strconv.Itoa(x.Value), args }
+
+func (x sqlString) SQL(fn authz.ArgFn, args []any) (string, []any) {
 	return fn(len(args)), append(args, x.Value)
 }
 
-func (sqlString) Tables() []sqlTableRef { return nil }
-func (sqlInt) Tables() []sqlTableRef    { return nil }
+func (sqlString) Tables() []authz.SQLTableRef { return nil }
+func (sqlInt) Tables() []authz.SQLTableRef    { return nil }
 
 type Access struct {
 	Principal  string `json:"principal"`
@@ -211,9 +191,40 @@ type Access struct {
 	Name       string `json:"name,omitempty"`
 }
 
-func Check(ctx context.Context, tx *sql.Tx, fn ArgFn, access Access) bool {
+func NewAccess(principal, tenant, resource, permission, name string) Access {
+	return Access{
+		Principal:  principal,
+		Tenant:     tenant,
+		Resource:   resource,
+		Permission: permission,
+		Name:       name,
+	}
+}
 
-	expr, err := Partial(ctx, access, nil)
+func (a Access) GetPrincipal() string {
+	return a.Principal
+}
+
+func (a Access) GetTenant() string {
+	return a.Tenant
+}
+
+func (a Access) GetResource() string {
+	return a.Resource
+}
+
+func (a Access) GetPermission() string {
+	return a.Permission
+}
+
+func (a Access) GetName() string {
+	return a.Name
+}
+
+type OPAuthorizer struct{}
+
+func (a *OPAuthorizer) Check(ctx context.Context, tx *sql.Tx, fn authz.ArgFn, accessDescriptor authz.AccessDescriptor) bool {
+	expr, err := a.Partial(ctx, accessDescriptor, nil)
 	if err != nil {
 		return false
 	}
@@ -223,14 +234,19 @@ func Check(ctx context.Context, tx *sql.Tx, fn ArgFn, access Access) bool {
 	return tx.QueryRowContext(ctx, `SELECT 1 WHERE `+cond, args...).Scan(&x) == nil
 }
 
-func Partial(ctx context.Context, access Access, extraColumnMappings map[string]ColumnRef) (Expr, error) {
-	return partialCache.Get(access, extraColumnMappings, func() (Expr, error) {
+func (
+	*OPAuthorizer) Partial(ctx context.Context, accessDescriptor authz.AccessDescriptor, extraColumnMappings map[string]authz.SQLColumnRef) (authz.Expr, error) {
+	access, ok := accessDescriptor.(Access)
+	if !ok {
+		return nil, errors.New("unknown access descriptor type")
+	}
+
+	return partialCache.Get(access, extraColumnMappings, func() (authz.Expr, error) {
 		return partial(ctx, access, extraColumnMappings)
 	})
 }
 
-func partial(ctx context.Context, access Access, extraColumnMappings map[string]ColumnRef) (Expr, error) {
-
+func partial(ctx context.Context, access Access, extraColumnMappings map[string]authz.SQLColumnRef) (authz.Expr, error) {
 	extraUnknowns := make([]string, 0, len(extraColumnMappings))
 	for k := range extraColumnMappings {
 		extraUnknowns = append(extraUnknowns, k)
@@ -262,7 +278,7 @@ func partial(ctx context.Context, access Access, extraColumnMappings map[string]
 	for _, b := range pqs.Queries {
 
 		var exists sqlExprExists
-		exists.Query.Select = []Expr{sqlInt{Value: 1}}
+		exists.Query.Select = []authz.Expr{sqlInt{Value: 1}}
 
 		for _, expr := range b {
 			op := expr.Operator()
@@ -287,7 +303,7 @@ func partial(ctx context.Context, access Access, extraColumnMappings map[string]
 			}
 		}
 
-		seen := map[sqlTableRef]struct{}{}
+		seen := map[authz.SQLTableRef]struct{}{}
 
 		for _, t := range exists.Query.Where.Tables() {
 			if t.Table != access.Resource {
@@ -309,9 +325,9 @@ func partial(ctx context.Context, access Access, extraColumnMappings map[string]
 	return w.expr, nil
 }
 
-type columnMapper map[string]ColumnRef
+type columnMapper map[string]authz.SQLColumnRef
 
-func (cm columnMapper) trySqlExprIsNotNull(a, b *ast.Term) (Expr, bool) {
+func (cm columnMapper) trySqlExprIsNotNull(a, b *ast.Term) (authz.Expr, bool) {
 	if r, ok := a.Value.(ast.Ref); ok {
 		if _, ok := b.Value.(ast.Null); ok {
 			if c, ok := cm.trySqlColumnOperand(r); ok {
@@ -334,9 +350,9 @@ func (cm columnMapper) toSqlOp(t *ast.Term) sqlOperand {
 	return nil
 }
 
-func (cm columnMapper) trySqlColumnOperand(ref ast.Ref) (ColumnRef, bool) {
+func (cm columnMapper) trySqlColumnOperand(ref ast.Ref) (authz.SQLColumnRef, bool) {
 	if c, ok := cm[ref.String()]; ok {
 		return c, true
 	}
-	return ColumnRef{}, false
+	return authz.SQLColumnRef{}, false
 }

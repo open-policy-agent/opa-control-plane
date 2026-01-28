@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/hashicorp/golang-lru/simplelru"
+	"github.com/open-policy-agent/opa-control-plane/pkg/authz"
 )
 
 // cache is a thread-safe LRU cache for partial evaluation results. Errors are not cached.
@@ -27,7 +28,7 @@ type cacheKey struct {
 // This allows multiple goroutines to wait for the same cache miss fulfillment without
 // causing duplicate work.
 type pendingGet struct {
-	value Expr
+	value authz.Expr
 	err   error
 	ready chan struct{} // ready is closed when the value and error are available.
 }
@@ -41,7 +42,7 @@ func newCache(size int) *cache {
 	return &cache{lru: lru, pending: make(map[cacheKey]*pendingGet)}
 }
 
-func (c *cache) Get(access Access, extraColumnMappings map[string]ColumnRef, miss func() (Expr, error)) (Expr, error) {
+func (c *cache) Get(access Access, extraColumnMappings map[string]authz.SQLColumnRef, miss func() (authz.Expr, error)) (authz.Expr, error) {
 	key := newCacheKey(access, extraColumnMappings)
 
 	v := func() *pendingGet {
@@ -53,7 +54,7 @@ func (c *cache) Get(access Access, extraColumnMappings map[string]ColumnRef, mis
 			close(done)
 
 			return &pendingGet{
-				value: v.(Expr),
+				value: v.(authz.Expr),
 				ready: done,
 			}
 		}
@@ -83,10 +84,10 @@ func (c *cache) Get(access Access, extraColumnMappings map[string]ColumnRef, mis
 	return v.value, v.err
 }
 
-func newCacheKey(access Access, extraColumnMappings map[string]ColumnRef) cacheKey {
+func newCacheKey(access Access, extraColumnMappings map[string]authz.SQLColumnRef) cacheKey {
 	type KeyColumnRef struct {
 		Key string
-		Ref ColumnRef
+		Ref authz.SQLColumnRef
 	}
 
 	s := make([]KeyColumnRef, len(extraColumnMappings))

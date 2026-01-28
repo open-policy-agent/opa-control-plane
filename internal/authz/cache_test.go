@@ -2,27 +2,29 @@ package authz
 
 import (
 	"testing"
+
+	"github.com/open-policy-agent/opa-control-plane/pkg/authz"
 )
 
 func TestCache(t *testing.T) {
 	// reset cache
 	partialCache = newCache(cacheSize)
 
-	expr1 := sqlExprIsNotNull{Column: ColumnRef{Table: "table1", Column: "id1"}}
-	expr2 := sqlExprIsNotNull{Column: ColumnRef{Table: "table2", Column: "id2"}}
-	expr3 := sqlExprIsNotNull{Column: ColumnRef{Table: "table3", Column: "id3"}}
-	expr4 := sqlExprIsNotNull{Column: ColumnRef{Table: "table4", Column: "id4"}}
-	expr5 := sqlExprIsNotNull{Column: ColumnRef{Table: "table5", Column: "id5"}}
-	expr6 := sqlExprIsNotNull{Column: ColumnRef{Table: "table6", Column: "id6"}}
+	expr1 := sqlExprIsNotNull{Column: authz.SQLColumnRef{Table: "table1", Column: "id1"}}
+	expr2 := sqlExprIsNotNull{Column: authz.SQLColumnRef{Table: "table2", Column: "id2"}}
+	expr3 := sqlExprIsNotNull{Column: authz.SQLColumnRef{Table: "table3", Column: "id3"}}
+	expr4 := sqlExprIsNotNull{Column: authz.SQLColumnRef{Table: "table4", Column: "id4"}}
+	expr5 := sqlExprIsNotNull{Column: authz.SQLColumnRef{Table: "table5", Column: "id5"}}
+	expr6 := sqlExprIsNotNull{Column: authz.SQLColumnRef{Table: "table6", Column: "id6"}}
 
-	columns1 := map[string]ColumnRef{"id1": {Table: "tablea", Column: "ida"}}
-	columns2 := map[string]ColumnRef{"id1": {Table: "tablea", Column: "ida"}, "id2": {Table: "tableb", Column: "idb"}}
+	columns1 := map[string]authz.SQLColumnRef{"id1": {Table: "tablea", Column: "ida"}}
+	columns2 := map[string]authz.SQLColumnRef{"id1": {Table: "tablea", Column: "ida"}, "id2": {Table: "tableb", Column: "idb"}}
 
 	testCases := []struct {
 		name    string
 		key     Access
-		columns map[string]ColumnRef
-		value   Expr
+		columns map[string]authz.SQLColumnRef
+		value   authz.Expr
 		err     error
 		hit     bool
 	}{
@@ -43,7 +45,7 @@ func TestCache(t *testing.T) {
 	for _, tc := range testCases {
 		hit := true
 		t.Run(tc.name, func(t *testing.T) {
-			value, err := partialCache.Get(tc.key, tc.columns, func() (Expr, error) {
+			value, err := partialCache.Get(tc.key, tc.columns, func() (authz.Expr, error) {
 				hit = false
 				return tc.value, tc.err
 			})
