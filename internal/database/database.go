@@ -685,7 +685,8 @@ func (d *Database) ListBundles(ctx context.Context, principal, tenant string, op
 		bundles.filepath,
 		bundles.excluded,
  		bundles.rebuild_interval,
-		bundles.options
+		bundles.options,
+		bundles.revision
 FROM bundles
 JOIN tenants ON bundles.tenant_id = tenants.id
 WHERE (` + conditions + ") AND tenants.name = " + d.arg(len(args))
@@ -747,6 +748,7 @@ LEFT JOIN
 			reqSrc, reqCommit                          *string
 			reqPath, reqPrefix                         sql.Null[string]
 			reqOpts                                    sql.Null[string] // JSON
+			revision                                   *string
 		}
 		bundleMap := make(map[string]*config.Bundle)
 		idMap := make(map[string]int64)
@@ -766,7 +768,8 @@ LEFT JOIN
 				&row.reqSrc,
 				&row.reqPath, &row.reqPrefix,
 				&row.reqOpts,
-				&row.reqCommit); err != nil {
+				&row.reqCommit,
+				&row.revision); err != nil {
 				return nil, "", err
 			}
 

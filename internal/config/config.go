@@ -265,6 +265,7 @@ type Bundle struct {
 	ExcludedFiles StringSet     `json:"excluded_files,omitempty"`
 	Interval      Duration      `json:"rebuild_interval,omitzero"`
 	Options       Options       `json:"options,omitzero"`
+	Revision      string        `json:"revision,omitempty"`
 
 	_ struct{} `additionalProperties:"false"`
 }

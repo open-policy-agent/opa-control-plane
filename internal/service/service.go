@@ -318,6 +318,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 		failures := make(map[string]Status)
 
 		for _, b := range bundles {
+			fmt.Println("bundle:", b)
 			bName := tenant + "_" + b.Name
 			if w, ok := s.workers[bName]; ok {
 				w.UpdateConfig(b, sourceDefs, stacks)
@@ -386,7 +387,9 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				WithSynchronizers(syncs).
 				WithStorage(storage).
 				WithInterval(b.Interval).
-				WithSingleShot(s.singleShot)
+				WithSingleShot(s.singleShot).
+				WithRevision(b.Revision)
+
 			s.pool.Add(w.Execute)
 
 			s.workers[bName] = w

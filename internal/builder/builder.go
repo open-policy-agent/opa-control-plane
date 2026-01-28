@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yalue/merged_fs"
 
@@ -163,6 +164,7 @@ type Builder struct {
 	output   io.Writer
 	excluded []string
 	target   string
+	revision string
 }
 
 func New() *Builder {
@@ -186,6 +188,11 @@ func (b *Builder) WithExcluded(excluded []string) *Builder {
 
 func (b *Builder) WithTarget(target string) *Builder {
 	b.target = target
+	return b
+}
+
+func (b *Builder) WithRevision(revision string) *Builder {
+	b.revision = revision
 	return b
 }
 
@@ -369,12 +376,19 @@ func (b *Builder) Build(ctx context.Context) error {
 		target = "plan"
 	}
 
+	fmt.Println("Building bundle with revision:", b.revision)
+	revision := ""
+	if b.revision == "time.now_ns()" {
+		revision = strconv.FormatInt(time.Now().UnixNano(), 10)
+	}
+
 	c := compile.New().
 		WithRoots(roots...).
 		WithFS(fsBuild).
 		WithTarget(target).
 		WithRegoAnnotationEntrypoints(true).
-		WithPaths(paths...)
+		WithPaths(paths...).
+		WithRevision(revision)
 	if err := c.Build(ctx); err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
