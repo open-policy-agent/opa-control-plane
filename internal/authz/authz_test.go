@@ -11,12 +11,20 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
+	"github.com/open-policy-agent/opa-control-plane/pkg/authz"
 )
 
 func TestPartialStringArgs(t *testing.T) {
 	// NOTE(sr): Don't use the cache here (Partial, uppercase 'P'), as it'll make running this
 	// test multiple times meaningless.
-	result, err := partial(t.Context(), Access{Principal: "bob", Resource: "sources", Permission: "sources.view", Name: "x123", Tenant: "One"}, map[string]ColumnRef{"input.name": {Table: "sources", Column: "name"}})
+
+	a := NewAccess().WithPrincipal("bob").WithResource("sources").WithPermission("sources.view").WithTenant("One").WithName("x123")
+	access, ok := a.(*Access)
+	if !ok {
+		t.Fatal("unknown access descriptor type")
+	}
+
+	result, err := partial(t.Context(), access, map[string]authz.SQLColumnRef{"input.name": {Table: "sources", Column: "name"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,44 +80,44 @@ func TestPartial(t *testing.T) {
 	testCases := []struct {
 		name                string
 		access              Access
-		extraColumnMappings map[string]ColumnRef
+		extraColumnMappings map[string]authz.SQLColumnRef
 		allow               bool
 	}{
 		{
 			name:   "allow access",
-			access: Access{Principal: "alice", Resource: "sources", Permission: "sources.create", Tenant: "foo"},
+			access: Access{principal: "alice", resource: "sources", permission: "sources.create", tenant: "foo"},
 			allow:  true, // alice admin has full access
 		},
 		{
 			name:   "allow access, other tenant",
-			access: Access{Principal: "alice", Resource: "sources", Permission: "sources.create", Tenant: "bar"},
+			access: Access{principal: "alice", resource: "sources", permission: "sources.create", tenant: "bar"},
 			allow:  false, // alise is admin in "foo", but nobody in "bar"
 		},
 		{
 			name:   "deny access",
-			access: Access{Principal: "bob", Resource: "sources", Permission: "sources.create", Tenant: "foo"},
+			access: Access{principal: "bob", resource: "sources", permission: "sources.create", tenant: "foo"},
 			allow:  false, // bob viewer not allowed to create
 		},
 		{
 			name:   "allow with extra columns",
-			access: Access{Principal: "bob", Resource: "sources", Permission: "sources.view", Tenant: "foo"},
-			extraColumnMappings: map[string]ColumnRef{
+			access: Access{principal: "bob", resource: "sources", permission: "sources.view", tenant: "foo"},
+			extraColumnMappings: map[string]authz.SQLColumnRef{
 				"input.name": {Table: "sources", Column: "name"},
 			},
 			allow: true, // bob can view resource he has permission for
 		},
 		{
 			name:   "deny in other tenant",
-			access: Access{Principal: "bob", Resource: "sources", Permission: "sources.view", Tenant: "bar"},
-			extraColumnMappings: map[string]ColumnRef{
+			access: Access{principal: "bob", resource: "sources", permission: "sources.view", tenant: "bar"},
+			extraColumnMappings: map[string]authz.SQLColumnRef{
 				"input.name": {Table: "sources", Column: "name"},
 			},
 			allow: false, // bob ONLY has resource access in tenant "foo"
 		},
 		{
 			name:   "deny with extra columns",
-			access: Access{Principal: "bob", Resource: "sources", Permission: "sources.create", Tenant: "foo"},
-			extraColumnMappings: map[string]ColumnRef{
+			access: Access{principal: "bob", resource: "sources", permission: "sources.create", tenant: "foo"},
+			extraColumnMappings: map[string]authz.SQLColumnRef{
 				"input.name": {Table: "sources", Column: "name"},
 			},
 			allow: false, // bob viewer not allowed to create, only view the resource
@@ -118,7 +126,8 @@ func TestPartial(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := Partial(t.Context(), tc.access, tc.extraColumnMappings)
+			oa := OPAuthorizer{}
+			result, err := oa.Partial(t.Context(), &tc.access, tc.extraColumnMappings)
 			if err != nil {
 				t.Fatal(err)
 			}
