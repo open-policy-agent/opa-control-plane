@@ -61,7 +61,7 @@ func New() *Database {
 	return &Database{
 		executeTx:     executeTx,
 		authorizer:    &authz.OPAuthorizer{},
-		accessFactory: defaultAccessFactory,
+		accessFactory: authz.NewAccess,
 	}
 }
 
@@ -2054,8 +2054,4 @@ func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(*sql.
 		return err
 	})
 	return t, u, err
-}
-
-func defaultAccessFactory() ext_authz.AccessDescriptor {
-	return authz.NewAccess()
 }
