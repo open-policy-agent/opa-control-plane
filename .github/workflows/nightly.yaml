@@ -46,3 +46,10 @@ jobs:
 
       - run: make build
       - run: make test
+      - name: e2e tests
+        run: |
+          set -euo pipefail
+          matches=(opactl_*)
+          export OPACTL="$(pwd)/${matches[0]}"
+          $OPACTL version
+          go test -tags=e2e ./e2e/... -v
