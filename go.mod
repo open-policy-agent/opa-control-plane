@@ -238,7 +238,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/johannesboyne/gofakes3 v0.0.0-20250402064820-d479899d8cbe
 	github.com/olekukonko/tablewriter v1.1.0
-	github.com/open-policy-agent/opa v1.13.1
+	github.com/open-policy-agent/opa v1.13.1-0.20260202195328-c90bfeb91a4e
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rogpeppe/go-internal v1.14.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
