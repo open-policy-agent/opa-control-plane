@@ -325,7 +325,8 @@
             "administrator",
             "viewer",
             "owner",
-            "stack_owner"
+            "stack_owner",
+            "automation"
           ],
           "type": "string"
         }
@@ -349,6 +350,12 @@
       "properties": {
         "api_prefix": {
           "pattern": "^/([^/].*[^/])?$",
+          "type": "string"
+        },
+        "bundle_rebuild_interval": {
+          "type": "string"
+        },
+        "reconfiguration_interval": {
           "type": "string"
         }
       },

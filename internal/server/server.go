@@ -19,6 +19,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/chain"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/types"
+	"github.com/open-policy-agent/opa-control-plane/internal/service"
 )
 
 const defaultTenant = "default"
@@ -26,6 +27,7 @@ const defaultTenant = "default"
 type Server struct {
 	router    *http.ServeMux
 	db        *database.Database
+	svc       *service.Service
 	readyFn   func(context.Context) error
 	apiPrefix string
 }
@@ -64,6 +66,7 @@ func (s *Server) Init() *Server {
 	setup("GET", "/v1/bundles/{bundle}", s.v1BundlesGet)
 	setup("PUT", "/v1/bundles/{bundle}", s.v1BundlesPut)
 	setup("DELETE", "/v1/bundles/{bundle}", s.v1BundlesDelete)
+	setup("POST", "/v1/bundles/{bundle}", s.v1BundlesPost)
 
 	setup("GET", "/v1/stacks", s.v1StacksList)
 	setup("GET", "/v1/stacks/{stack}", s.v1StacksGet)
@@ -80,6 +83,11 @@ func (s *Server) Init() *Server {
 
 func (s *Server) WithRouter(router *http.ServeMux) *Server {
 	s.router = router
+	return s
+}
+
+func (s *Server) WithService(svc *service.Service) *Server {
+	s.svc = svc
 	return s
 }
 
@@ -181,6 +189,25 @@ func (s *Server) v1BundlesGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := types.BundlesGetResponseV1{Result: b}
+	JSONOK(w, resp, pretty(r))
+}
+
+func (s *Server) v1BundlesPost(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	name, err := url.PathUnescape(r.PathValue("bundle"))
+	if err != nil {
+		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	principal, tenant := s.auth(r)
+	if err := s.svc.Trigger(ctx, principal, tenant, name); err != nil {
+		errorAuto(w, err)
+		return
+	}
+
+	resp := types.BundlesPostResponseV1{}
 	JSONOK(w, resp, pretty(r))
 }
 
