@@ -1,7 +1,6 @@
 package fs
 
 import (
-	"errors"
 	"io/fs"
 	"os"
 )
@@ -23,9 +22,6 @@ func FSContainsFiles(fsys fs.FS) (bool, error) {
 	})
 	if err == errFound {
 		return true, nil
-	}
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
 	}
 
 	return false, err

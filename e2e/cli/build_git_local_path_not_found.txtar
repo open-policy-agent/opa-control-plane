@@ -1,0 +1,38 @@
+cd repo
+env HOME=.
+exec git init .
+exec git branch -m main
+exec git config --global user.name "botbotbot"
+exec git config --global user.email "bot@bot.bot"
+exec git add .
+exec git commit -m initial-commit
+cd ..
+
+! exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr 'source "git-local".*does not exist'
+stderr '0/1 bundles built and pushed successfully'
+
+-- repo/foo/policies/authz.rego --
+package foo.authz
+import rego.v1
+allow if input.user == "admin"
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/a.tar.gz
+    requirements:
+    - source: git-local
+    - source: git-local1
+sources:
+  git-local:
+    git:
+      repo: ./repo/
+      reference: main
+      path: "bar" # DOES NOT EXIST
+  git-local1:
+    git:
+      repo: ./repo/
+      reference: main
+      path: "foo" # EXISTS
