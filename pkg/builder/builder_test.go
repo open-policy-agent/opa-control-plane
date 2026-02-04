@@ -15,9 +15,9 @@ import (
 	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
 
-	"github.com/open-policy-agent/opa-control-plane/internal/builder"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/tempfs"
+	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
 )
 
 func TestBuilder(t *testing.T) {

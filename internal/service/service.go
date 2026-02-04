@@ -20,7 +20,6 @@ import (
 	"github.com/open-policy-agent/opa/v1/ast"
 	_ "modernc.org/sqlite"
 
-	"github.com/open-policy-agent/opa-control-plane/internal/builder"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
@@ -32,6 +31,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
 	"github.com/open-policy-agent/opa-control-plane/internal/sqlsync"
+	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
 )
 
 const (
