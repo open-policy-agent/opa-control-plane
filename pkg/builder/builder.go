@@ -28,11 +28,15 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/fs/mountfs"
+	ext_config "github.com/open-policy-agent/opa-control-plane/pkg/config"
 )
 
+// Source represents a collection of policy and data files with dependencies.
+// Sources can depend on other sources via Requirements and apply transformations
+// to data files before building.
 type Source struct {
 	Name         string
-	Requirements []config.Requirement
+	Requirements []ext_config.Requirement
 	Transforms   []Transform
 
 	// dirs record the underlying OS directories, used for `Wipe` and `Transform`
@@ -43,6 +47,8 @@ type Source struct {
 	fses []fs.FS
 }
 
+// Transform defines a data transformation operation that uses a Rego query to
+// process and modify data files within a source.
 type Transform struct {
 	Query string
 	Path  string

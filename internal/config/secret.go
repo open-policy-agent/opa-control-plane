@@ -14,6 +14,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/goccy/go-yaml"
+	"github.com/open-policy-agent/opa-control-plane/internal/util"
 	"golang.org/x/oauth2/clientcredentials"
 )
 
@@ -113,7 +114,7 @@ func (s *Secret) UnmarshalJSON(bs []byte) error {
 }
 
 func (s *Secret) Equal(other *Secret) bool {
-	return fastEqual(s, other, func(s, other *Secret) bool {
+	return util.FastEqual(s, other, func(s, other *Secret) bool {
 		return s.Name == other.Name &&
 			reflect.DeepEqual(s.Value, other.Value)
 	})

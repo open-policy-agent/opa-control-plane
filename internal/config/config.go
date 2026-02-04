@@ -15,13 +15,14 @@ import (
 	"reflect"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/gobwas/glob"
 	"github.com/goccy/go-yaml"
 
 	internalfs "github.com/open-policy-agent/opa-control-plane/internal/fs"
+	internalutil "github.com/open-policy-agent/opa-control-plane/internal/util"
+	extconfig "github.com/open-policy-agent/opa-control-plane/pkg/config"
 )
 
 // Internal configuration data structures for OPA Control Plane.
@@ -302,47 +303,9 @@ func (d Duration) String() string {
 
 type Labels map[string]string
 
-type Requirement struct {
-	Source    *string        `json:"source,omitempty"`
-	Git       GitRequirement `json:"git,omitzero"`
-	Path      string         `json:"path,omitzero"`
-	Prefix    string         `json:"prefix,omitzero"`
-	AutoMount *bool          `json:"automount,omitempty"`
+type Requirement = extconfig.Requirement
 
-	_ struct{} `additionalProperties:"false"`
-}
-
-type GitRequirement struct {
-	Commit *string `json:"commit,omitempty"`
-
-	_ struct{} `additionalProperties:"false"`
-}
-
-func (a Requirement) Equal(b Requirement) bool {
-	return ptrEqual(a.Source, b.Source) &&
-		ptrEqual(a.Git.Commit, b.Git.Commit) &&
-		a.Path == b.Path &&
-		a.Prefix == b.Prefix &&
-		ptrEqual(a.AutoMount, b.AutoMount)
-}
-func (a Requirement) Compare(b Requirement) int {
-	if x := ptrCompare(a.Source, b.Source); x != 0 {
-		return x
-	}
-	if x := ptrCompare(a.Git.Commit, b.Git.Commit); x != 0 {
-		return x
-	}
-	if x := strings.Compare(a.Path, b.Path); x != 0 {
-		return x
-	}
-	if x := strings.Compare(a.Prefix, b.Prefix); x != 0 {
-		return x
-	}
-	if x := boolPtrCompare(a.AutoMount, b.AutoMount); x != 0 {
-		return x
-	}
-	return 0
-}
+type GitRequirement = extconfig.GitRequirement
 
 type Requirements []Requirement
 
@@ -453,7 +416,7 @@ func (s *Bundle) validate() error {
 }
 
 func (s *Bundle) Equal(other *Bundle) bool {
-	return fastEqual(s, other, func(s, other *Bundle) bool {
+	return internalutil.FastEqual(s, other, func(s, other *Bundle) bool {
 		return s.Name == other.Name &&
 			maps.Equal(s.Labels, other.Labels) &&
 			s.ObjectStorage.Equal(&other.ObjectStorage) &&
@@ -483,9 +446,9 @@ type Source struct {
 }
 
 func (s *Source) Equal(other *Source) bool {
-	return fastEqual(s, other, func(s, other *Source) bool {
+	return internalutil.FastEqual(s, other, func(s, other *Source) bool {
 		return s.Name == other.Name &&
-			ptrEqual(s.Builtin, other.Builtin) &&
+			internalutil.PtrEqual(s.Builtin, other.Builtin) &&
 			s.Git.Equal(&other.Git) &&
 			s.Datasources.Equal(other.Datasources) &&
 			s.EmbeddedFiles.Equal(other.EmbeddedFiles) &&
@@ -570,7 +533,7 @@ func (s *Source) SetDirectory(directory string) {
 type Sources []*Source
 
 func (a Sources) Equal(b Sources) bool {
-	return setEqual(a, b, func(s *Source) string { return s.Name }, (*Source).Equal)
+	return internalutil.SetEqual(a, b, func(s *Source) string { return s.Name }, (*Source).Equal)
 }
 
 // Stack defines the configuration for an OPA Control Plane Stack.
@@ -584,7 +547,7 @@ type Stack struct {
 }
 
 func (a *Stack) Equal(other *Stack) bool {
-	return fastEqual(a, other, func(a, other *Stack) bool {
+	return internalutil.FastEqual(a, other, func(a, other *Stack) bool {
 		return a.Name == other.Name &&
 			a.Selector.Equal(other.Selector) &&
 			a.ExcludeSelector.PtrEqual(other.ExcludeSelector) &&
@@ -595,7 +558,7 @@ func (a *Stack) Equal(other *Stack) bool {
 type Stacks []*Stack
 
 func (a Stacks) Equal(b Stacks) bool {
-	return setEqual(a, b, func(s *Stack) string { return s.Name }, (*Stack).Equal)
+	return internalutil.SetEqual(a, b, func(s *Stack) string { return s.Name }, (*Stack).Equal)
 }
 
 type Selector struct {
@@ -731,7 +694,7 @@ func (s *Selector) init() {
 type StringSet []string
 
 func (a StringSet) Equal(b StringSet) bool {
-	return setEqual(a, b, func(s string) string { return s }, func(a, b string) bool { return a == b })
+	return internalutil.SetEqual(a, b, func(s string) string { return s }, func(a, b string) bool { return a == b })
 }
 
 func (a StringSet) Add(value string) StringSet {
@@ -758,10 +721,10 @@ type Git struct {
 }
 
 func (g *Git) Equal(other *Git) bool {
-	return fastEqual(g, other, func(g, other *Git) bool {
-		return ptrEqual(g.Reference, other.Reference) &&
-			ptrEqual(g.Commit, other.Commit) &&
-			ptrEqual(g.Path, other.Path) &&
+	return internalutil.FastEqual(g, other, func(g, other *Git) bool {
+		return internalutil.PtrEqual(g.Reference, other.Reference) &&
+			internalutil.PtrEqual(g.Commit, other.Commit) &&
+			internalutil.PtrEqual(g.Path, other.Path) &&
 			g.Credentials.Equal(other.Credentials) &&
 			g.IncludedFiles.Equal(other.IncludedFiles) &&
 			g.ExcludedFiles.Equal(other.ExcludedFiles)
@@ -815,7 +778,7 @@ func (s *SecretRef) UnmarshalJSON(bs []byte) error {
 }
 
 func (s *SecretRef) Equal(other *SecretRef) bool {
-	return fastEqual(s, other, func(s, other *SecretRef) bool {
+	return internalutil.FastEqual(s, other, func(s, other *SecretRef) bool {
 		return s.Name == other.Name && s.value.Equal(other.value)
 	})
 }
@@ -830,7 +793,7 @@ type Token struct {
 }
 
 func (t *Token) Equal(other *Token) bool {
-	return fastEqual(t, other, func(t, other *Token) bool {
+	return internalutil.FastEqual(t, other, func(t, other *Token) bool {
 		return t.Name == other.Name && t.APIKey == other.APIKey && scopesEqual(t.Scopes, other.Scopes)
 	})
 }
@@ -885,7 +848,7 @@ type ObjectStorage struct {
 }
 
 func (o *ObjectStorage) Equal(other *ObjectStorage) bool {
-	return fastEqual(o, other, func(o, other *ObjectStorage) bool {
+	return internalutil.FastEqual(o, other, func(o, other *ObjectStorage) bool {
 		return o.AmazonS3.Equal(other.AmazonS3) &&
 			o.GCPCloudStorage.Equal(other.GCPCloudStorage) &&
 			o.AzureBlobStorage.Equal(other.AzureBlobStorage) &&
@@ -940,7 +903,7 @@ type FileSystemStorage struct {
 }
 
 func (a *AmazonS3) Equal(other *AmazonS3) bool {
-	return fastEqual(a, other, func(a, other *AmazonS3) bool {
+	return internalutil.FastEqual(a, other, func(a, other *AmazonS3) bool {
 		return a.Bucket == other.Bucket &&
 			a.Key == other.Key &&
 			a.Region == other.Region &&
@@ -970,7 +933,7 @@ func (a *AmazonS3) validate() error {
 }
 
 func (g *GCPCloudStorage) Equal(other *GCPCloudStorage) bool {
-	return fastEqual(g, other, func(g, other *GCPCloudStorage) bool {
+	return internalutil.FastEqual(g, other, func(g, other *GCPCloudStorage) bool {
 		return g.Project == other.Project &&
 			g.Bucket == other.Bucket &&
 			g.Object == other.Object
@@ -998,7 +961,7 @@ func (g *GCPCloudStorage) validate() error {
 }
 
 func (a *AzureBlobStorage) Equal(other *AzureBlobStorage) bool {
-	return fastEqual(a, other, func(a, other *AzureBlobStorage) bool {
+	return internalutil.FastEqual(a, other, func(a, other *AzureBlobStorage) bool {
 		return a.AccountURL == other.AccountURL &&
 			a.Container == other.Container &&
 			a.Path == other.Path
@@ -1026,7 +989,7 @@ func (a *AzureBlobStorage) validate() error {
 }
 
 func (f *FileSystemStorage) Equal(other *FileSystemStorage) bool {
-	return fastEqual(f, other, func(f, other *FileSystemStorage) bool {
+	return internalutil.FastEqual(f, other, func(f, other *FileSystemStorage) bool {
 		return f.Path == other.Path
 	})
 }
@@ -1055,7 +1018,7 @@ type Datasource struct {
 }
 
 func (d *Datasource) Equal(other *Datasource) bool {
-	return fastEqual(d, other, func(d, other *Datasource) bool {
+	return internalutil.FastEqual(d, other, func(d, other *Datasource) bool {
 		return d.Name == other.Name &&
 			d.Path == other.Path &&
 			d.Type == other.Type &&
@@ -1068,7 +1031,7 @@ func (d *Datasource) Equal(other *Datasource) bool {
 type Datasources []Datasource
 
 func (a Datasources) Equal(b Datasources) bool {
-	return setEqual(a, b, func(ds Datasource) string { return ds.Name }, func(a, b Datasource) bool { return a.Equal(&b) })
+	return internalutil.SetEqual(a, b, func(ds Datasource) string { return ds.Name }, func(a, b Datasource) bool { return a.Equal(&b) })
 }
 
 type Database struct {
@@ -1108,74 +1071,4 @@ type Service struct {
 	ApiPrefix string `json:"api_prefix,omitempty" pattern:"^/([^/].*[^/])?$"`
 
 	_ struct{} `additionalProperties:"false"`
-}
-
-func setEqual[K comparable, V any](a, b []V, key func(V) K, eq func(a, b V) bool) bool {
-	if len(a) == 1 && len(b) == 1 {
-		return eq(a[0], b[0])
-	}
-
-	// NB(sr): There's a risk of false positives here, e.g. []struct{n, v string}{ {"foo", "bar"}, {"foo", "baz"} }
-	// is setEqual to []struct{n, v string}{ {"foo", "baz"} }
-	m := make(map[K]V, len(a))
-	for _, v := range a {
-		m[key(v)] = v
-	}
-
-	n := make(map[K]V, len(b))
-	for _, v := range b {
-		n[key(v)] = v
-	}
-
-	return maps.EqualFunc(m, n, eq)
-}
-
-func ptrEqual[T comparable](a, b *T) bool {
-	return fastEqual(a, b, func(a, b *T) bool { return *a == *b })
-}
-
-func boolPtrCompare(a, b *bool) int {
-	switch {
-	case a == nil && b == nil:
-		return 0
-	case a == nil:
-		return -1
-	case b == nil:
-		return 1
-	case !*a && *b:
-		return -1
-	case *a && !*b:
-		return 1
-	}
-
-	return 0
-}
-
-func ptrCompare[T cmp.Ordered](a, b *T) int {
-	switch {
-	case a == nil && b == nil:
-		return 0
-	case a == nil:
-		return -1
-	case b == nil:
-		return 1
-	case *a < *b:
-		return -1
-	case *a > *b:
-		return 1
-	}
-
-	return 0
-}
-
-func fastEqual[V any](a, b *V, slowEqual func(a, b *V) bool) bool {
-	if a == b {
-		return true
-	}
-
-	if a == nil || b == nil {
-		return false
-	}
-
-	return slowEqual(a, b)
 }
