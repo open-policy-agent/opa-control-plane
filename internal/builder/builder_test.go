@@ -674,11 +674,13 @@ func TestBuilder(t *testing.T) {
 					}
 					s := builder.NewSource(src.name)
 					s.Requirements = rs
-					_ = s.AddDir(builder.Dir{
-						Path:          fmt.Sprintf("%v/src%d", root, i),
-						IncludedFiles: src.includedFiles,
-						ExcludedFiles: src.excludedFiles,
-					})
+					if len(src.files) > 0 {
+						_ = s.AddDir(builder.Dir{
+							Path:          fmt.Sprintf("%v/src%d", root, i),
+							IncludedFiles: src.includedFiles,
+							ExcludedFiles: src.excludedFiles,
+						})
+					}
 					srcs = append(srcs, s)
 				}
 				b := builder.New().

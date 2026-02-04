@@ -305,7 +305,10 @@ func (b *Builder) Build(ctx context.Context) error {
 
 			files, err := ocp_fs.FSContainsFiles(fs0)
 			if err != nil {
-				return fmt.Errorf("source %s check files: %w", next.src.Name, err)
+				if errors.Is(err, fs.ErrNotExist) {
+					return fmt.Errorf("source %q: directory does not exist", next.src.Name)
+				}
+				return fmt.Errorf("source %q: %w", next.src.Name, err)
 			}
 			if !files {
 				continue
@@ -314,7 +317,7 @@ func (b *Builder) Build(ctx context.Context) error {
 			buildSources.add(next.src.Name, fs0)
 
 			rs, err := getRegoAndJSONRoots(fs0)
-			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			if err != nil {
 				return fmt.Errorf("source %s find roots: %w", next.src.Name, err)
 			}
 			newRoots.add(rs...)
