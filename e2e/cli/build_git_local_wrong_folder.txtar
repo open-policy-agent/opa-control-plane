@@ -1,0 +1,43 @@
+# local example git repo
+cd repo
+env HOME=.
+exec git init .
+exec git branch -m main
+exec git config --global user.name "botbotbot"
+exec git config --global user.email "bot@bot.bot"
+exec git add .
+exec git commit -m initial-commit
+cd ..
+
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar tf bundles/a.tar.gz
+[!windows] cmp stdout exp/tarball
+[windows]  cmp stdout exp/tarball_windows
+
+-- repo/foo/policies/authz.rego --
+package foo.authz
+import rego.v1
+allow if {
+  input.user == "admin"
+}
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/a.tar.gz
+    requirements:
+    - source: git-local
+sources:
+  git-local:
+    git:
+      repo: ./repo/
+      reference: main
+      path: "bar"
+-- exp/tarball --
+error: load error: 1 error occurred during loading: stat bar: no such file or directory
+-- exp/tarball_windows --
+error: load error: 1 error occurred during loading: stat bar: no such file or directory
