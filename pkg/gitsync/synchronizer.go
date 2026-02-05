@@ -1,29 +1,16 @@
 package gitsync
 
 import (
-	"context"
 	"errors"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/gitsync"
+	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
 
-// Synchronizer defines the interface for git repository synchronization.
-// It provides a contract for maintaining local filesystem copies of git repositories.
-//
-// The synchronizer is not thread-safe. Callers should handle concurrency.
-type Synchronizer interface {
-	// Execute performs the synchronization of the configured Git repository.
-	// If the repository does not exist on disk, it will be cloned.
-	// If it exists, it will fetch the latest changes and checkout the configured reference/commit.
-	//
-	// Returns an error if synchronization fails.
-	Execute(ctx context.Context) error
-
-	// Close releases any resources held by the synchronizer.
-	// It should be called when the synchronizer is no longer needed.
-	Close(ctx context.Context)
-}
+// Synchronizer is re-exported from pkg/sync for external use.
+// See pkg/sync package for interface documentation.
+type Synchronizer = pkgsync.Synchronizer
 
 // NewFromGitConfig creates a new Synchronizer for external users using a git configuration map.
 // This is the recommended constructor for external projects integrating with this package.
@@ -78,5 +65,5 @@ func NewFromGitConfig(path string, gitConfig map[string]any, sourceName string, 
 		}
 	}
 
-	return gitsync.NewWithProvider(path, cfg, sourceName, provider), nil
+	return gitsync.New(path, cfg, sourceName).WithSecretProvider(provider), nil
 }

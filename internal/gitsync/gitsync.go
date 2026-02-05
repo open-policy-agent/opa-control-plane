@@ -25,6 +25,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 
 	"golang.org/x/crypto/ssh"
 
@@ -95,11 +96,10 @@ func init() {
 //   - Rotate credentials without config changes
 //   - Audit secret access
 //   - Integrate with enterprise secret management systems
-type SecretProvider interface {
-	// GetSecret retrieves a secret by name and returns a map with credential data.
-	// The map must include a "type" field and other fields as required by the credential type.
-	GetSecret(ctx context.Context, name string) (map[string]any, error)
-}
+//
+// SecretProvider is an alias to pkg/sync.SecretProvider for backward compatibility.
+// See pkg/sync package for interface documentation and supported credential types.
+type SecretProvider = pkgsync.SecretProvider
 
 type Synchronizer struct {
 	path           string
@@ -117,10 +117,18 @@ func New(path string, config config.Git, sourceName string) *Synchronizer {
 	return &Synchronizer{path: path, config: config, sourceName: sourceName}
 }
 
-// NewWithProvider creates a Synchronizer with an optional SecretProvider for external secret management.
-// If provider is nil, credentials are resolved from the config file.
-func NewWithProvider(path string, config config.Git, sourceName string, provider SecretProvider) *Synchronizer {
-	return &Synchronizer{path: path, config: config, sourceName: sourceName, secretProvider: provider}
+// WithSecretProvider configures the synchronizer to use an external SecretProvider for authentication.
+// This allows external projects to integrate their own secret management systems (e.g., Whisper, Vault).
+//
+// If provider is nil, credentials will be resolved from the config file.
+//
+// Example:
+//
+//	s := gitsync.New(path, config, sourceName).
+//	    WithSecretProvider(myProvider)
+func (s *Synchronizer) WithSecretProvider(provider SecretProvider) *Synchronizer {
+	s.secretProvider = provider
+	return s
 }
 
 // Execute performs the synchronization of the configured Git repository. If the repository does not exist
@@ -265,21 +273,39 @@ func (s *Synchronizer) auth(ctx context.Context) (transport.AuthMethod, error) {
 		return nil, nil
 	}
 
-	// If SecretProvider is set, use map-based credentials
+	var typed any
+
+	// Resolve credentials to typed value
 	if s.secretProvider != nil {
+		// External SecretProvider integration
 		credMap, err := s.secretProvider.GetSecret(ctx, s.config.Credentials.Name)
 		if err != nil {
 			return nil, err
 		}
-		return authFromMap(ctx, &s.gh, credMap)
+		// Convert map to typed credential
+		secret := &config.Secret{
+			Name:  s.config.Credentials.Name,
+			Value: credMap,
+		}
+		typed, err = secret.Typed(ctx)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Legacy config-based credentials
+		var err error
+		typed, err = s.config.Credentials.Resolve(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	// Otherwise, use config-based credentials (original behavior)
-	value, err := s.config.Credentials.Resolve(ctx)
-	if err != nil {
-		return nil, err
-	}
+	// Common path: convert typed credential to AuthMethod
+	return authFromTyped(ctx, &s.gh, typed)
+}
 
+// authFromTyped converts a typed config credential to transport.AuthMethod
+func authFromTyped(ctx context.Context, gh *github, value any) (transport.AuthMethod, error) {
 	switch value := value.(type) {
 	case *config.SecretBasicAuth:
 		return &basicAuth{
@@ -289,11 +315,10 @@ func (s *Synchronizer) auth(ctx context.Context) (transport.AuthMethod, error) {
 		}, nil
 
 	case config.SecretGitHubApp:
-		token, err := s.gh.Token(ctx, value.IntegrationID, value.InstallationID, value.PrivateKey)
+		token, err := gh.Token(ctx, value.IntegrationID, value.InstallationID, value.PrivateKey)
 		if err != nil {
 			return nil, err
 		}
-
 		return &http.BasicAuth{Username: "x-access-token", Password: token}, nil
 
 	case config.SecretSSHKey:
@@ -312,93 +337,9 @@ func (s *Synchronizer) auth(ctx context.Context) (transport.AuthMethod, error) {
 			tokenSecret: value,
 			name:        "bearer-token",
 		}, nil
-	}
-
-	return nil, fmt.Errorf("unsupported authentication type: %T", value)
-}
-
-// authFromMap creates authentication from a map-based credential (from SecretProvider)
-func authFromMap(ctx context.Context, gh *github, credMap map[string]any) (transport.AuthMethod, error) {
-	credType, ok := credMap["type"].(string)
-	if !ok {
-		return nil, errors.New("credential map must include a 'type' field")
-	}
-
-	switch credType {
-	case "basic_auth":
-		username, _ := credMap["username"].(string)
-		password, ok := credMap["password"].(string)
-		if !ok {
-			return nil, errors.New("basic_auth requires 'password' field")
-		}
-		var headers []string
-		if h, ok := credMap["headers"].([]any); ok {
-			for _, v := range h {
-				if str, ok := v.(string); ok {
-					headers = append(headers, str)
-				}
-			}
-		}
-		return &basicAuth{Username: username, Password: password, Headers: headers}, nil
-
-	case "github_app":
-		integrationID, err := getInt64FromMap(credMap, "integration_id")
-		if err != nil {
-			return nil, err
-		}
-		installationID, err := getInt64FromMap(credMap, "installation_id")
-		if err != nil {
-			return nil, err
-		}
-		privateKey, ok := credMap["private_key"].(string)
-		if !ok {
-			return nil, errors.New("github_app requires 'private_key' field")
-		}
-		token, err := gh.Token(ctx, integrationID, installationID, privateKey)
-		if err != nil {
-			return nil, err
-		}
-		return &http.BasicAuth{Username: "x-access-token", Password: token}, nil
-
-	case "ssh_key":
-		key, ok := credMap["key"].(string)
-		if !ok {
-			return nil, errors.New("ssh_key requires 'key' field")
-		}
-		passphrase, _ := credMap["passphrase"].(string)
-		var fingerprints []string
-		if fps, ok := credMap["fingerprints"].([]any); ok {
-			for _, fp := range fps {
-				if str, ok := fp.(string); ok {
-					fingerprints = append(fingerprints, str)
-				}
-			}
-		}
-		if len(fingerprints) == 0 {
-			return nil, errors.New("ssh_key requires at least one fingerprint")
-		}
-		return newSSHAuth(key, passphrase, fingerprints)
 
 	default:
-		return nil, fmt.Errorf("unsupported credential type: %s", credType)
-	}
-}
-
-// getInt64FromMap extracts an int64 from a map, handling various numeric types
-func getInt64FromMap(m map[string]any, key string) (int64, error) {
-	val, ok := m[key]
-	if !ok {
-		return 0, fmt.Errorf("missing required field '%s'", key)
-	}
-	switch v := val.(type) {
-	case int64:
-		return v, nil
-	case int:
-		return int64(v), nil
-	case float64:
-		return int64(v), nil
-	default:
-		return 0, fmt.Errorf("field '%s' must be a number, got %T", key, val)
+		return nil, fmt.Errorf("unsupported authentication type for git: %T", value)
 	}
 }
 

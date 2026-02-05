@@ -1,4 +1,4 @@
-package gitsync
+package httpsync
 
 import pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 
