@@ -34,7 +34,7 @@ func (s *SecretCredentialsProvider) Retrieve(ctx context.Context) (aws.Credentia
 	}
 
 	switch value := value.(type) {
-	case config.SecretAWS:
+	case *config.SecretAWS:
 		if value.AccessKeyID != "" || value.SecretAccessKey != "" || value.SessionToken != "" {
 			return aws.Credentials{
 				AccessKeyID:     value.AccessKeyID,

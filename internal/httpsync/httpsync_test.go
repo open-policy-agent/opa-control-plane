@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/johannesboyne/gofakes3"
+	"github.com/johannesboyne/gofakes3/backend/s3mem"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 )
 
@@ -389,6 +391,89 @@ func TestHTTPDataSynchronizer_OIDC_ClientCredentials(t *testing.T) {
 
 			if !bytes.Equal(data, []byte(contents)) {
 				t.Fatal("downloaded data does not match expected contents")
+			}
+		})
+	}
+}
+
+func TestHTTPDataSynchronizer_WithS3(t *testing.T) {
+	// Setup shared fake S3 server
+	mock := s3mem.New()
+	ts := httptest.NewServer(gofakes3.New(mock).Server())
+	t.Cleanup(ts.Close)
+
+	tests := []struct {
+		name         string
+		bucket       string
+		key          string
+		contents     string
+		region       string
+		sessionToken string
+	}{
+		{
+			name:     "path style URL",
+			bucket:   "test-bucket",
+			key:      "data/policies.json",
+			contents: `{"policies": ["policy1", "policy2"]}`,
+			region:   "us-east-1",
+		},
+		{
+			name:     "virtual hosted style URL",
+			bucket:   "my-test-bucket",
+			key:      "path/to/data.json",
+			contents: `{"key": "value"}`,
+			region:   "us-west-2",
+		},
+		{
+			name:         "with session token",
+			bucket:       "session-bucket",
+			key:          "session.json",
+			contents:     `{"session": "data"}`,
+			region:       "eu-central-1",
+			sessionToken: "AQoDYXdzEJr...<remainder of session token>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := mock.CreateBucket(tt.bucket); err != nil {
+				t.Fatalf("failed to create bucket: %v", err)
+			}
+
+			if _, err := mock.PutObject(tt.bucket, tt.key, map[string]string{}, strings.NewReader(tt.contents), int64(len(tt.contents))); err != nil {
+				t.Fatalf("failed to put object: %v", err)
+			}
+
+			secretValue := map[string]any{
+				"type":              "aws_auth",
+				"access_key_id":     "AKIAIOSFODNN7EXAMPLE",
+				"secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+			}
+			if tt.sessionToken != "" {
+				secretValue["session_token"] = tt.sessionToken
+			}
+
+			secret := config.Secret{
+				Name:  "awsAuth",
+				Value: secretValue,
+			}
+
+			file := path.Join(t.TempDir(), "data.json")
+			s3URL := ts.URL + "/" + tt.bucket + "/" + tt.key
+
+			synchronizer := NewS3(file, s3URL, tt.region, ts.URL, secret.Ref())
+			err := synchronizer.Execute(context.Background())
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("expected no error while reading file, got: %v", err)
+			}
+
+			if !bytes.Equal(data, []byte(tt.contents)) {
+				t.Fatalf("expected data %q, got %q", tt.contents, string(data))
 			}
 		})
 	}

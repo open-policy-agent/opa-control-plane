@@ -156,7 +156,7 @@ func (s *Secret) Typed(context.Context) (any, error) {
 			return nil, errors.New("missing access_key_id or secret_access_key in AWS secret")
 		}
 
-		return value, nil
+		return &value, nil
 
 	case "azure_auth":
 		var value SecretAzure
