@@ -502,6 +502,22 @@ func (src *source) SyncDatasources(syncs *[]Synchronizer, datasources []config.D
 			body, _ := datasource.Config["body"].(string)
 			headers, _ := datasource.Config["headers"].(map[string]any)
 			*syncs = append(*syncs, httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials))
+		case "s3":
+			bucket, _ := datasource.Config["bucket"].(string)
+			key, _ := datasource.Config["key"].(string)
+			region, _ := datasource.Config["region"].(string)
+			endpoint, _ := datasource.Config["endpoint"].(string)
+
+			region = cmp.Or(region, "us-east-1")
+
+			var url string
+			if endpoint != "" {
+				url = endpoint + "/" + bucket + "/" + key
+			} else {
+				url = "https://" + bucket + ".s3." + region + ".amazonaws.com/" + key
+			}
+
+			*syncs = append(*syncs, httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials))
 		}
 
 		if datasource.TransformQuery != "" {
