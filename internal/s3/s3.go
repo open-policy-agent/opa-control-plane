@@ -16,7 +16,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	internal_aws "github.com/open-policy-agent/opa-control-plane/internal/aws"
@@ -40,7 +40,7 @@ type (
 	AmazonS3 struct {
 		bucket   string
 		key      string
-		uploader *manager.Uploader
+		uploader *transfermanager.Client
 		client   *s3.Client
 	}
 
@@ -89,7 +89,7 @@ func New(ctx context.Context, c config.ObjectStorage) (ObjectStorage, error) {
 			}
 		})
 
-		return &AmazonS3{bucket: c.AmazonS3.Bucket, key: c.AmazonS3.Key, uploader: manager.NewUploader(client), client: client}, nil
+		return &AmazonS3{bucket: c.AmazonS3.Bucket, key: c.AmazonS3.Key, uploader: transfermanager.New(client), client: client}, nil
 	case c.GCPCloudStorage != nil:
 		var client *storage.Client
 
@@ -222,7 +222,7 @@ func (s *AmazonS3) Upload(ctx context.Context, body io.ReadSeeker) error {
 		return err
 	}
 
-	_, err = s.uploader.Upload(ctx, &s3.PutObjectInput{
+	_, err = s.uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(s.key),
 		Body:   body,
