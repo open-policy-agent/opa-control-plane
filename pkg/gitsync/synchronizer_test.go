@@ -1,11 +1,11 @@
-package httpsync_test
+package gitsync_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/open-policy-agent/opa-control-plane/pkg/httpsync"
+	"github.com/open-policy-agent/opa-control-plane/pkg/gitsync"
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
 
@@ -21,12 +21,12 @@ func (m *mockSecretProvider) GetSecret(ctx context.Context, name string) (map[st
 	return nil, errors.New("secret not found: " + name)
 }
 
-func TestNewFromHTTPConfig(t *testing.T) {
+func TestNewFromGitConfig(t *testing.T) {
 	provider := &mockSecretProvider{
 		secrets: map[string]map[string]any{
-			"api-token": {
-				"type":  "bearer",
-				"token": "test-token-123",
+			"github-token": {
+				"type":  "token_auth",
+				"token": "ghp_test123",
 			},
 		},
 	}
@@ -39,31 +39,38 @@ func TestNewFromHTTPConfig(t *testing.T) {
 		errorMsg    string
 	}{
 		{
-			name: "success with credentials",
+			name: "success with reference and credentials",
 			config: map[string]any{
-				"url":        "https://api.example.com/data",
-				"method":     "GET",
-				"credential": "api-token",
-				"headers": map[string]any{
-					"Accept": "application/json",
-				},
+				"repo":       "https://github.com/myorg/policies.git",
+				"reference":  "main",
+				"credential": "github-token",
 			},
 			provider:    provider,
 			expectError: false,
 		},
 		{
-			name: "requires URL",
+			name: "requires repo",
 			config: map[string]any{
-				"method": "GET",
+				"reference": "main",
 			},
 			provider:    nil,
 			expectError: true,
-			errorMsg:    "http config: 'url' field is required",
+			errorMsg:    "git config: 'repo' field is required",
 		},
 		{
-			name: "default method",
+			name: "empty repo",
 			config: map[string]any{
-				"url": "https://api.example.com/data",
+				"repo": "",
+			},
+			provider:    nil,
+			expectError: true,
+			errorMsg:    "git config: 'repo' field is required",
+		},
+		{
+			name: "success with commit",
+			config: map[string]any{
+				"repo":   "https://github.com/myorg/policies.git",
+				"commit": "abc123def456",
 			},
 			provider:    nil,
 			expectError: false,
@@ -71,22 +78,16 @@ func TestNewFromHTTPConfig(t *testing.T) {
 		{
 			name: "no credentials",
 			config: map[string]any{
-				"url":    "https://api.example.com/data",
-				"method": "POST",
-				"body":   `{"key": "value"}`,
+				"repo":      "https://github.com/myorg/public-repo.git",
+				"reference": "main",
 			},
 			provider:    nil,
 			expectError: false,
 		},
 		{
-			name: "with headers",
+			name: "minimal config",
 			config: map[string]any{
-				"url":    "https://api.example.com/data",
-				"method": "GET",
-				"headers": map[string]any{
-					"Accept":        "application/json",
-					"Authorization": "Bearer token",
-				},
+				"repo": "https://github.com/myorg/policies.git",
 			},
 			provider:    nil,
 			expectError: false,
@@ -95,7 +96,7 @@ func TestNewFromHTTPConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			syncer, err := httpsync.NewFromHTTPConfig("/tmp/data.json", tt.config, tt.provider)
+			syncer, err := gitsync.NewFromGitConfig("/tmp/test-repo", tt.config, "test-source", tt.provider)
 
 			if tt.expectError {
 				if err == nil {
@@ -127,38 +128,38 @@ func TestMockSecretProvider(t *testing.T) {
 		validate    func(t *testing.T, secret map[string]any)
 	}{
 		{
-			name: "bearer token",
+			name: "github token",
 			secrets: map[string]map[string]any{
-				"bearer-cred": {
-					"type":  "bearer",
-					"token": "abc123",
+				"github-token": {
+					"type":  "token_auth",
+					"token": "ghp_abc123",
 				},
 			},
-			secretName:  "bearer-cred",
+			secretName:  "github-token",
 			expectError: false,
 			validate: func(t *testing.T, secret map[string]any) {
-				if secret["type"] != "bearer" {
-					t.Errorf("expected type 'bearer', got %v", secret["type"])
+				if secret["type"] != "token_auth" {
+					t.Errorf("expected type 'token_auth', got %v", secret["type"])
 				}
-				if secret["token"] != "abc123" {
-					t.Errorf("expected token 'abc123', got %v", secret["token"])
+				if secret["token"] != "ghp_abc123" {
+					t.Errorf("expected token 'ghp_abc123', got %v", secret["token"])
 				}
 			},
 		},
 		{
-			name: "basic auth",
+			name: "ssh key",
 			secrets: map[string]map[string]any{
-				"basic-cred": {
-					"type":     "basic",
-					"username": "user",
-					"password": "pass",
+				"ssh-key": {
+					"type":       "ssh_key",
+					"key":        "-----BEGIN RSA PRIVATE KEY-----",
+					"passphrase": "secret",
 				},
 			},
-			secretName:  "basic-cred",
+			secretName:  "ssh-key",
 			expectError: false,
 			validate: func(t *testing.T, secret map[string]any) {
-				if secret["type"] != "basic" {
-					t.Errorf("expected type 'basic', got %v", secret["type"])
+				if secret["type"] != "ssh_key" {
+					t.Errorf("expected type 'ssh_key', got %v", secret["type"])
 				}
 			},
 		},

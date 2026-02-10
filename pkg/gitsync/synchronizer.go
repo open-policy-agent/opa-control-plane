@@ -8,10 +8,6 @@ import (
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
 
-// Synchronizer is re-exported from pkg/sync for external use.
-// See pkg/sync package for interface documentation.
-type Synchronizer = pkgsync.Synchronizer
-
 // NewFromGitConfig creates a new Synchronizer for external users using a git configuration map.
 // This is the recommended constructor for external projects integrating with this package.
 //
@@ -37,7 +33,7 @@ type Synchronizer = pkgsync.Synchronizer
 //	    log.Fatal(err)
 //	}
 //	err = syncer.Execute(ctx)
-func NewFromGitConfig(path string, gitConfig map[string]any, sourceName string, provider SecretProvider) (Synchronizer, error) {
+func NewFromGitConfig(path string, gitConfig map[string]any, sourceName string, provider pkgsync.SecretProvider) (*gitsync.Synchronizer, error) {
 	// Extract required field: repo
 	repo, ok := gitConfig["repo"].(string)
 	if !ok || repo == "" {

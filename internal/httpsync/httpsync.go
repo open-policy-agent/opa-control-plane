@@ -19,29 +19,24 @@ import (
 
 // HttpDataSynchronizer is a struct that implements the Synchronizer interface for downloading JSON from HTTP endpoints.
 type HttpDataSynchronizer struct {
-	path           string // The path where the data will be saved
-	url            string
-	method         string
-	body           string
-	headers        map[string]any // Headers to include in the HTTP request
-	credentials    *config.SecretRef
-	provider       SecretProvider // For external SecretProvider integration
-	credentialName string         // Name of credential to fetch from provider
-	region         string         // AWS region for S3 datasources
-	endpoint       string         // Custom S3 endpoint for S3-compatible services
-	client         *http.Client
-	s3Client       *s3.Client
+	path        string // The path where the data will be saved
+	url         string
+	method      string
+	body        string
+	headers     map[string]any // Headers to include in the HTTP request
+	credentials *config.SecretRef
+	provider    pkgsync.SecretProvider // For external SecretProvider integration
+	region      string                 // AWS region for S3 datasources
+	endpoint    string                 // Custom S3 endpoint for S3-compatible services
+	client      *http.Client
+	s3Client    *s3.Client
 }
 
 type HeaderSetter interface {
 	SetHeader(*http.Request) error
 }
 
-// SecretProvider is an alias to pkg/sync.SecretProvider for backward compatibility.
-// See pkg/sync package for interface documentation and supported credential types.
-type SecretProvider = pkgsync.SecretProvider
-
-func New(path string, url string, method string, body string, headers map[string]any, credentials *config.SecretRef) *HttpDataSynchronizer {
+func New(path, url, method, body string, headers map[string]any, credentials *config.SecretRef) *HttpDataSynchronizer {
 	return &HttpDataSynchronizer{path: path, url: url, method: method, body: body, headers: headers, credentials: credentials}
 }
 
@@ -51,17 +46,8 @@ func NewS3(path, url, region, endpoint string, credentials *config.SecretRef) *H
 
 // WithSecretProvider configures the synchronizer to use an external SecretProvider for authentication.
 // This allows external projects to integrate their own secret management systems (e.g., Whisper, Vault).
-//
-// If credentialName is empty, the provider configuration is ignored and the synchronizer
-// will use unauthenticated requests (or fall back to credentials configured via New()).
-//
-// Example:
-//
-//	s := httpsync.New(path, url, method, body, headers, nil).
-//	    WithSecretProvider("my-secret", myProvider)
-func (s *HttpDataSynchronizer) WithSecretProvider(credentialName string, provider SecretProvider) *HttpDataSynchronizer {
+func (s *HttpDataSynchronizer) WithSecretProvider(provider pkgsync.SecretProvider) *HttpDataSynchronizer {
 	s.provider = provider
-	s.credentialName = credentialName
 	return s
 }
 
@@ -152,17 +138,14 @@ func (s *HttpDataSynchronizer) initClient(ctx context.Context) error {
 
 	var clientSecret config.ClientSecret
 
-	// Resolve credentials to ClientSecret
-	if s.provider != nil && s.credentialName != "" {
-		// External SecretProvider integration
-		secretData, err := s.provider.GetSecret(ctx, s.credentialName)
+	if s.provider != nil && s.credentials != nil {
+		secretData, err := s.provider.GetSecret(ctx, s.credentials.Name)
 		if err != nil {
 			return fmt.Errorf("secret provider: %w", err)
 		}
 
-		// Create a Secret from the map and use Typed() to convert it
 		secret := &config.Secret{
-			Name:  s.credentialName,
+			Name:  s.credentials.Name,
 			Value: secretData,
 		}
 
@@ -171,14 +154,12 @@ func (s *HttpDataSynchronizer) initClient(ctx context.Context) error {
 			return err
 		}
 
-		// Ensure the typed value implements ClientSecret
 		var ok bool
 		clientSecret, ok = typed.(config.ClientSecret)
 		if !ok {
 			return fmt.Errorf("secret type %q does not support HTTP client authentication", secretData["type"])
 		}
 	} else if s.credentials != nil {
-		// Legacy config.SecretRef path
 		secret, err := s.credentials.Resolve(ctx)
 		if err != nil {
 			return err
@@ -189,12 +170,10 @@ func (s *HttpDataSynchronizer) initClient(ctx context.Context) error {
 			return fmt.Errorf("unsupported secret type for http sync: %T", secret)
 		}
 	} else {
-		// No credentials
 		s.client = http.DefaultClient
 		return nil
 	}
 
-	// Common path: create client from ClientSecret
 	var err error
 	s.client, err = clientSecret.Client(ctx)
 	return err

@@ -96,17 +96,13 @@ func init() {
 //   - Rotate credentials without config changes
 //   - Audit secret access
 //   - Integrate with enterprise secret management systems
-//
-// SecretProvider is an alias to pkg/sync.SecretProvider for backward compatibility.
-// See pkg/sync package for interface documentation and supported credential types.
-type SecretProvider = pkgsync.SecretProvider
 
 type Synchronizer struct {
 	path           string
 	config         config.Git
 	gh             github
 	sourceName     string
-	secretProvider SecretProvider
+	secretProvider pkgsync.SecretProvider
 }
 
 // New creates a new Synchronizer instance. It is expected the threadpooling is outside of this package.
@@ -119,14 +115,7 @@ func New(path string, config config.Git, sourceName string) *Synchronizer {
 
 // WithSecretProvider configures the synchronizer to use an external SecretProvider for authentication.
 // This allows external projects to integrate their own secret management systems (e.g., Whisper, Vault).
-//
-// If provider is nil, credentials will be resolved from the config file.
-//
-// Example:
-//
-//	s := gitsync.New(path, config, sourceName).
-//	    WithSecretProvider(myProvider)
-func (s *Synchronizer) WithSecretProvider(provider SecretProvider) *Synchronizer {
+func (s *Synchronizer) WithSecretProvider(provider pkgsync.SecretProvider) *Synchronizer {
 	s.secretProvider = provider
 	return s
 }
@@ -275,14 +264,11 @@ func (s *Synchronizer) auth(ctx context.Context) (transport.AuthMethod, error) {
 
 	var typed any
 
-	// Resolve credentials to typed value
 	if s.secretProvider != nil {
-		// External SecretProvider integration
 		credMap, err := s.secretProvider.GetSecret(ctx, s.config.Credentials.Name)
 		if err != nil {
 			return nil, err
 		}
-		// Convert map to typed credential
 		secret := &config.Secret{
 			Name:  s.config.Credentials.Name,
 			Value: credMap,
@@ -292,7 +278,6 @@ func (s *Synchronizer) auth(ctx context.Context) (transport.AuthMethod, error) {
 			return nil, err
 		}
 	} else {
-		// Legacy config-based credentials
 		var err error
 		typed, err = s.config.Credentials.Resolve(ctx)
 		if err != nil {
@@ -300,7 +285,6 @@ func (s *Synchronizer) auth(ctx context.Context) (transport.AuthMethod, error) {
 		}
 	}
 
-	// Common path: convert typed credential to AuthMethod
 	return authFromTyped(ctx, &s.gh, typed)
 }
 

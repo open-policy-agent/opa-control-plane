@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -472,10 +473,7 @@ type SecretAPIKey struct {
 }
 
 func (s *SecretAPIKey) Client(context.Context) (*http.Client, error) {
-	in := s.In
-	if in == "" {
-		in = "header" // default
-	}
+	in := cmp.Or(s.In, "header") // default
 
 	return wrappedClient(func(r *http.Request) *http.Request {
 		if in == "header" {

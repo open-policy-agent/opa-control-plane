@@ -3,13 +3,10 @@ package httpsync
 import (
 	"errors"
 
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/httpsync"
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
-
-// Synchronizer is re-exported from pkg/sync for external use.
-// See pkg/sync package for interface documentation.
-type Synchronizer = pkgsync.Synchronizer
 
 // NewFromHTTPConfig creates a new HTTP Synchronizer using a map-based configuration.
 // This is the recommended constructor for external projects.
@@ -40,34 +37,33 @@ type Synchronizer = pkgsync.Synchronizer
 //	    log.Fatal(err)
 //	}
 //	err = syncer.Execute(ctx)
-func NewFromHTTPConfig(path string, httpConfig map[string]any, provider SecretProvider) (Synchronizer, error) {
-	// Extract required field: url
+func NewFromHTTPConfig(path string, httpConfig map[string]any, provider pkgsync.SecretProvider) (*httpsync.HttpDataSynchronizer, error) {
 	url, ok := httpConfig["url"].(string)
 	if !ok || url == "" {
 		return nil, errors.New("http config: 'url' field is required")
 	}
 
-	// Extract optional method (default: GET)
 	method := "GET"
 	if m, ok := httpConfig["method"].(string); ok && m != "" {
 		method = m
 	}
 
-	// Extract optional body
 	body := ""
 	if b, ok := httpConfig["body"].(string); ok {
 		body = b
 	}
 
-	// Extract optional headers
 	headers, _ := httpConfig["headers"].(map[string]any)
 
-	// Extract optional credential name
-	var credentialName string
-	if cred, ok := httpConfig["credential"].(string); ok && cred != "" {
-		credentialName = cred
+	var credentials *config.SecretRef
+	if credName, ok := httpConfig["credential"].(string); ok && credName != "" {
+		credentials = &config.SecretRef{Name: credName}
 	}
 
-	return httpsync.New(path, url, method, body, headers, nil).
-		WithSecretProvider(credentialName, provider), nil
+	syncer := httpsync.New(path, url, method, body, headers, credentials)
+	if provider != nil {
+		syncer = syncer.WithSecretProvider(provider)
+	}
+
+	return syncer, nil
 }
