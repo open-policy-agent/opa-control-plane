@@ -166,7 +166,7 @@ func (c *Client) Get(path string, params ...Params) (*http.Response, error) {
 
 	if len(p.Query) > 0 {
 
-		qps := []string{}
+		qps := make([]string, 0, len(p.Query))
 		for key, value := range p.Query {
 			qps = append(qps, fmt.Sprintf("%v=%v", neturl.QueryEscape(key), neturl.QueryEscape(value)))
 		}
