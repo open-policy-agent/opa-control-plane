@@ -9,6 +9,20 @@ import (
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 )
 
+func addBundlesRevision(offset int, dialect string) fs.FS {
+	var stmt string
+	switch dialect {
+	case "sqlite", "postgresql", "cockroachdb":
+		stmt = `ALTER TABLE bundles ADD revision TEXT`
+	case "mysql":
+		stmt = `ALTER TABLE bundles ADD revision VARCHAR(255)`
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_bundles_revision.up.sql", offset): stmt,
+	})
+}
+
 func addRequirementsOptions(offset int, dialect string) fs.FS {
 	var stmtBundles, stmtSources, stmtStacks string
 	switch dialect {
