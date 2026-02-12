@@ -1,0 +1,28 @@
+env BUILD_NUMBER=build-12345
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar xf bundles/hello-world/bundle.tar.gz /.manifest
+cmp .manifest exp/.manifest
+
+-- files/sources/hello-world/rules.rego --
+package rules
+import rego.v1
+result if input.yay
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    revision: '${BUILD_NUMBER}'
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: dir-paths
+sources:
+  dir-paths:
+    directory: files/sources/hello-world
+    paths:
+    - rules.rego
+-- exp/.manifest --
+{"revision":"build-12345","roots":["rules"],"rego_version":0}

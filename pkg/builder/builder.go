@@ -169,6 +169,7 @@ type Builder struct {
 	output   io.Writer
 	excluded []string
 	target   string
+	revision string
 }
 
 func New() *Builder {
@@ -192,6 +193,11 @@ func (b *Builder) WithExcluded(excluded []string) *Builder {
 
 func (b *Builder) WithTarget(target string) *Builder {
 	b.target = target
+	return b
+}
+
+func (b *Builder) WithRevision(revision string) *Builder {
+	b.revision = revision
 	return b
 }
 
@@ -390,6 +396,15 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	result := c.Bundle()
 	result.Manifest.SetRegoVersion(ast.RegoV0)
+
+	if b.revision != "" {
+		resolved, err := config.ResolveRevision(ctx, b.revision)
+		if err != nil {
+			return fmt.Errorf("resolve revision: %w", err)
+		}
+		result.Manifest.Revision = resolved
+	}
+
 	return bundle.Write(b.output, *result)
 }
 
