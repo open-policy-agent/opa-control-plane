@@ -28,7 +28,7 @@ endif
 
 LDFLAGS := "-s -X github.com/open-policy-agent/opa-control-plane/cmd/version.Version=$(VERSION)"
 
-GOLANGCI_LINT_VERSION := v2.4.0
+GOLANGCI_LINT_VERSION := v2.9.0
 
 DOCKER_RUNNING ?= $(shell docker ps >/dev/null 2>&1 && echo 1 || echo 0)
 

@@ -159,22 +159,23 @@ func unescapeInfo(info fs.FileInfo) fs.FileInfo {
 
 // unescape replaces first "##" with "#" and then replaces all remaining "#" with ":".
 func unescape(path string) string {
-	var result string
+	var result strings.Builder
 
 	for len(path) > 0 {
 		if i := strings.Index(path, "##"); i != -1 {
-			result += path[:i+1] // Drop the second '#' to treat "##" as a single '#'.
+			result.WriteString(path[:i+1]) // Drop the second '#' to treat "##" as a single '#'.
 			path = path[i+2:]
 		} else if i := strings.Index(path, "#"); i != -1 {
-			result += path[:i] + ":" // Replace single '#' with ':'
+			result.WriteString(path[:i])
+			result.WriteString(":") // Replace single '#' with ':'
 			path = path[i+1:]
 		} else {
-			result += path // No more "##" found, append the rest
+			result.WriteString(path) // No more "##" found, append the rest
 			path = ""
 		}
 	}
 
-	return result
+	return result.String()
 }
 
 // Escape replaces first '#' with '##' and then replaces all remaining ':' with '#'.
