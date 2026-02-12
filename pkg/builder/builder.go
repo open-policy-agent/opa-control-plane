@@ -165,11 +165,12 @@ type Dir struct {
 }
 
 type Builder struct {
-	sources  []*Source
-	output   io.Writer
-	excluded []string
-	target   string
-	revision string
+	sources        []*Source
+	output         io.Writer
+	excluded       []string
+	target         string
+	revision       string
+	sourceMetadata map[string]map[string]any
 }
 
 func New() *Builder {
@@ -198,6 +199,11 @@ func (b *Builder) WithTarget(target string) *Builder {
 
 func (b *Builder) WithRevision(revision string) *Builder {
 	b.revision = revision
+	return b
+}
+
+func (b *Builder) WithSourceMetadata(metadata map[string]map[string]any) *Builder {
+	b.sourceMetadata = metadata
 	return b
 }
 
@@ -398,7 +404,10 @@ func (b *Builder) Build(ctx context.Context) error {
 	result.Manifest.SetRegoVersion(ast.RegoV0)
 
 	if b.revision != "" {
-		resolved, err := config.ResolveRevision(ctx, b.revision)
+		input := map[string]any{
+			"sources": b.sourceMetadata,
+		}
+		resolved, err := config.ResolveRevision(ctx, b.revision, input)
 		if err != nil {
 			return fmt.Errorf("resolve revision: %w", err)
 		}

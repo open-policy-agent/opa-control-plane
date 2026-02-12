@@ -122,18 +122,32 @@ func (s *Synchronizer) WithSecretProvider(provider pkgsync.SecretProvider) *Sync
 
 // Execute performs the synchronization of the configured Git repository. If the repository does not exist
 // on disk, clone it. If it does exist, pull the latest changes and rebase the local branch onto the remote branch.
-func (s *Synchronizer) Execute(ctx context.Context) error {
+// Returns metadata about the synchronized repository, including the current commit hash.
+func (s *Synchronizer) Execute(ctx context.Context) (map[string]any, error) {
 	startTime := time.Now()
 
 	done, err := s.execute(ctx)
 	if err != nil {
 		metrics.GitSyncFailed(s.sourceName, s.config.Repo)
-		return fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
+		return nil, fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
 	}
 	if done {
 		metrics.GitSyncSucceeded(s.sourceName, s.config.Repo, startTime)
 	}
-	return nil
+
+	// Get commit hash after successful sync
+	hash, err := s.getCommitHash()
+	if err != nil {
+		return nil, fmt.Errorf("source %q: failed to get commit hash: %w", s.sourceName, err)
+	}
+
+	return map[string]any{
+		"commit": hash,
+	}, nil
+}
+
+func (s *Synchronizer) SourceName() string {
+	return s.sourceName
 }
 
 func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
@@ -255,6 +269,18 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 
 func (*Synchronizer) Close(context.Context) {
 	// No resources to close.
+}
+
+func (s *Synchronizer) getCommitHash() (string, error) {
+	repo, err := git.PlainOpen(s.path)
+	if err != nil {
+		return "", err
+	}
+	head, err := repo.Head()
+	if err != nil {
+		return "", err
+	}
+	return head.Hash().String(), nil
 }
 
 func (s *Synchronizer) auth(ctx context.Context) (transport.AuthMethod, error) {

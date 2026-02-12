@@ -83,7 +83,7 @@ func TestResolveRevision(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			got, err := ResolveRevision(ctx, tt.revision)
+			got, err := ResolveRevision(ctx, tt.revision, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ResolveRevision() error = %v, wantErr %v", err, tt.wantErr)
 				return
