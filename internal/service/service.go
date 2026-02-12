@@ -501,7 +501,7 @@ func (src *source) SyncDatasources(syncs *[]Synchronizer, datasources []config.D
 
 			body, _ := datasource.Config["body"].(string)
 			headers, _ := datasource.Config["headers"].(map[string]any)
-			*syncs = append(*syncs, httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials))
+			*syncs = append(*syncs, httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials, src.Name))
 		case "s3":
 			bucket, _ := datasource.Config["bucket"].(string)
 			key, _ := datasource.Config["key"].(string)
@@ -517,7 +517,7 @@ func (src *source) SyncDatasources(syncs *[]Synchronizer, datasources []config.D
 				url = "https://" + bucket + ".s3." + region + ".amazonaws.com/" + key
 			}
 
-			*syncs = append(*syncs, httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials))
+			*syncs = append(*syncs, httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials, src.Name))
 		}
 
 		if datasource.TransformQuery != "" {

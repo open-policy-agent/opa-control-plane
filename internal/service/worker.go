@@ -42,8 +42,9 @@ type BundleWorker struct {
 }
 
 type Synchronizer interface {
-	Execute(ctx context.Context) error
+	Execute(ctx context.Context) (map[string]any, error)
 	Close(ctx context.Context)
+	SourceName() string
 }
 
 func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Source, stacks []*config.Stack, logger *logging.Logger, bar *progress.Bar) *BundleWorker {
@@ -120,11 +121,17 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		}
 	}
 
+	// Collect source metadata from synchronizers
+	sourceMetadata := make(map[string]map[string]any)
 	for _, synchronizer := range w.synchronizers {
-		err := synchronizer.Execute(ctx)
+		metadata, err := synchronizer.Execute(ctx)
 		if err != nil {
 			w.log.Warnf("failed to synchronize bundle %q: %v", w.bundleConfig.Name, err)
 			return w.report(ctx, BuildStateSyncFailed, startTime, err)
+		}
+		if metadata != nil {
+			sourceName := synchronizer.SourceName()
+			sourceMetadata[sourceName] = metadata
 		}
 	}
 
@@ -146,6 +153,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		WithExcluded(w.bundleConfig.ExcludedFiles).
 		WithTarget(w.bundleConfig.Options.Target).
 		WithRevision(w.bundleConfig.Revision).
+		WithSourceMetadata(sourceMetadata).
 		WithOutput(buffer)
 
 	err := b.Build(ctx)

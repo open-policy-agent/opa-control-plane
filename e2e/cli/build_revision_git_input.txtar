@@ -1,0 +1,47 @@
+# Test revision using git commit hash from input.sources
+# Setup a local git repo
+cd repo
+env HOME=.
+exec git init .
+exec git branch -m main
+exec git config --global user.name "botbotbot"
+exec git config --global user.email "bot@bot.bot"
+exec git add .
+exec git commit -m initial-commit
+
+# Capture the commit hash for verification
+exec git rev-parse HEAD
+cp stdout ../commit_hash.txt
+cd ..
+
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+# Extract and examine the manifest
+exec tar xf bundles/hello-world/bundle.tar.gz /.manifest
+
+# The manifest should contain a revision with the short commit hash (7 chars)
+exec cat .manifest
+stdout '"revision":"git-'
+stdout '"roots":\["rules"\]'
+stdout '"rego_version":0'
+
+-- repo/policy.rego --
+package rules
+import rego.v1
+allow if true
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: policies
+    revision: $"git-{substring(input.sources.policies.commit, 0, 7)}"
+sources:
+  policies:
+    git:
+      repo: ./repo/
+      reference: main

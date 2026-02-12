@@ -63,7 +63,7 @@ func TestGitsyncLocal(t *testing.T) {
 	}, "")
 
 	ctx := t.Context()
-	if err := s.Execute(ctx); err != nil {
+	if _, err := s.Execute(ctx); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
@@ -99,7 +99,7 @@ func TestGitsyncLocal(t *testing.T) {
 		t.Fatalf("expected no error while committing changes: %v", err)
 	}
 
-	err = s.Execute(ctx)
+	_, err = s.Execute(ctx)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -236,7 +236,7 @@ func TestGitsyncSSH(t *testing.T) {
 			Credentials: secret2.Ref(),
 		}, "")
 
-		if err := s.Execute(t.Context()); err != nil {
+		if _, err := s.Execute(t.Context()); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -268,7 +268,7 @@ func TestGitsyncSSH(t *testing.T) {
 			Credentials: secret2.Ref(),
 		}, "")
 
-		if err := s.Execute(t.Context()); err != nil {
+		if _, err := s.Execute(t.Context()); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
@@ -282,7 +282,7 @@ func TestGitsyncSSH(t *testing.T) {
 		}
 
 		// Run again. Expect no new fetch since we've already got the commit.
-		if err := s.Execute(t.Context()); err != nil {
+		if _, err := s.Execute(t.Context()); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 

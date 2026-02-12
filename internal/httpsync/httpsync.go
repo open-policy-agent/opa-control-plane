@@ -28,6 +28,7 @@ type HttpDataSynchronizer struct {
 	provider    pkgsync.SecretProvider // For external SecretProvider integration
 	region      string                 // AWS region for S3 datasources
 	endpoint    string                 // Custom S3 endpoint for S3-compatible services
+	sourceName  string                 // Source name for metadata tracking
 	client      *http.Client
 	s3Client    *s3.Client
 }
@@ -36,12 +37,16 @@ type HeaderSetter interface {
 	SetHeader(*http.Request) error
 }
 
-func New(path, url, method, body string, headers map[string]any, credentials *config.SecretRef) *HttpDataSynchronizer {
-	return &HttpDataSynchronizer{path: path, url: url, method: method, body: body, headers: headers, credentials: credentials}
+func New(path, url, method, body string, headers map[string]any, credentials *config.SecretRef, sourceName string) *HttpDataSynchronizer {
+	return &HttpDataSynchronizer{path: path, url: url, method: method, body: body, headers: headers, credentials: credentials, sourceName: sourceName}
 }
 
-func NewS3(path, url, region, endpoint string, credentials *config.SecretRef) *HttpDataSynchronizer {
-	return &HttpDataSynchronizer{path: path, url: url, region: region, endpoint: endpoint, credentials: credentials}
+func NewS3(path, url, region, endpoint string, credentials *config.SecretRef, sourceName string) *HttpDataSynchronizer {
+	return &HttpDataSynchronizer{path: path, url: url, region: region, endpoint: endpoint, credentials: credentials, sourceName: sourceName}
+}
+
+func (s *HttpDataSynchronizer) SourceName() string {
+	return s.sourceName
 }
 
 // WithSecretProvider configures the synchronizer to use an external SecretProvider for authentication.
@@ -51,14 +56,14 @@ func (s *HttpDataSynchronizer) WithSecretProvider(provider pkgsync.SecretProvide
 	return s
 }
 
-func (s *HttpDataSynchronizer) Execute(ctx context.Context) error {
+func (s *HttpDataSynchronizer) Execute(ctx context.Context) (map[string]any, error) {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0755); err != nil {
-		return err
+		return nil, err
 	}
 
 	f, err := os.Create(s.path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer f.Close()
 
@@ -70,15 +75,16 @@ func (s *HttpDataSynchronizer) Execute(ctx context.Context) error {
 	}
 	if err != nil {
 		_ = f.Truncate(0)
-		return err
+		return nil, err
 	}
 	defer body.Close()
 
 	_, err = io.Copy(f, body)
 	if err != nil {
 		_ = f.Truncate(0)
+		return nil, err
 	}
-	return err
+	return nil, nil
 }
 
 func (s *HttpDataSynchronizer) executeHTTP(ctx context.Context) (io.ReadCloser, error) {
