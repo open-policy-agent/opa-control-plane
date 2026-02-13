@@ -261,6 +261,7 @@ func (o Options) Empty() bool {
 type Bundle struct {
 	Name          string        `json:"name"`
 	Labels        Labels        `json:"labels,omitempty"`
+	Revision      string        `json:"revision,omitempty"`
 	ObjectStorage ObjectStorage `json:"object_storage,omitzero"`
 	Requirements  Requirements  `json:"requirements,omitempty"`
 	ExcludedFiles StringSet     `json:"excluded_files,omitempty"`
@@ -419,6 +420,7 @@ func (s *Bundle) Equal(other *Bundle) bool {
 	return internalutil.FastEqual(s, other, func(s, other *Bundle) bool {
 		return s.Name == other.Name &&
 			maps.Equal(s.Labels, other.Labels) &&
+			s.Revision == other.Revision &&
 			s.ObjectStorage.Equal(&other.ObjectStorage) &&
 			s.Requirements.Equal(other.Requirements) &&
 			s.ExcludedFiles.Equal(other.ExcludedFiles) &&

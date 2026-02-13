@@ -673,6 +673,7 @@ func (d *Database) ListBundles(ctx context.Context, principal, tenant string, op
 		bundles.id,
 		bundles.name,
 		bundles.labels,
+		bundles.revision,
 		bundles.s3url,
 		bundles.s3region,
 		bundles.s3bucket,
@@ -684,7 +685,7 @@ func (d *Database) ListBundles(ctx context.Context, principal, tenant string, op
 		bundles.azure_path,
 		bundles.filepath,
 		bundles.excluded,
- 		bundles.rebuild_interval,
+		bundles.rebuild_interval,
 		bundles.options
 FROM bundles
 JOIN tenants ON bundles.tenant_id = tenants.id
@@ -736,6 +737,7 @@ LEFT JOIN
 			id                                         int64
 			bundleName                                 string
 			labels                                     *string
+			revision                                   *string
 			s3url, s3region, s3bucket, s3key           *string // S3 object storage
 			gcpProject, gcpObject                      *string // GCP object storage
 			azureAccountURL, azureContainer, azurePath *string // Azure object storage
@@ -754,7 +756,7 @@ LEFT JOIN
 
 		for rows.Next() {
 			var row bundleRow
-			if err := rows.Scan(&row.id, &row.bundleName, &row.labels,
+			if err := rows.Scan(&row.id, &row.bundleName, &row.labels, &row.revision,
 				&row.s3url, &row.s3region, &row.s3bucket, &row.s3key, // S3
 				&row.gcpProject, &row.gcpObject, // GCP
 				&row.azureAccountURL, &row.azureContainer, &row.azurePath, // Azure
@@ -788,6 +790,9 @@ LEFT JOIN
 					if err := json.Unmarshal([]byte(*row.labels), &bundle.Labels); err != nil {
 						return nil, "", fmt.Errorf("failed to unmarshal labels for %q: %w", bundle.Name, err)
 					}
+				}
+				if row.revision != nil {
+					bundle.Revision = *row.revision
 				}
 				if row.options != nil {
 					if err := json.Unmarshal([]byte(*row.options), &bundle.Options); err != nil {
@@ -1557,13 +1562,13 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 			}
 		}
 
-		id, err := d.upsert(ctx, tx, tenant, "bundles", []string{"name", "labels",
+		id, err := d.upsert(ctx, tx, tenant, "bundles", []string{"name", "labels", "revision",
 			"s3url", "s3region", "s3bucket", "s3key",
 			"gcp_project", "gcp_object",
 			"azure_account_url", "azure_container", "azure_path",
 			"filepath", "excluded",
 			"rebuild_interval", "options"}, []string{"name"},
-			bundle.Name, string(labels),
+			bundle.Name, string(labels), bundle.Revision,
 			s3url, s3region, s3bucket, s3key,
 			gcpProject, gcpObject,
 			azureAccountURL, azureContainer, azurePath,

@@ -51,14 +51,14 @@ func (s *HttpDataSynchronizer) WithSecretProvider(provider pkgsync.SecretProvide
 	return s
 }
 
-func (s *HttpDataSynchronizer) Execute(ctx context.Context) error {
+func (s *HttpDataSynchronizer) Execute(ctx context.Context) (map[string]any, error) {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0755); err != nil {
-		return err
+		return nil, err
 	}
 
 	f, err := os.Create(s.path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer f.Close()
 
@@ -70,15 +70,16 @@ func (s *HttpDataSynchronizer) Execute(ctx context.Context) error {
 	}
 	if err != nil {
 		_ = f.Truncate(0)
-		return err
+		return nil, err
 	}
 	defer body.Close()
 
 	_, err = io.Copy(f, body)
 	if err != nil {
 		_ = f.Truncate(0)
+		return nil, err
 	}
-	return err
+	return nil, nil
 }
 
 func (s *HttpDataSynchronizer) executeHTTP(ctx context.Context) (io.ReadCloser, error) {

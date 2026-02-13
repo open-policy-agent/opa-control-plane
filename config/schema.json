@@ -91,6 +91,9 @@
         },
         "requirements": {
           "$ref": "#/definitions/ConfigRequirements"
+        },
+        "revision": {
+          "type": "string"
         }
       },
       "type": "object"

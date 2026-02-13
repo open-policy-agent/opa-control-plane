@@ -31,7 +31,7 @@ func TestHTTPDataSynchronizer(t *testing.T) {
 
 	file := path.Join(t.TempDir(), "foo/test.json")
 	synchronizer := New(file, ts.URL, "", "", nil, nil)
-	err := synchronizer.Execute(context.Background())
+	_, err := synchronizer.Execute(context.Background())
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -73,7 +73,7 @@ func TestHTTPDataSynchronizer_Error_BadStatusCode(t *testing.T) {
 	}
 
 	synchronizer := New(file, ts.URL, "", "", nil, nil)
-	err = synchronizer.Execute(context.Background())
+	_, err = synchronizer.Execute(context.Background())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -118,7 +118,7 @@ func TestHTTPDataSynchronizer_Post(t *testing.T) {
 
 	file := path.Join(t.TempDir(), "foo/test.json")
 	synchronizer := New(file, ts.URL, "POST", payloadContents, nil, nil)
-	err := synchronizer.Execute(context.Background())
+	_, err := synchronizer.Execute(context.Background())
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -173,7 +173,7 @@ func TestHTTPDataSynchronizer_WithAuthTokenHeaders(t *testing.T) {
 	}
 	file := path.Join(t.TempDir(), "foo/test.json")
 	synchronizer := New(file, ts.URL, "POST", payloadContents, headers, secret.Ref())
-	err := synchronizer.Execute(context.Background())
+	_, err := synchronizer.Execute(context.Background())
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -212,7 +212,7 @@ func TestHTTPDataSynchronizer_WithBasicAuthHeaders(t *testing.T) {
 	}
 
 	synchronizer := New(file, ts.URL, "", "", nil, secret.Ref())
-	err := synchronizer.Execute(context.Background())
+	_, err := synchronizer.Execute(context.Background())
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -251,7 +251,7 @@ func TestHTTPDataSynchronizer_WithInvalidAuthHeaders(t *testing.T) {
 	}
 
 	synchronizer := New(file, ts.URL, "", "", nil, secret.Ref())
-	err := synchronizer.Execute(context.Background())
+	_, err := synchronizer.Execute(context.Background())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -379,7 +379,7 @@ func TestHTTPDataSynchronizer_OIDC_ClientCredentials(t *testing.T) {
 			file := path.Join(t.TempDir(), "foo/test.json")
 			extra := map[string]any{"abc": "def"}
 			synchronizer := New(file, ts.URL, "GET", "", extra, secret.Ref())
-			err := synchronizer.Execute(context.Background())
+			_, err := synchronizer.Execute(context.Background())
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -462,7 +462,7 @@ func TestHTTPDataSynchronizer_WithS3(t *testing.T) {
 			s3URL := ts.URL + "/" + tt.bucket + "/" + tt.key
 
 			synchronizer := NewS3(file, s3URL, tt.region, ts.URL, secret.Ref())
-			err := synchronizer.Execute(context.Background())
+			_, err := synchronizer.Execute(context.Background())
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}

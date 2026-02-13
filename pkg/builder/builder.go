@@ -25,7 +25,6 @@ import (
 	"github.com/open-policy-agent/opa/v1/refactor"
 	"github.com/open-policy-agent/opa/v1/topdown"
 
-	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/fs/mountfs"
 	ext_config "github.com/open-policy-agent/opa-control-plane/pkg/config"
@@ -62,7 +61,7 @@ func NewSource(name string) *Source {
 
 func (s *Source) Equal(other *Source) bool {
 	return s.Name == other.Name &&
-		slices.EqualFunc(s.Requirements, other.Requirements, config.Requirement.Equal) &&
+		slices.EqualFunc(s.Requirements, other.Requirements, ext_config.Requirement.Equal) &&
 		slices.Equal(s.Transforms, other.Transforms)
 }
 
@@ -165,10 +164,12 @@ type Dir struct {
 }
 
 type Builder struct {
-	sources  []*Source
-	output   io.Writer
-	excluded []string
-	target   string
+	sources        []*Source
+	output         io.Writer
+	excluded       []string
+	target         string
+	revision       string
+	sourceMetadata map[string]map[string]any
 }
 
 func New() *Builder {
@@ -192,6 +193,16 @@ func (b *Builder) WithExcluded(excluded []string) *Builder {
 
 func (b *Builder) WithTarget(target string) *Builder {
 	b.target = target
+	return b
+}
+
+func (b *Builder) WithRevision(revision string) *Builder {
+	b.revision = revision
+	return b
+}
+
+func (b *Builder) WithSourceMetadata(metadata map[string]map[string]any) *Builder {
+	b.sourceMetadata = metadata
 	return b
 }
 
@@ -390,6 +401,13 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	result := c.Bundle()
 	result.Manifest.SetRegoVersion(ast.RegoV0)
+
+	resolved, err := b.resolveRevision(ctx)
+	if err != nil {
+		return fmt.Errorf("resolve revision: %w", err)
+	}
+	result.Manifest.Revision = resolved
+
 	return bundle.Write(b.output, *result)
 }
 
