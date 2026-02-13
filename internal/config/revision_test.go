@@ -19,60 +19,50 @@ func TestResolveRevision(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "static string",
-			revision: "REVISION-091",
+			name:     "static string as rego query",
+			revision: `"REVISION-091"`,
 			want:     "REVISION-091",
-			wantErr:  false,
 		},
 		{
-			name:     "static string with special chars",
-			revision: "v1.2.3-alpha",
+			name:     "static string with special chars as rego query",
+			revision: `"v1.2.3-alpha"`,
 			want:     "v1.2.3-alpha",
-			wantErr:  false,
+		},
+		{
+			name:     "plain string fails",
+			revision: "not-a-rego-query",
+			wantErr:  true,
 		},
 		{
 			name:     "rego time.now_ns()",
 			revision: "time.now_ns()",
 			want:     "", // We'll check it's not empty
-			wantErr:  false,
 		},
 		{
-			name:     "env var with ${} syntax",
-			revision: "${MY_REVISION}",
+			name:     "env var with opa.runtime()",
+			revision: `opa.runtime().env["MY_REVISION"]`,
 			envVars:  map[string]string{"MY_REVISION": "build-123"},
 			want:     "build-123",
-			wantErr:  false,
-		},
-		{
-			name:     "env var with $ syntax",
-			revision: "$MY_REVISION",
-			envVars:  map[string]string{"MY_REVISION": "build-456"},
-			want:     "build-456",
-			wantErr:  false,
 		},
 		{
 			name:     "env var not set",
-			revision: "$UNSET_VAR",
-			want:     "",
-			wantErr:  false,
+			revision: `opa.runtime().env["UNSET_VAR"]`,
+			wantErr:  true,
 		},
 		{
 			name:     "rego arithmetic",
 			revision: "1 + 1",
 			want:     "2",
-			wantErr:  false,
 		},
 		{
 			name:     "rego string concatenation",
 			revision: `concat("", ["v", "1", ".", "0"])`,
 			want:     "v1.0",
-			wantErr:  false,
 		},
 		{
 			name:     "rego template string with uuid",
 			revision: `$"bundle-{uuid.rfc4122("my-bundle")}"`,
 			want:     "", // UUID is non-deterministic, we'll check it starts with "bundle-"
-			wantErr:  false,
 		},
 	}
 
@@ -124,12 +114,12 @@ func TestLooksLikeRego(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "simple string",
+			name: "simple string not rego",
 			s:    "REVISION-091",
 			want: false,
 		},
 		{
-			name: "version string",
+			name: "version string not rego",
 			s:    "v1.2.3-alpha",
 			want: false,
 		},
@@ -139,19 +129,24 @@ func TestLooksLikeRego(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "env var syntax",
+			name: "env var old syntax not rego",
 			s:    "$MY_VAR",
 			want: false,
 		},
 		{
+			name: "env var opa.runtime() is rego",
+			s:    `opa.runtime().env["MY_VAR"]`,
+			want: true,
+		},
+		{
 			name: "number",
 			s:    "42",
-			want: true, // v1/ast parses numbers as valid expressions
+			want: true,
 		},
 		{
 			name: "quoted string",
 			s:    `"hello"`,
-			want: true, // v1/ast parses strings as valid expressions
+			want: true,
 		},
 		{
 			name: "concat function",

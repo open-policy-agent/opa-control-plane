@@ -13,7 +13,7 @@ bundles:
         path: bundles/hello-world/bundle.tar.gz
     requirements:
     - source: http-data
-    revision: substring(object.get(input.sources, "http-data", {}).commit, 0, 7)
+    revision: input.sources["http-data"].commit
 sources:
   http-data:
     datasources:

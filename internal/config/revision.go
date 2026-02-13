@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast" // NB(sr): We need v1, we want template strings here!
 	"github.com/open-policy-agent/opa/v1/rego"
@@ -16,7 +17,6 @@ func ResolveRevision(ctx context.Context, revision string, input map[string]any)
 		return "", nil
 	}
 
-	// Try to evaluate as Rego if it parses as a valid query
 	if query, ok := looksLikeRego(revision); ok {
 		result, err := evaluateRego(ctx, query, input)
 		if err != nil {
@@ -25,7 +25,7 @@ func ResolveRevision(ctx context.Context, revision string, input map[string]any)
 		return result, nil
 	}
 
-	return os.ExpandEnv(revision), nil
+	return "", fmt.Errorf("revision must be a valid Rego query: %s", revision)
 }
 
 func looksLikeRego(s string) (ast.Body, bool) {
@@ -39,6 +39,8 @@ func looksLikeRego(s string) (ast.Body, bool) {
 func evaluateRego(ctx context.Context, query ast.Body, input map[string]any) (string, error) {
 	opts := []func(*rego.Rego){
 		rego.ParsedQuery(query),
+		rego.Strict(true),
+		rego.Runtime(makeRuntimeInfo()),
 	}
 
 	if input != nil {
@@ -63,6 +65,19 @@ func evaluateRego(ctx context.Context, query ast.Body, input map[string]any) (st
 	value := rs[0].Expressions[0].Value
 
 	return formatValue(value), nil
+}
+
+func makeRuntimeInfo() *ast.Term {
+	environ := os.Environ()
+	items := make([][2]*ast.Term, 0, len(environ))
+	for _, e := range environ {
+		key, val, _ := strings.Cut(e, "=")
+		items = append(items, [2]*ast.Term{ast.StringTerm(key), ast.StringTerm(val)})
+	}
+
+	return ast.NewTerm(ast.NewObject(
+		[2]*ast.Term{ast.StringTerm("env"), ast.NewTerm(ast.NewObject(items...))},
+	))
 }
 
 func formatValue(v any) string {
