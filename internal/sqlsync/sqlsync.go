@@ -13,18 +13,13 @@ import (
 // It is expected that the caller will handle concurrency and parallelism. The Synchronizer is not thread-safe. It
 // dumps files stored in SQL database into a directory used by the builder package to construct a bundle.
 type SQLDataSynchronizer struct {
-	path       string
-	query      func(context.Context) iter.Seq2[database.Data, error]
-	id         string
-	sourceName string
+	path  string
+	query func(context.Context) iter.Seq2[database.Data, error]
+	id    string
 }
 
 func NewSQLSourceDataSynchronizer(path string, db *database.Database, sourceID int64, sourceName string) *SQLDataSynchronizer {
-	return &SQLDataSynchronizer{path: path, query: db.QuerySourceData(sourceID, sourceName), id: sourceName, sourceName: sourceName}
-}
-
-func (s *SQLDataSynchronizer) SourceName() string {
-	return s.sourceName
+	return &SQLDataSynchronizer{path: path, query: db.QuerySourceData(sourceID, sourceName), id: sourceName}
 }
 
 func (s *SQLDataSynchronizer) Execute(ctx context.Context) (map[string]any, error) {

@@ -60,7 +60,7 @@ func TestGitsyncLocal(t *testing.T) {
 		Repo:      testRepositoryPath,
 		Reference: &ref,
 		Commit:    nil,
-	}, "")
+	}, "test-source")
 
 	ctx := t.Context()
 	if _, err := s.Execute(ctx); err != nil {
@@ -234,7 +234,7 @@ func TestGitsyncSSH(t *testing.T) {
 			Repo:        repoURL,
 			Reference:   &ref,
 			Credentials: secret2.Ref(),
-		}, "")
+		}, "test-source")
 
 		if _, err := s.Execute(t.Context()); err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -266,7 +266,7 @@ func TestGitsyncSSH(t *testing.T) {
 			Repo:        repoURL,
 			Commit:      &ref,
 			Credentials: secret2.Ref(),
-		}, "")
+		}, "test-source")
 
 		if _, err := s.Execute(t.Context()); err != nil {
 			t.Fatalf("expected no error, got %v", err)

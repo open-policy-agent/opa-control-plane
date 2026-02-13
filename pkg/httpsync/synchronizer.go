@@ -60,7 +60,7 @@ func NewFromHTTPConfig(path string, httpConfig map[string]any, provider pkgsync.
 		credentials = &config.SecretRef{Name: credName}
 	}
 
-	syncer := httpsync.New(path, url, method, body, headers, credentials, "")
+	syncer := httpsync.New(path, url, method, body, headers, credentials)
 	if provider != nil {
 		syncer = syncer.WithSecretProvider(provider)
 	}
