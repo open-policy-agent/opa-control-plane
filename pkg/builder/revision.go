@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast" // NB(sr): We need v1, we want template strings here!
@@ -79,17 +78,9 @@ func formatValue(v any) string {
 	switch val := v.(type) {
 	case string:
 		return val
-	case int, int64, float64:
-		return fmt.Sprintf("%v", val)
 	case ast.Number:
-		if i, ok := val.Int(); ok {
-			return strconv.Itoa(i)
-		}
-		if f, ok := val.Float64(); ok {
-			return fmt.Sprintf("%g", f)
-		}
 		return val.String()
 	default:
-		return fmt.Sprintf("%v", val)
+		return fmt.Sprint(v)
 	}
 }

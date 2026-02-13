@@ -28,7 +28,6 @@ type HttpDataSynchronizer struct {
 	provider    pkgsync.SecretProvider // For external SecretProvider integration
 	region      string                 // AWS region for S3 datasources
 	endpoint    string                 // Custom S3 endpoint for S3-compatible services
-	sourceName  string                 // Source name for metadata tracking
 	client      *http.Client
 	s3Client    *s3.Client
 }
@@ -37,16 +36,12 @@ type HeaderSetter interface {
 	SetHeader(*http.Request) error
 }
 
-func New(path, url, method, body string, headers map[string]any, credentials *config.SecretRef, sourceName string) *HttpDataSynchronizer {
-	return &HttpDataSynchronizer{path: path, url: url, method: method, body: body, headers: headers, credentials: credentials, sourceName: sourceName}
+func New(path, url, method, body string, headers map[string]any, credentials *config.SecretRef) *HttpDataSynchronizer {
+	return &HttpDataSynchronizer{path: path, url: url, method: method, body: body, headers: headers, credentials: credentials}
 }
 
-func NewS3(path, url, region, endpoint string, credentials *config.SecretRef, sourceName string) *HttpDataSynchronizer {
-	return &HttpDataSynchronizer{path: path, url: url, region: region, endpoint: endpoint, credentials: credentials, sourceName: sourceName}
-}
-
-func (s *HttpDataSynchronizer) SourceName() string {
-	return s.sourceName
+func NewS3(path, url, region, endpoint string, credentials *config.SecretRef) *HttpDataSynchronizer {
+	return &HttpDataSynchronizer{path: path, url: url, region: region, endpoint: endpoint, credentials: credentials}
 }
 
 // WithSecretProvider configures the synchronizer to use an external SecretProvider for authentication.

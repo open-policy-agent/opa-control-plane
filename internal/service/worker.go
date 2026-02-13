@@ -29,7 +29,7 @@ type BundleWorker struct {
 	bundleConfig  *config.Bundle
 	sourceConfigs config.Sources
 	stackConfigs  config.Stacks
-	synchronizers []Synchronizer
+	synchronizers []sourceSynchronizer
 	sources       []*builder.Source
 	storage       s3.ObjectStorage
 	changed       chan struct{}
@@ -44,7 +44,11 @@ type BundleWorker struct {
 type Synchronizer interface {
 	Execute(ctx context.Context) (map[string]any, error)
 	Close(ctx context.Context)
-	SourceName() string
+}
+
+type sourceSynchronizer struct {
+	sync       Synchronizer
+	sourceName string
 }
 
 func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Source, stacks []*config.Stack, logger *logging.Logger, bar *progress.Bar) *BundleWorker {
@@ -60,7 +64,7 @@ func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Sourc
 	}
 }
 
-func (worker *BundleWorker) WithSynchronizers(synchronizers []Synchronizer) *BundleWorker {
+func (worker *BundleWorker) WithSynchronizers(synchronizers []sourceSynchronizer) *BundleWorker {
 	worker.synchronizers = synchronizers
 	return worker
 }
@@ -123,15 +127,14 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 
 	// Collect source metadata from synchronizers
 	sourceMetadata := make(map[string]map[string]any)
-	for _, synchronizer := range w.synchronizers {
-		metadata, err := synchronizer.Execute(ctx)
+	for _, ss := range w.synchronizers {
+		metadata, err := ss.sync.Execute(ctx)
 		if err != nil {
 			w.log.Warnf("failed to synchronize bundle %q: %v", w.bundleConfig.Name, err)
 			return w.report(ctx, BuildStateSyncFailed, startTime, err)
 		}
 		if metadata != nil {
-			sourceName := synchronizer.SourceName()
-			sourceMetadata[sourceName] = metadata
+			sourceMetadata[ss.sourceName] = metadata
 		}
 	}
 
@@ -215,8 +218,8 @@ func (w *BundleWorker) configurationChanged() bool {
 }
 
 func (w *BundleWorker) die(ctx context.Context) time.Time {
-	for _, synchronizer := range w.synchronizers {
-		synchronizer.Close(ctx)
+	for _, ss := range w.synchronizers {
+		ss.sync.Close(ctx)
 	}
 
 	close(w.done)
