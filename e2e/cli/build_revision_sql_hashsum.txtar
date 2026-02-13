@@ -1,0 +1,42 @@
+! exec $OPACTL run --config config.d/bundle.yml --data-dir tmp --addr ./ocp.sock &opactl&
+
+exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/health
+
+exec curl --unix-socket ocp.sock -X PUT http://localhost/v1/sources/sql-source/data/users -H 'Authorization: Bearer test-key' -d '{"alice":{"role":"admin"},"bob":{"role":"viewer"}}'
+exec curl --unix-socket ocp.sock -X PUT http://localhost/v1/sources/sql-source/data/config -H 'Authorization: Bearer test-key' -d '{"enabled":true,"timeout":30}'
+
+# Wait for rebuild cycle (interval is 5s in test config)
+exec sleep 7
+
+kill opactl
+wait opactl
+
+exec tar xf bundles/hello-world/bundle.tar.gz /.manifest
+[!windows] cmp exp/manifest .manifest
+[windows] cmp exp/manifest_windows .manifest
+
+-- config.d/bundle.yml --
+database:
+  sql:
+    driver: sqlite
+    dsn: sqlite.db
+tokens:
+  test-token:
+    api_key: test-key
+    scopes:
+    - role: administrator
+bundles:
+  hello-world:
+    rebuild_interval: 5s
+    revision: 'input.sources["sql-source"].hashsum'
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: sql-source
+sources:
+  sql-source: {}
+-- exp/manifest --
+{"revision":"c22697e36da57821179b766397ebf58f84399bd797c374942e8d5de81d230fdd","roots":["config","users"],"rego_version":0}
+-- exp/manifest_windows --
+{"revision":"78aa6734dd780e33447237162f8927ecd59f123066447015bced6dd384c38910","roots":["config","users"],"rego_version":0}

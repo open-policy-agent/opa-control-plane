@@ -2,9 +2,13 @@ package sqlsync
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"iter"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 )
@@ -42,7 +46,57 @@ func (s *SQLDataSynchronizer) Execute(ctx context.Context) (map[string]any, erro
 		}
 	}
 
-	return nil, nil
+	hashsum, err := computeDirectoryHash(s.path)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"hashsum": hashsum,
+	}, nil
+}
+
+func computeDirectoryHash(root string) (string, error) {
+	var files []string
+
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			relPath, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			files = append(files, relPath)
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	sort.Strings(files)
+
+	h := sha256.New()
+	for _, file := range files {
+		h.Write([]byte(file))
+		h.Write([]byte{0})
+
+		fullPath := filepath.Join(root, file)
+		f, err := os.Open(fullPath)
+		if err != nil {
+			return "", err
+		}
+		if _, err := io.Copy(h, f); err != nil {
+			f.Close()
+			return "", err
+		}
+		f.Close()
+	}
+
+	// Return hash even for empty directories
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (*SQLDataSynchronizer) Close(context.Context) {} // No resources to close.
