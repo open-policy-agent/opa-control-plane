@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -245,6 +246,14 @@ func (s *Secret) Typed(context.Context) (any, error) {
 
 		return value, nil
 
+	case "api_key":
+		var value SecretAPIKey
+		if err := decode(m, &value); err != nil {
+			return nil, err
+		}
+
+		return &value, nil
+
 	default:
 		return nil, fmt.Errorf("unknown secret type %q", s.Value["type"])
 	}
@@ -440,6 +449,45 @@ func (value *SecretTLSCert) ToConfig(ctx context.Context) (*tls.Config, error) {
 
 	return tlsCfg, nil
 }
+
+func (value *SecretTLSCert) Client(ctx context.Context) (*http.Client, error) {
+	tlsCfg, err := value.ToConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = tlsCfg
+
+	return &http.Client{Transport: transport}, nil
+}
+
+var _ ClientSecret = (*SecretTLSCert)(nil)
+
+// SecretAPIKey represents API key authentication for HTTP requests.
+// The key can be sent via header or query parameter.
+type SecretAPIKey struct {
+	Key   string `json:"key"`   // Header name or query param name (e.g., "X-API-Key")
+	Value string `json:"value"` // The API key value
+	In    string `json:"in"`    // Where to send the key: "header" or "query" (default: "header")
+}
+
+func (s *SecretAPIKey) Client(context.Context) (*http.Client, error) {
+	in := cmp.Or(s.In, "header") // default
+
+	return wrappedClient(func(r *http.Request) *http.Request {
+		if in == "header" {
+			r.Header.Set(s.Key, s.Value)
+		} else if in == "query" {
+			q := r.URL.Query()
+			q.Set(s.Key, s.Value)
+			r.URL.RawQuery = q.Encode()
+		}
+		return r
+	}), nil
+}
+
+var _ ClientSecret = (*SecretAPIKey)(nil)
 
 // we use this one so we don't need duplicate tags on every struct
 func decode(input any, output any) error {

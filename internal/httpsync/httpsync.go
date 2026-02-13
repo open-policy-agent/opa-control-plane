@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	internal_aws "github.com/open-policy-agent/opa-control-plane/internal/aws"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
 
 // HttpDataSynchronizer is a struct that implements the Synchronizer interface for downloading JSON from HTTP endpoints.
@@ -24,8 +25,9 @@ type HttpDataSynchronizer struct {
 	body        string
 	headers     map[string]any // Headers to include in the HTTP request
 	credentials *config.SecretRef
-	region      string // AWS region for S3 datasources
-	endpoint    string // Custom S3 endpoint for S3-compatible services
+	provider    pkgsync.SecretProvider // For external SecretProvider integration
+	region      string                 // AWS region for S3 datasources
+	endpoint    string                 // Custom S3 endpoint for S3-compatible services
 	client      *http.Client
 	s3Client    *s3.Client
 }
@@ -40,6 +42,13 @@ func New(path, url, method, body string, headers map[string]any, credentials *co
 
 func NewS3(path, url, region, endpoint string, credentials *config.SecretRef) *HttpDataSynchronizer {
 	return &HttpDataSynchronizer{path: path, url: url, region: region, endpoint: endpoint, credentials: credentials}
+}
+
+// WithSecretProvider configures the synchronizer to use an external SecretProvider for authentication.
+// This allows external projects to integrate their own secret management systems (e.g., Whisper, Vault).
+func (s *HttpDataSynchronizer) WithSecretProvider(provider pkgsync.SecretProvider) *HttpDataSynchronizer {
+	s.provider = provider
+	return s
 }
 
 func (s *HttpDataSynchronizer) Execute(ctx context.Context) error {
@@ -127,21 +136,47 @@ func (s *HttpDataSynchronizer) initClient(ctx context.Context) error {
 		return nil
 	}
 
-	if s.credentials == nil {
+	var clientSecret config.ClientSecret
+
+	if s.provider != nil && s.credentials != nil {
+		secretData, err := s.provider.GetSecret(ctx, s.credentials.Name)
+		if err != nil {
+			return fmt.Errorf("secret provider: %w", err)
+		}
+
+		secret := &config.Secret{
+			Name:  s.credentials.Name,
+			Value: secretData,
+		}
+
+		typed, err := secret.Typed(ctx)
+		if err != nil {
+			return err
+		}
+
+		var ok bool
+		clientSecret, ok = typed.(config.ClientSecret)
+		if !ok {
+			return fmt.Errorf("secret type %q does not support HTTP client authentication", secretData["type"])
+		}
+	} else if s.credentials != nil {
+		secret, err := s.credentials.Resolve(ctx)
+		if err != nil {
+			return err
+		}
+		var ok bool
+		clientSecret, ok = secret.(config.ClientSecret)
+		if !ok {
+			return fmt.Errorf("unsupported secret type for http sync: %T", secret)
+		}
+	} else {
 		s.client = http.DefaultClient
 		return nil
 	}
 
-	secret, err := s.credentials.Resolve(ctx)
-	if err != nil {
-		return err
-	}
-
-	if secret, ok := secret.(config.ClientSecret); ok {
-		s.client, err = secret.Client(ctx)
-		return err
-	}
-	return fmt.Errorf("unsupported secret type for http sync: %T", secret)
+	var err error
+	s.client, err = clientSecret.Client(ctx)
+	return err
 }
 
 func (s *HttpDataSynchronizer) initS3Client(ctx context.Context) error {
