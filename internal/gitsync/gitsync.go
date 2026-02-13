@@ -246,11 +246,11 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 		Force: true, // Discard any local changes
 	}
 	switch {
+	case s.config.Commit != nil:
+		opts.Hash = plumbing.NewHash(*s.config.Commit)
 	case s.config.Reference != nil:
 		ref := fmt.Sprintf("refs/remotes/%s/%s", remote, *s.config.Reference)
 		opts.Branch = plumbing.ReferenceName(ref)
-	case s.config.Commit != nil:
-		opts.Hash = plumbing.NewHash(*s.config.Commit)
 	}
 
 	return fetched, w.Checkout(opts)
