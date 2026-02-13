@@ -13,7 +13,7 @@ result if input.yay
 -- config.d/bundle.yml --
 bundles:
   hello-world:
-    revision: '${BUILD_NUMBER}'
+    revision: 'opa.runtime().env["BUILD_NUMBER"]'
     object_storage:
       filesystem:
         path: bundles/hello-world/bundle.tar.gz

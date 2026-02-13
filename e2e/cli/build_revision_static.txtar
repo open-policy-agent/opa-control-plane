@@ -12,7 +12,7 @@ result if input.yay
 -- config.d/bundle.yml --
 bundles:
   hello-world:
-    revision: 'REVISION-091'
+    revision: '"REVISION-091"'
     object_storage:
       filesystem:
         path: bundles/hello-world/bundle.tar.gz
