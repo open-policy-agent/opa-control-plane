@@ -170,6 +170,7 @@ type Builder struct {
 	target         string
 	revision       string
 	sourceMetadata map[string]map[string]any
+	latestRevision string
 }
 
 func New() *Builder {
@@ -407,8 +408,15 @@ func (b *Builder) Build(ctx context.Context) error {
 		return fmt.Errorf("resolve revision: %w", err)
 	}
 	result.Manifest.Revision = resolved
+	b.latestRevision = resolved
 
 	return bundle.Write(b.output, *result)
+}
+
+// LatestRevision returns the revision string from the most recent Build() call.
+// It returns an empty string if Build() has not been called yet or if no revision was resolved.
+func (b *Builder) LatestRevision() string {
+	return b.latestRevision
 }
 
 type refSet struct {

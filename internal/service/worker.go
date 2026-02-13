@@ -166,7 +166,8 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	}
 
 	if w.storage != nil {
-		if err := w.storage.Upload(ctx, bytes.NewReader(buffer.Bytes())); err != nil {
+		revision := b.LatestRevision()
+		if err := w.storage.Upload(ctx, bytes.NewReader(buffer.Bytes()), revision); err != nil {
 			w.log.Warnf("failed to upload bundle %q: %v", w.bundleConfig.Name, err)
 			return w.report(ctx, BuildStatePushFailed, startTime, err)
 		}
