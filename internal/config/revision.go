@@ -17,28 +17,21 @@ func ResolveRevision(ctx context.Context, revision string, input map[string]any)
 		return "", nil
 	}
 
-	if query, ok := looksLikeRego(revision); ok {
-		result, err := evaluateRego(ctx, query, input)
-		if err != nil {
-			return "", fmt.Errorf("rego evaluation failed: %w", err)
-		}
-		return result, nil
-	}
-
-	return "", fmt.Errorf("revision must be a valid Rego query: %s", revision)
-}
-
-func looksLikeRego(s string) (ast.Body, bool) {
-	body, err := ast.ParseBody(s)
+	query, err := ast.ParseExpr(revision)
 	if err != nil {
-		return nil, false
+		return "", fmt.Errorf("invalid rego query: %w", err)
 	}
-	return body, len(body) == 1
+
+	result, err := evaluateRego(ctx, query, input)
+	if err != nil {
+		return "", fmt.Errorf("rego evaluation failed: %w", err)
+	}
+	return result, nil
 }
 
-func evaluateRego(ctx context.Context, query ast.Body, input map[string]any) (string, error) {
+func evaluateRego(ctx context.Context, query *ast.Expr, input map[string]any) (string, error) {
 	opts := []func(*rego.Rego){
-		rego.ParsedQuery(query),
+		rego.ParsedQuery([]*ast.Expr{query}),
 		rego.Strict(true),
 		rego.Runtime(makeRuntimeInfo()),
 	}
@@ -47,9 +40,7 @@ func evaluateRego(ctx context.Context, query ast.Body, input map[string]any) (st
 		opts = append(opts, rego.Input(input))
 	}
 
-	r := rego.New(opts...)
-
-	rs, err := r.Eval(ctx)
+	rs, err := rego.New(opts...).Eval(ctx)
 	if err != nil {
 		return "", err
 	}
