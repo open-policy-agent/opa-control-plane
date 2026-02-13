@@ -5,10 +5,6 @@ stderr '^1/1 bundles built and pushed successfully$'
 exec tar xf bundles/hello-world/bundle.tar.gz /.manifest
 cmp .manifest exp/.manifest
 
--- files/sources/hello-world/rules.rego --
-package rules
-import rego.v1
-result if input.yay
 -- config.d/bundle.yml --
 bundles:
   hello-world:
@@ -16,12 +12,5 @@ bundles:
     object_storage:
       filesystem:
         path: bundles/hello-world/bundle.tar.gz
-    requirements:
-    - source: dir-paths
-sources:
-  dir-paths:
-    directory: files/sources/hello-world
-    paths:
-    - rules.rego
 -- exp/.manifest --
-{"revision":"REVISION-091","roots":["rules"],"rego_version":0}
+{"revision":"REVISION-091","roots":[""],"rego_version":0}
