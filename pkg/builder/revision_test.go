@@ -1,4 +1,4 @@
-package config
+package builder
 
 import (
 	"testing"
@@ -73,16 +73,17 @@ func TestResolveRevision(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			got, err := ResolveRevision(ctx, tt.revision, nil)
+			b := New().WithRevision(tt.revision)
+			got, err := b.resolveRevision(ctx)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ResolveRevision() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("resolveRevision() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			// For time.now_ns(), just check it's not empty and is numeric
 			if tt.revision == "time.now_ns()" {
 				if got == "" {
-					t.Errorf("ResolveRevision() = empty string, want non-empty timestamp")
+					t.Errorf("resolveRevision() = empty string, want non-empty timestamp")
 				}
 				return
 			}
@@ -90,13 +91,13 @@ func TestResolveRevision(t *testing.T) {
 			// For UUID template test, just check it starts with "bundle-" and has UUID format
 			if tt.revision == `$"bundle-{uuid.rfc4122("my-bundle")}"` {
 				if len(got) < 43 || got[:7] != "bundle-" {
-					t.Errorf("ResolveRevision() = %v, want bundle-<uuid>", got)
+					t.Errorf("resolveRevision() = %v, want bundle-<uuid>", got)
 				}
 				return
 			}
 
 			if got != tt.want {
-				t.Errorf("ResolveRevision() = %v, want %v", got, tt.want)
+				t.Errorf("resolveRevision() = %v, want %v", got, tt.want)
 			}
 		})
 	}

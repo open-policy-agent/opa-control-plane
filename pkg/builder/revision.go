@@ -1,4 +1,4 @@
-package config
+package builder
 
 import (
 	"context"
@@ -12,12 +12,16 @@ import (
 	"github.com/open-policy-agent/opa/v1/rego"
 )
 
-func ResolveRevision(ctx context.Context, revision string, input map[string]any) (string, error) {
-	if revision == "" {
+func (b *Builder) resolveRevision(ctx context.Context) (string, error) {
+	if b.revision == "" {
 		return "", nil
 	}
 
-	query, err := ast.ParseExpr(revision)
+	input := map[string]any{
+		"sources": b.sourceMetadata,
+	}
+
+	query, err := ast.ParseExpr(b.revision)
 	if err != nil {
 		return "", fmt.Errorf("invalid rego query: %w", err)
 	}
