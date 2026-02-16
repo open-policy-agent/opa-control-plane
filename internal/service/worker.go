@@ -126,6 +126,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	}
 
 	// Collect source metadata from synchronizers
+	// Note: Metadata fields to compute are configured at synchronizer construction time
 	sourceMetadata := make(map[string]map[string]any)
 	for _, ss := range w.synchronizers {
 		metadata, err := ss.sync.Execute(ctx)
@@ -136,6 +137,13 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		if metadata != nil {
 			sourceMetadata[ss.sourceName] = metadata
 		}
+	}
+
+	// Resolve revision string using source metadata
+	resolvedRevision, err := ResolveRevision(ctx, w.bundleConfig.Revision, sourceMetadata)
+	if err != nil {
+		w.log.Warnf("failed to resolve revision for bundle %q: %v", w.bundleConfig.Name, err)
+		return w.report(ctx, BuildStateSyncFailed, startTime, err)
 	}
 
 	for _, src := range w.sources {
@@ -155,19 +163,16 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		WithSources(w.sources).
 		WithExcluded(w.bundleConfig.ExcludedFiles).
 		WithTarget(w.bundleConfig.Options.Target).
-		WithRevision(w.bundleConfig.Revision).
-		WithSourceMetadata(sourceMetadata).
+		WithRevision(resolvedRevision).
 		WithOutput(buffer)
 
-	err := b.Build(ctx)
-	if err != nil {
+	if err = b.Build(ctx); err != nil {
 		w.log.Warnf("failed to build a bundle %q: %v", w.bundleConfig.Name, err)
 		return w.report(ctx, BuildStateBuildFailed, startTime, err)
 	}
 
 	if w.storage != nil {
-		revision := b.LatestRevision()
-		if err := w.storage.Upload(ctx, bytes.NewReader(buffer.Bytes()), revision); err != nil {
+		if err := w.storage.Upload(ctx, bytes.NewReader(buffer.Bytes()), resolvedRevision); err != nil {
 			w.log.Warnf("failed to upload bundle %q: %v", w.bundleConfig.Name, err)
 			return w.report(ctx, BuildStatePushFailed, startTime, err)
 		}

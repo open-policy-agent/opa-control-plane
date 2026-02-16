@@ -164,13 +164,11 @@ type Dir struct {
 }
 
 type Builder struct {
-	sources        []*Source
-	output         io.Writer
-	excluded       []string
-	target         string
-	revision       string
-	sourceMetadata map[string]map[string]any
-	latestRevision string
+	sources  []*Source
+	output   io.Writer
+	excluded []string
+	target   string
+	revision string
 }
 
 func New() *Builder {
@@ -199,11 +197,6 @@ func (b *Builder) WithTarget(target string) *Builder {
 
 func (b *Builder) WithRevision(revision string) *Builder {
 	b.revision = revision
-	return b
-}
-
-func (b *Builder) WithSourceMetadata(metadata map[string]map[string]any) *Builder {
-	b.sourceMetadata = metadata
 	return b
 }
 
@@ -402,21 +395,9 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	result := c.Bundle()
 	result.Manifest.SetRegoVersion(ast.RegoV0)
-
-	resolved, err := b.resolveRevision(ctx)
-	if err != nil {
-		return fmt.Errorf("resolve revision: %w", err)
-	}
-	result.Manifest.Revision = resolved
-	b.latestRevision = resolved
+	result.Manifest.Revision = b.revision
 
 	return bundle.Write(b.output, *result)
-}
-
-// LatestRevision returns the revision string from the most recent Build() call.
-// It returns an empty string if Build() has not been called yet or if no revision was resolved.
-func (b *Builder) LatestRevision() string {
-	return b.latestRevision
 }
 
 type refSet struct {

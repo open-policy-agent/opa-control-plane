@@ -356,6 +356,19 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				continue
 			}
 
+			// Analyze revision to determine which metadata fields are needed per source
+			metadataFields := make(map[string][]string)
+			if b.Revision != "" {
+				refs, err := AnalyzeRevisionReferences(b.Revision)
+				if err != nil {
+					s.log.Debugf("failed to analyze revision references for bundle %q, computing all metadata: %v", b.Name, err)
+				} else {
+					for _, ref := range refs {
+						metadataFields[ref.SourceName] = ref.Fields
+					}
+				}
+			}
+
 			syncs := []sourceSynchronizer{}
 			sources := []*builder.Source{&root.Source}
 			bundleDir := join(s.persistenceDir, md5sum(bName))
@@ -366,7 +379,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 				src := newSource(dep.Name).
 					SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
-					SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database")).
+					SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database"), metadataFields[dep.Name]).
 					SyncDatasources(&syncs, dep.Name, dep.Datasources, join(srcDir, "datasources")).
 					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name]).
 					AddRequirements(dep.Requirements)
@@ -542,9 +555,13 @@ func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName strin
 	return src
 }
 
-func (src *source) SyncSourceSQL(syncs *[]sourceSynchronizer, sourceID int64, name string, database *database.Database, dir string) *source {
+func (src *source) SyncSourceSQL(syncs *[]sourceSynchronizer, sourceID int64, name string, database *database.Database, dir string, metadataFields []string) *source {
+	opts := []sqlsync.SQLSyncOption{}
+	if len(metadataFields) > 0 {
+		opts = append(opts, sqlsync.WithMetadataFields(metadataFields))
+	}
 	*syncs = append(*syncs, sourceSynchronizer{
-		sync:       sqlsync.NewSQLSourceDataSynchronizer(dir, database, sourceID, name),
+		sync:       sqlsync.NewSQLSourceDataSynchronizer(dir, database, sourceID, name, opts...),
 		sourceName: name,
 	})
 	src.addDir(dir, true, nil, nil)
