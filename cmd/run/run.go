@@ -83,7 +83,7 @@ func init() {
 	}
 
 	flags.AddConfig(run.Flags(), &params.configFile)
-	run.Flags().StringVarP(&params.addr, "addr", "a", defaultLocalAddr, "Set listening address of the server")
+	run.Flags().StringVarP(&params.addr, "addr", "a", defaultLocalAddr, "Set listening address of the server (e.g., localhost:8282, unix:///tmp/ocp.sock, or /tmp/ocp.sock)")
 	run.Flags().StringVarP(&params.persistenceDir, "data-dir", "d", "data", "Path to the persistence directory")
 	run.Flags().BoolVarP(&params.resetPersistence, "reset-persistence", "", false, "Reset the persistence directory (for development purposes)")
 	run.Flags().BoolVarP(&params.mergeConflictFail, "merge-conflict-fail", "", false, "Fail on config merge conflicts")

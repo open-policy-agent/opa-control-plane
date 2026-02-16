@@ -1,23 +1,23 @@
-exec $OPACTL run --addr 127.0.0.1:8284 --config config.d/bundle.yml --data-dir tmp-api-prefix &opactl&
+exec $OPACTL run --addr ./ocp.sock --config config.d/bundle.yml --data-dir tmp-api-prefix &opactl&
 ! stderr .
 ! stdout .
 
-exec curl --retry 5 --retry-all-errors http://127.0.0.1:8284/my/api/health
+exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/my/api/health
 stdout '\{\}'
 
-exec curl --retry 5 --retry-all-errors -H 'Authorization: Bearer admin-token' http://127.0.0.1:8284/my/api/v1/bundles
+exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock -H 'Authorization: Bearer admin-token' http://localhost/my/api/v1/bundles
 stdout '\{\}'
 
-exec curl --retry 5 --retry-all-errors -H 'Authorization: Bearer admin-token' http://127.0.0.1:8284/my/api/v1/sources
+exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock -H 'Authorization: Bearer admin-token' http://localhost/my/api/v1/sources
 stdout '\{\}'
 
-exec curl --retry 5 --retry-all-errors -H 'Authorization: Bearer admin-token' http://127.0.0.1:8284/my/api/v1/stacks
+exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock -H 'Authorization: Bearer admin-token' http://localhost/my/api/v1/stacks
 
-exec curl --retry 5 --retry-all-errors http://127.0.0.1:8284/my/api/metrics
+exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/my/api/metrics
 stdout '/my/api'
 
-! exec curl -f --retry 1 --retry-all-errors http://127.0.0.1:8284/health
-! exec curl -f --retry 1 --retry-all-errors -H 'Authorization: Bearer admin-token' http://127.0.0.1:8284/v1/bundles
+! exec curl -f --retry 1 --retry-all-errors --unix-socket ocp.sock http://localhost/health
+! exec curl -f --retry 1 --retry-all-errors --unix-socket ocp.sock -H 'Authorization: Bearer admin-token' http://localhost/v1/bundles
 
 kill opactl
 

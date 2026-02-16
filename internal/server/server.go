@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -94,7 +96,32 @@ func (s *Server) WithReadiness(fn func(context.Context) error) *Server {
 }
 
 func (s *Server) ListenAndServe(addr string) error {
+	if strings.HasPrefix(addr, "unix://") {
+		socketPath := strings.TrimPrefix(addr, "unix://")
+		return s.listenAndServeUnix(socketPath)
+	}
+	if strings.HasPrefix(addr, "/") || strings.HasPrefix(addr, "./") {
+		return s.listenAndServeUnix(addr)
+	}
 	return http.ListenAndServe(addr, s.router)
+}
+
+func (s *Server) listenAndServeUnix(socketPath string) error {
+	if err := os.RemoveAll(socketPath); err != nil {
+		return err
+	}
+
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+
+	if err := os.Chmod(socketPath, 0666); err != nil {
+		return err
+	}
+
+	return http.Serve(listener, s.router)
 }
 
 func (s *Server) WithConfig(config *config.Service) *Server {
