@@ -1,10 +1,10 @@
 env API_TOKEN=sesame
 env SQLITE_FILE=sqlite123.db
 env
-! exec $OPACTL run --addr :8383 --config config.d/bundle.yml &opactl&
+! exec $OPACTL run --addr ./ocp.sock --config config.d/bundle.yml &opactl&
 
-exec curl --retry 5 --retry-all-errors http://127.0.0.1:8383/health
-exec curl -H 'Authorization: bearer sesame' http://127.0.0.1:8383/v1/bundles
+exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/health
+exec curl --unix-socket ocp.sock -H 'Authorization: bearer sesame' http://localhost/v1/bundles
 
 kill opactl
 wait opactl

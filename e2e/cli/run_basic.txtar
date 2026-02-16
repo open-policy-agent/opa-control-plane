@@ -1,6 +1,6 @@
-! exec $OPACTL run --config config.d/bundle.yml --data-dir tmp &opactl&
+! exec $OPACTL run --addr ./ocp.sock --config config.d/bundle.yml --data-dir tmp &opactl&
 
-exec curl --retry 5 --retry-all-errors http://127.0.0.1:8282/health
+exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/health
 
 kill opactl
 wait opactl
