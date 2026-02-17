@@ -1,0 +1,24 @@
+# Test that build fails when revision references missing metadata from non-git source
+# HTTP sources don't provide commit metadata, so accessing it causes Rego evaluation to fail
+! exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr 'BUILD_FAILED'
+stderr 'resolve revision'
+stderr 'no results from Rego evaluation'
+
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: http-data
+    revision: input.sources["http-data"].commit
+sources:
+  http-data:
+    datasources:
+    - type: http
+      name: data
+      path: mydata
+      config:
+        url: http://${HTTP_ENDPOINT}/headers

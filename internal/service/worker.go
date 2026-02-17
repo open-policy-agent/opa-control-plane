@@ -29,7 +29,7 @@ type BundleWorker struct {
 	bundleConfig  *config.Bundle
 	sourceConfigs config.Sources
 	stackConfigs  config.Stacks
-	synchronizers []Synchronizer
+	synchronizers []sourceSynchronizer
 	sources       []*builder.Source
 	storage       s3.ObjectStorage
 	changed       chan struct{}
@@ -42,8 +42,14 @@ type BundleWorker struct {
 }
 
 type Synchronizer interface {
-	Execute(ctx context.Context) error
+	Execute(ctx context.Context) (map[string]any, error)
 	Close(ctx context.Context)
+}
+
+type sourceSynchronizer struct {
+	sync       Synchronizer
+	sourceName string
+	sourceType string // "git", "sql", "http", "s3"
 }
 
 func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Source, stacks []*config.Stack, logger *logging.Logger, bar *progress.Bar) *BundleWorker {
@@ -59,7 +65,7 @@ func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Sourc
 	}
 }
 
-func (worker *BundleWorker) WithSynchronizers(synchronizers []Synchronizer) *BundleWorker {
+func (worker *BundleWorker) WithSynchronizers(synchronizers []sourceSynchronizer) *BundleWorker {
 	worker.synchronizers = synchronizers
 	return worker
 }
@@ -120,12 +126,29 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		}
 	}
 
-	for _, synchronizer := range w.synchronizers {
-		err := synchronizer.Execute(ctx)
+	// Collect source metadata from synchronizers and structure by source type
+	// Note: Metadata fields to compute are configured at synchronizer construction time
+	sourceMetadata := make(map[string]map[string]any)
+	for _, ss := range w.synchronizers {
+		metadata, err := ss.sync.Execute(ctx)
 		if err != nil {
 			w.log.Warnf("failed to synchronize bundle %q: %v", w.bundleConfig.Name, err)
 			return w.report(ctx, BuildStateSyncFailed, startTime, err)
 		}
+		if metadata != nil {
+			// Structure metadata by source type (git, sql, http, s3)
+			if sourceMetadata[ss.sourceName] == nil {
+				sourceMetadata[ss.sourceName] = make(map[string]any)
+			}
+			sourceMetadata[ss.sourceName][ss.sourceType] = metadata
+		}
+	}
+
+	// Resolve revision string using source metadata
+	resolvedRevision, err := ResolveRevision(ctx, w.bundleConfig.Revision, sourceMetadata)
+	if err != nil {
+		w.log.Warnf("failed to resolve revision for bundle %q: %v", w.bundleConfig.Name, err)
+		return w.report(ctx, BuildStateBuildFailed, startTime, err)
 	}
 
 	for _, src := range w.sources {
@@ -145,16 +168,16 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		WithSources(w.sources).
 		WithExcluded(w.bundleConfig.ExcludedFiles).
 		WithTarget(w.bundleConfig.Options.Target).
+		WithRevision(resolvedRevision).
 		WithOutput(buffer)
 
-	err := b.Build(ctx)
-	if err != nil {
+	if err = b.Build(ctx); err != nil {
 		w.log.Warnf("failed to build a bundle %q: %v", w.bundleConfig.Name, err)
 		return w.report(ctx, BuildStateBuildFailed, startTime, err)
 	}
 
 	if w.storage != nil {
-		if err := w.storage.Upload(ctx, bytes.NewReader(buffer.Bytes())); err != nil {
+		if err := w.storage.Upload(ctx, bytes.NewReader(buffer.Bytes()), resolvedRevision); err != nil {
 			w.log.Warnf("failed to upload bundle %q: %v", w.bundleConfig.Name, err)
 			return w.report(ctx, BuildStatePushFailed, startTime, err)
 		}
@@ -206,8 +229,8 @@ func (w *BundleWorker) configurationChanged() bool {
 }
 
 func (w *BundleWorker) die(ctx context.Context) time.Time {
-	for _, synchronizer := range w.synchronizers {
-		synchronizer.Close(ctx)
+	for _, ss := range w.synchronizers {
+		ss.sync.Close(ctx)
 	}
 
 	close(w.done)

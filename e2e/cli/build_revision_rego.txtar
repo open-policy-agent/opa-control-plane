@@ -1,0 +1,17 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar xf bundles/hello-world/bundle.tar.gz /.manifest
+exec cat .manifest
+stdout 'bundle-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+stdout '"roots":\[""\]'
+stdout '"rego_version":0'
+
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    revision: '$"bundle-{uuid.rfc4122("my-bundle")}"'
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz

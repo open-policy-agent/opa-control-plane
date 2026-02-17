@@ -356,7 +356,20 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				continue
 			}
 
-			syncs := []Synchronizer{}
+			// Analyze revision to determine which metadata fields are needed per source
+			metadataFields := make(map[string][]string)
+			if b.Revision != "" {
+				refs, err := ExtractRevisionRefs(b.Revision)
+				if err != nil {
+					s.log.Debugf("failed to analyze revision references for bundle %q, computing all metadata: %v", b.Name, err)
+				} else {
+					for _, ref := range refs {
+						metadataFields[ref.SourceName] = ref.Fields
+					}
+				}
+			}
+
+			syncs := []sourceSynchronizer{}
 			sources := []*builder.Source{&root.Source}
 			bundleDir := join(s.persistenceDir, md5sum(bName))
 
@@ -366,8 +379,8 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 				src := newSource(dep.Name).
 					SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
-					SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database")).
-					SyncDatasources(&syncs, dep.Datasources, join(srcDir, "datasources")).
+					SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database"), metadataFields[dep.Name]).
+					SyncDatasources(&syncs, dep.Name, dep.Datasources, join(srcDir, "datasources")).
 					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name]).
 					AddRequirements(dep.Requirements)
 
@@ -465,7 +478,7 @@ func (src *source) addFS(fsys fs.FS) {
 	src.Source.AddFS(fsys)
 }
 
-func (src *source) SyncGit(syncs *[]Synchronizer, sourceName string, git config.Git, repoDir string, reqCommit string) *source {
+func (src *source) SyncGit(syncs *[]sourceSynchronizer, sourceName string, git config.Git, repoDir string, reqCommit string) *source {
 	if git.Repo != "" {
 		srcDir := repoDir
 		if git.Path != nil {
@@ -475,13 +488,17 @@ func (src *source) SyncGit(syncs *[]Synchronizer, sourceName string, git config.
 		if reqCommit != "" {
 			git.Commit = &reqCommit
 		}
-		*syncs = append(*syncs, gitsync.New(repoDir, git, sourceName))
+		*syncs = append(*syncs, sourceSynchronizer{
+			sync:       gitsync.New(repoDir, git, sourceName),
+			sourceName: sourceName,
+			sourceType: "git",
+		})
 	}
 
 	return src
 }
 
-func (src *source) SyncBuiltin(syncs *[]Synchronizer, builtin *string, fs_ fs.FS, dir string) *source {
+func (src *source) SyncBuiltin(syncs *[]sourceSynchronizer, builtin *string, fs_ fs.FS, dir string) *source {
 	if builtin != nil {
 		// NB(sr): If the builtin isn't known, this will end up returning
 		// "open .: file does not exist", so we don't check it here.
@@ -491,7 +508,7 @@ func (src *source) SyncBuiltin(syncs *[]Synchronizer, builtin *string, fs_ fs.FS
 	return src
 }
 
-func (src *source) SyncDatasources(syncs *[]Synchronizer, datasources []config.Datasource, dir string) *source {
+func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName string, datasources []config.Datasource, dir string) *source {
 	for _, datasource := range datasources {
 		switch datasource.Type {
 		case "http":
@@ -501,7 +518,11 @@ func (src *source) SyncDatasources(syncs *[]Synchronizer, datasources []config.D
 
 			body, _ := datasource.Config["body"].(string)
 			headers, _ := datasource.Config["headers"].(map[string]any)
-			*syncs = append(*syncs, httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials))
+			*syncs = append(*syncs, sourceSynchronizer{
+				sync:       httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials),
+				sourceName: sourceName,
+				sourceType: "http", // not used yet
+			})
 		case "s3":
 			bucket, _ := datasource.Config["bucket"].(string)
 			key, _ := datasource.Config["key"].(string)
@@ -517,7 +538,11 @@ func (src *source) SyncDatasources(syncs *[]Synchronizer, datasources []config.D
 				url = "https://" + bucket + ".s3." + region + ".amazonaws.com/" + key
 			}
 
-			*syncs = append(*syncs, httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials))
+			*syncs = append(*syncs, sourceSynchronizer{
+				sync:       httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials),
+				sourceName: sourceName,
+				sourceType: "s3", // not used yet
+			})
 		}
 
 		if datasource.TransformQuery != "" {
@@ -533,8 +558,16 @@ func (src *source) SyncDatasources(syncs *[]Synchronizer, datasources []config.D
 	return src
 }
 
-func (src *source) SyncSourceSQL(syncs *[]Synchronizer, sourceID int64, name string, database *database.Database, dir string) *source {
-	*syncs = append(*syncs, sqlsync.NewSQLSourceDataSynchronizer(dir, database, sourceID, name))
+func (src *source) SyncSourceSQL(syncs *[]sourceSynchronizer, sourceID int64, name string, database *database.Database, dir string, metadataFields []string) *source {
+	opts := []sqlsync.SQLSyncOption{}
+	if len(metadataFields) > 0 {
+		opts = append(opts, sqlsync.WithMetadataFields(metadataFields))
+	}
+	*syncs = append(*syncs, sourceSynchronizer{
+		sync:       sqlsync.NewSQLSourceDataSynchronizer(dir, database, sourceID, name, opts...),
+		sourceName: name,
+		sourceType: "sql",
+	})
 	src.addDir(dir, true, nil, nil)
 	return src
 }

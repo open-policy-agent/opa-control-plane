@@ -1,0 +1,45 @@
+# Test that only referenced SQL sources compute hashsum
+! exec $OPACTL run --addr ./ocp.sock --config config.d/bundle.yml --data-dir tmp &opactl&
+
+exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/health
+
+# Add data to both SQL sources
+exec curl --unix-socket ocp.sock -X PUT http://localhost/v1/sources/sql-a/data/users -H 'Authorization: Bearer test-key' -d '{"alice":{"role":"admin"}}'
+exec curl --unix-socket ocp.sock -X PUT http://localhost/v1/sources/sql-b/data/config -H 'Authorization: Bearer test-key' -d '{"enabled":true}'
+
+# Wait for rebuild cycle (interval is 5s in test config)
+exec sleep 7
+
+kill opactl
+wait opactl
+
+exec tar xf bundles/hello-world/bundle.tar.gz /.manifest
+exec cat .manifest
+
+# Verify revision only contains sql-a hashsum (not sql-b)
+stdout '"revision":"[0-9a-f]{64}"'
+stdout '"roots":\["users","config"\]'
+
+-- config.d/bundle.yml --
+database:
+  sql:
+    driver: sqlite
+    dsn: sqlite.db
+tokens:
+  test-token:
+    api_key: test-key
+    scopes:
+    - role: administrator
+bundles:
+  hello-world:
+    rebuild_interval: 5s
+    revision: 'input.sources["sql-a"].sql.hash'
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: sql-a
+    - source: sql-b
+sources:
+  sql-a: {}
+  sql-b: {}

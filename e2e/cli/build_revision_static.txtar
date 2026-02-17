@@ -1,0 +1,16 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar xf bundles/hello-world/bundle.tar.gz /.manifest
+cmp .manifest exp/.manifest
+
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    revision: '"REVISION-091"'
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+-- exp/.manifest --
+{"revision":"REVISION-091","roots":[""],"rego_version":0}

@@ -122,25 +122,32 @@ func (s *Synchronizer) WithSecretProvider(provider pkgsync.SecretProvider) *Sync
 
 // Execute performs the synchronization of the configured Git repository. If the repository does not exist
 // on disk, clone it. If it does exist, pull the latest changes and rebase the local branch onto the remote branch.
-func (s *Synchronizer) Execute(ctx context.Context) error {
+// Returns metadata about the synchronized repository, including the current commit hash.
+func (s *Synchronizer) Execute(ctx context.Context) (map[string]any, error) {
 	startTime := time.Now()
 
-	done, err := s.execute(ctx)
+	done, hash, err := s.execute(ctx)
 	if err != nil {
 		metrics.GitSyncFailed(s.sourceName, s.config.Repo)
-		return fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
+		return nil, fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
 	}
 	if done {
 		metrics.GitSyncSucceeded(s.sourceName, s.config.Repo, startTime)
 	}
-	return nil
+
+	return map[string]any{
+		"commit": hash,
+	}, nil
 }
 
-func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
-	var repository *git.Repository
+func (s *Synchronizer) SourceName() string {
+	return s.sourceName
+}
+
+func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {
 	var fetched bool
 	if s.config.Commit == nil && s.config.Reference == nil {
-		return false, errors.New("either reference or commit must be set in git configuration")
+		return false, "", errors.New("either reference or commit must be set in git configuration")
 	}
 
 	var referenceName plumbing.ReferenceName
@@ -159,20 +166,21 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 		}
 		if err := json.Unmarshal(data, &config); err != nil || !config.Equal(&s.config) {
 			if err := os.RemoveAll(s.path); err != nil {
-				return false, err
+				return false, "", err
 			}
 		}
 	} else if !os.IsNotExist(err) {
-		return false, err
+		return false, "", err
 	}
 
 	var authMethod transport.AuthMethod
+	var err error
 
 	repository, err := git.PlainOpen(s.path)
 	if errors.Is(err, git.ErrRepositoryNotExists) { // does not exist? clone it
 		authMethod, err = s.auth(ctx)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 
 		fetched = true
@@ -185,23 +193,23 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 			NoCheckout:        true, // We will checkout later
 		})
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 
 		data, err := json.Marshal(s.config)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		if err := os.WriteFile(filepath.Join(s.path, ".git", configFile), data, 0644); err != nil {
-			return false, err
+			return false, "", err
 		}
 	} else if err != nil { // other errors are bubbled up
-		return false, err
+		return false, "", err
 	}
 
 	w, err := repository.Worktree()
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 
 	if s.config.Commit != nil {
@@ -210,7 +218,11 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 			Hash:  plumbing.NewHash(*s.config.Commit),
 		}
 		if w.Checkout(opts) == nil { // success! nothing further to do
-			return fetched, nil
+			head, err := repository.Head()
+			if err != nil {
+				return false, "", err
+			}
+			return fetched, head.Hash().String(), nil
 		}
 	}
 
@@ -221,7 +233,7 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 	if authMethod == nil {
 		authMethod, err = s.auth(ctx)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 	}
 
@@ -236,7 +248,7 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 			gitconfig.RefSpec(fmt.Sprintf("+refs/tags/*:refs/remotes/%s/refs/tags/*", remote)),
 		},
 	}); err != nil && err != git.NoErrAlreadyUpToDate {
-		return false, err
+		return false, "", err
 	}
 
 	opts := &git.CheckoutOptions{
@@ -250,7 +262,15 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, error) {
 		opts.Branch = plumbing.ReferenceName(ref)
 	}
 
-	return fetched, w.Checkout(opts)
+	if err := w.Checkout(opts); err != nil {
+		return false, "", err
+	}
+
+	head, err := repository.Head()
+	if err != nil {
+		return false, "", err
+	}
+	return fetched, head.Hash().String(), nil
 }
 
 func (*Synchronizer) Close(context.Context) {

@@ -174,7 +174,7 @@ func TestMockSecretProvider(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			provider := &mockSecretProvider{secrets: tt.secrets}
 
-			secret, err := provider.GetSecret(context.Background(), tt.secretName)
+			secret, err := provider.GetSecret(t.Context(), tt.secretName)
 
 			if tt.expectError {
 				if err == nil {
