@@ -91,9 +91,6 @@ func ResolveRevision(ctx context.Context, revision string, sourceMetadata map[st
 }
 
 func buildInputSchema(sourceMetadata map[string]map[string]any) *ast.SchemaSet {
-	sourceNames := slices.Collect(maps.Keys(sourceMetadata))
-	slices.Sort(sourceNames)
-
 	sourceSchema := map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -112,12 +109,13 @@ func buildInputSchema(sourceMetadata map[string]map[string]any) *ast.SchemaSet {
 		},
 	}
 
-	sourceProps := make(map[string]any, len(sourceNames))
-	for _, sourceName := range sourceNames {
+	sourceProps := make(map[string]any, len(sourceMetadata))
+	for sourceName := range sourceMetadata {
 		sourceProps[sourceName] = sourceSchema
 	}
 
-	schema := map[string]any{
+	schemas := ast.NewSchemaSet()
+	schemas.Put(ast.SchemaRootRef, map[string]any{
 		"$schema": "http://json-schema.org/draft-07/schema",
 		"type":    "object",
 		"properties": map[string]any{
@@ -127,10 +125,7 @@ func buildInputSchema(sourceMetadata map[string]map[string]any) *ast.SchemaSet {
 			},
 		},
 		"required": []string{"sources"},
-	}
-
-	schemas := ast.NewSchemaSet()
-	schemas.Put(ast.SchemaRootRef, any(schema))
+	})
 	return schemas
 }
 
@@ -154,17 +149,11 @@ func evaluateRego(ctx context.Context, query *ast.Expr, input map[string]any, so
 		return "", err
 	}
 
-	if len(rs) == 0 {
+	if len(rs) == 0 || len(rs[0].Expressions) == 0 {
 		return "", errors.New("no results from Rego evaluation")
 	}
 
-	if len(rs[0].Expressions) == 0 {
-		return "", errors.New("no expressions in result")
-	}
-
-	value := rs[0].Expressions[0].Value
-
-	return formatValue(value), nil
+	return formatValue(rs[0].Expressions[0].Value), nil
 }
 
 func makeRuntimeInfo() *ast.Term {
