@@ -1,13 +1,12 @@
 package service
 
 import (
-	"context"
 	"slices"
 	"strings"
 	"testing"
 )
 
-func TestAnalyzeRevisionReferences(t *testing.T) {
+func TestExtractRevisionRefs(t *testing.T) {
 	tests := []struct {
 		name     string
 		revision string
@@ -66,24 +65,28 @@ func TestAnalyzeRevisionReferences(t *testing.T) {
 			wantErr:  true,
 		},
 		{
-			name:     "using input.config instead of input.sources",
+			name:     "using input.config instead of input.sources - allowed at extract time",
 			revision: `input.config.policies.git.commit`,
-			wantErr:  true,
+			want:     []ReferencedSource{}, // No sources refs since it's not input.sources
 		},
 		{
-			name:     "using input.data instead of input.sources",
+			name:     "using input.data instead of input.sources - allowed at extract time",
 			revision: `input.data["sql-source"].sql.hash`,
-			wantErr:  true,
+			want:     []ReferencedSource{}, // No sources refs since it's not input.sources
 		},
 		{
-			name:     "invalid source type (http)",
+			name:     "invalid source type (http) - allowed at extract time",
 			revision: `input.sources.policies.http.url`,
-			wantErr:  true,
+			want: []ReferencedSource{
+				{SourceName: "policies", Fields: []string{"http", "url"}},
+			},
 		},
 		{
-			name:     "invalid source type (file)",
+			name:     "invalid source type (file) - allowed at extract time",
 			revision: `input.sources["sql-source"].file.path`,
-			wantErr:  true,
+			want: []ReferencedSource{
+				{SourceName: "sql-source", Fields: []string{"file", "path"}},
+			},
 		},
 	}
 
@@ -91,16 +94,15 @@ func TestAnalyzeRevisionReferences(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := ExtractRevisionRefs(tt.revision)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("AnalyzeRevisionReferences() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if tt.wantErr {
 				return
 			}
 
-			// Compare results (order may vary)
 			if len(got) != len(tt.want) {
-				t.Errorf("AnalyzeRevisionReferences() got %d sources, want %d", len(got), len(tt.want))
+				t.Errorf("got %d sources, want %d", len(got), len(tt.want))
 				return
 			}
 
@@ -109,7 +111,6 @@ func TestAnalyzeRevisionReferences(t *testing.T) {
 				for _, gotSrc := range got {
 					if gotSrc.SourceName == wantSrc.SourceName {
 						found = true
-						// Check fields (order may vary)
 						if len(gotSrc.Fields) != len(wantSrc.Fields) {
 							t.Errorf("Source %q: got %d fields, want %d", wantSrc.SourceName, len(gotSrc.Fields), len(wantSrc.Fields))
 						}
@@ -137,41 +138,44 @@ func TestValidationErrorMessages(t *testing.T) {
 		wantErrContains  string
 	}{
 		{
-			name:            "input.x not sources - config",
+			name:            "input.x not sources - config (schema validation)",
 			revision:        `input.config.policies.git.commit`,
-			wantErrContains: "revision references must use 'input.sources', found 'input.config'",
+			wantErrContains: `undefined ref: input.config.policies.git.commit`,
 		},
 		{
-			name:            "input.x not sources - data",
+			name:            "input.x not sources - data (schema validation)",
 			revision:        `input.data["sql-source"].sql.hash`,
-			wantErrContains: "revision references must use 'input.sources', found 'input.data'",
+			wantErrContains: `undefined ref: input.data["sql-source"].sql.hash`,
 		},
 		{
-			name:             "unknown source name with available sources",
+			name:             "unknown source name with available sources (schema validation)",
 			revision:         `input.sources.unknown.git.commit`,
 			availableSources: []string{"policies", "sql-source"},
-			wantErrContains:  "revision references unknown source 'unknown', available sources: policies, sql-source",
+			wantErrContains:  `undefined ref: input.sources.unknown.git.commit`,
 		},
 		{
-			name:             "unknown source name with single source",
+			name:             "unknown source name with single source (schema validation)",
 			revision:         `input.sources.nothere.git.commit`,
 			availableSources: []string{"policies"},
-			wantErrContains:  "revision references unknown source 'nothere', available sources: policies",
+			wantErrContains:  `undefined ref: input.sources.nothere.git.commit`,
 		},
 		{
-			name:            "invalid source type - http",
-			revision:        `input.sources.policies.http.url`,
-			wantErrContains: "revision source type must be 'git' or 'sql', found 'http'",
+			name:             "invalid source type - http (schema validation)",
+			revision:         `input.sources.policies.http.url`,
+			availableSources: []string{"policies"},
+			wantErrContains:  `undefined ref: input.sources.policies.http.url`,
 		},
 		{
-			name:            "invalid source type - file",
-			revision:        `input.sources["sql-source"].file.path`,
-			wantErrContains: "revision source type must be 'git' or 'sql', found 'file'",
+			name:             "invalid source type - file (schema validation)",
+			revision:         `input.sources.policies.file.path`,
+			availableSources: []string{"policies"},
+			wantErrContains:  `undefined ref: input.sources.policies.file.path`,
 		},
 		{
-			name:            "invalid source type - s3",
-			revision:        `input.sources.data.s3.bucket`,
-			wantErrContains: "revision source type must be 'git' or 'sql', found 's3'",
+			name:             "invalid source type - s3 (schema validation)",
+			revision:         `input.sources.policies.s3.bucket`,
+			availableSources: []string{"policies"},
+			wantErrContains:  `undefined ref: input.sources.policies.s3.bucket`,
 		},
 	}
 
@@ -185,7 +189,7 @@ func TestValidationErrorMessages(t *testing.T) {
 				}
 			}
 
-			_, err := ResolveRevision(context.Background(), tt.revision, sourceMetadata)
+			_, err := ResolveRevision(t.Context(), tt.revision, sourceMetadata)
 			if err == nil {
 				t.Fatalf("expected error containing %q, got nil", tt.wantErrContains)
 			}
