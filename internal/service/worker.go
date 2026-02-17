@@ -148,7 +148,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	resolvedRevision, err := ResolveRevision(ctx, w.bundleConfig.Revision, sourceMetadata)
 	if err != nil {
 		w.log.Warnf("failed to resolve revision for bundle %q: %v", w.bundleConfig.Name, err)
-		return w.report(ctx, BuildStateSyncFailed, startTime, err)
+		return w.report(ctx, BuildStateBuildFailed, startTime, err)
 	}
 
 	for _, src := range w.sources {

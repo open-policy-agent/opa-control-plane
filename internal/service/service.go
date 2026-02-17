@@ -359,7 +359,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			// Analyze revision to determine which metadata fields are needed per source
 			metadataFields := make(map[string][]string)
 			if b.Revision != "" {
-				refs, err := AnalyzeRevisionReferences(b.Revision)
+				refs, err := ExtractRevisionRefs(b.Revision)
 				if err != nil {
 					s.log.Debugf("failed to analyze revision references for bundle %q, computing all metadata: %v", b.Name, err)
 				} else {

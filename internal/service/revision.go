@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -17,9 +19,7 @@ type ReferencedSource struct {
 	Fields     []string // e.g., ["hashsum"], ["commit"]
 }
 
-// AnalyzeRevisionReferences parses a revision Rego expression and extracts all
-// references to input.sources to determine which source metadata is needed.
-func AnalyzeRevisionReferences(revision string) ([]ReferencedSource, error) {
+func ExtractRevisionRefs(revision string) ([]ReferencedSource, error) {
 	if revision == "" {
 		return nil, nil
 	}
@@ -29,37 +29,20 @@ func AnalyzeRevisionReferences(revision string) ([]ReferencedSource, error) {
 		return nil, fmt.Errorf("invalid rego query: %w", err)
 	}
 
-	references := make(map[string]map[string]bool) // sourceName -> fields
+	sourcesRef := ast.InputRootRef.Append(ast.StringTerm("sources"))
+	references := make(map[string]map[string]bool)
 
 	ast.WalkRefs(query, func(ref ast.Ref) bool {
-		// Look for references like: input.sources["foo"].hashsum or input.sources.foo.commit
-		if !ref.HasPrefix(ast.InputRootRef) {
+		if !ref.HasPrefix(sourcesRef) || len(ref) < 4 {
 			return false
 		}
 
-		// Must be at least input.sources.name.field
-		if len(ref) < 4 {
+		s, ok := ref[2].Value.(ast.String)
+		if !ok {
 			return false
 		}
+		sourceName := string(s)
 
-		// Check if ref[1] is "sources"
-		if term, ok := ref[1].Value.(ast.String); !ok || string(term) != "sources" {
-			return false
-		}
-
-		// Extract source name from ref[2]
-		var sourceName string
-		switch v := ref[2].Value.(type) {
-		case ast.String:
-			sourceName = string(v)
-		case ast.Var:
-			// Dynamic reference, can't analyze statically
-			return false
-		default:
-			return false
-		}
-
-		// Extract fields from ref[3:]
 		if references[sourceName] == nil {
 			references[sourceName] = make(map[string]bool)
 		}
@@ -73,16 +56,11 @@ func AnalyzeRevisionReferences(revision string) ([]ReferencedSource, error) {
 		return false
 	})
 
-	// Convert map to slice
 	result := make([]ReferencedSource, 0, len(references))
 	for sourceName, fields := range references {
-		fieldSlice := make([]string, 0, len(fields))
-		for field := range fields {
-			fieldSlice = append(fieldSlice, field)
-		}
 		result = append(result, ReferencedSource{
 			SourceName: sourceName,
-			Fields:     fieldSlice,
+			Fields:     slices.Collect(maps.Keys(fields)),
 		})
 	}
 
@@ -107,7 +85,7 @@ func ResolveRevision(ctx context.Context, revision string, sourceMetadata map[st
 
 	result, err := evaluateRego(ctx, query, input)
 	if err != nil {
-		return "", fmt.Errorf("rego evaluation failed: %w", err)
+		return "", fmt.Errorf("failed to resolve revision: %w", err)
 	}
 	return result, nil
 }

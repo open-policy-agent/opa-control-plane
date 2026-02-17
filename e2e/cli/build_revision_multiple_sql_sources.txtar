@@ -1,5 +1,5 @@
 # Test that only referenced SQL sources compute hashsum
-! exec $OPACTL run --config config.d/bundle.yml --data-dir tmp --addr ./ocp.sock &opactl&
+! exec $OPACTL run --addr ./ocp.sock --config config.d/bundle.yml --data-dir tmp &opactl&
 
 exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/health
 
@@ -18,7 +18,7 @@ exec cat .manifest
 
 # Verify revision only contains sql-a hashsum (not sql-b)
 stdout '"revision":"[0-9a-f]{64}"'
-stdout '"roots":\["config","users"\]'
+stdout '"roots":\["users","config"\]'
 
 -- config.d/bundle.yml --
 database:

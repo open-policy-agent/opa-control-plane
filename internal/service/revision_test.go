@@ -67,7 +67,7 @@ func TestAnalyzeRevisionReferences(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := AnalyzeRevisionReferences(tt.revision)
+			got, err := ExtractRevisionRefs(tt.revision)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AnalyzeRevisionReferences() error = %v, wantErr %v", err, tt.wantErr)
 				return
