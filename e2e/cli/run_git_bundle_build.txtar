@@ -15,7 +15,8 @@ exec $OPACTL run --addr ./ocp.sock --config config.d/bundle.yml --data-dir tmp1 
 ! stderr .
 ! stdout .
 
-exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/health
+retry tar vtf bundles/hello-world/bundle.tar.gz
+
 exec curl --unix-socket ocp.sock http://localhost/metrics
 
 # assert git sync and bundle build metrics
