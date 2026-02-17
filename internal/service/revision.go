@@ -29,6 +29,10 @@ func ExtractRevisionRefs(revision string) ([]ReferencedSource, error) {
 		return nil, fmt.Errorf("invalid rego query: %w", err)
 	}
 
+	if err := validateRevisionRefs(query, nil); err != nil {
+		return nil, err
+	}
+
 	sourcesRef := ast.InputRootRef.Append(ast.StringTerm("sources"))
 	references := make(map[string]map[string]bool)
 
@@ -83,11 +87,75 @@ func ResolveRevision(ctx context.Context, revision string, sourceMetadata map[st
 		return "", fmt.Errorf("invalid rego query: %w", err)
 	}
 
+	availableSources := slices.Collect(maps.Keys(sourceMetadata))
+	if err := validateRevisionRefs(query, availableSources); err != nil {
+		return "", err
+	}
+
 	result, err := evaluateRego(ctx, query, input)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve revision: %w", err)
 	}
 	return result, nil
+}
+
+func validateRevisionRefs(query *ast.Expr, availableSources []string) error {
+	var validationErr error
+
+	ast.WalkRefs(query, func(ref ast.Ref) bool {
+		if len(ref) < 2 || !ref.HasPrefix(ast.InputRootRef) {
+			return false
+		}
+
+		// Check if input.x is used where x != "sources"
+		if len(ref) >= 2 {
+			if secondTerm, ok := ref[1].Value.(ast.String); ok {
+				secondTermStr := string(secondTerm)
+				if secondTermStr != "sources" {
+					validationErr = fmt.Errorf("revision references must use 'input.sources', found 'input.%s'", secondTermStr)
+					return true
+				}
+			}
+		}
+
+		sourcesRef := ast.InputRootRef.Append(ast.StringTerm("sources"))
+		if !ref.HasPrefix(sourcesRef) {
+			return false
+		}
+
+		// Must have at least input.sources.sourceName.type
+		if len(ref) < 4 {
+			return false
+		}
+
+		// Check source name (third segment)
+		sourceName, ok := ref[2].Value.(ast.String)
+		if !ok {
+			return false
+		}
+		sourceNameStr := string(sourceName)
+
+		if availableSources != nil && !slices.Contains(availableSources, sourceNameStr) {
+			slices.Sort(availableSources)
+			validationErr = fmt.Errorf("revision references unknown source '%s', available sources: %s", sourceNameStr, strings.Join(availableSources, ", "))
+			return true
+		}
+
+		// Check fourth segment (type: git or sql)
+		if len(ref) >= 4 {
+			if typeTerm, ok := ref[3].Value.(ast.String); ok {
+				typeStr := string(typeTerm)
+				if typeStr != "git" && typeStr != "sql" {
+					validationErr = fmt.Errorf("revision source type must be 'git' or 'sql', found '%s'", typeStr)
+					return true
+				}
+			}
+		}
+
+		return false
+	})
+
+	return validationErr
 }
 
 func evaluateRego(ctx context.Context, query *ast.Expr, input map[string]any) (string, error) {

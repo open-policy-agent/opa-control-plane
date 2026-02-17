@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +65,26 @@ func TestAnalyzeRevisionReferences(t *testing.T) {
 			revision: "not a valid {{{ rego",
 			wantErr:  true,
 		},
+		{
+			name:     "using input.config instead of input.sources",
+			revision: `input.config.policies.git.commit`,
+			wantErr:  true,
+		},
+		{
+			name:     "using input.data instead of input.sources",
+			revision: `input.data["sql-source"].sql.hash`,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid source type (http)",
+			revision: `input.sources.policies.http.url`,
+			wantErr:  true,
+		},
+		{
+			name:     "invalid source type (file)",
+			revision: `input.sources["sql-source"].file.path`,
+			wantErr:  true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -102,6 +124,74 @@ func TestAnalyzeRevisionReferences(t *testing.T) {
 				if !found {
 					t.Errorf("Expected source %q not found in results", wantSrc.SourceName)
 				}
+			}
+		})
+	}
+}
+
+func TestValidationErrorMessages(t *testing.T) {
+	tests := []struct {
+		name             string
+		revision         string
+		availableSources []string
+		wantErrContains  string
+	}{
+		{
+			name:            "input.x not sources - config",
+			revision:        `input.config.policies.git.commit`,
+			wantErrContains: "revision references must use 'input.sources', found 'input.config'",
+		},
+		{
+			name:            "input.x not sources - data",
+			revision:        `input.data["sql-source"].sql.hash`,
+			wantErrContains: "revision references must use 'input.sources', found 'input.data'",
+		},
+		{
+			name:             "unknown source name with available sources",
+			revision:         `input.sources.unknown.git.commit`,
+			availableSources: []string{"policies", "sql-source"},
+			wantErrContains:  "revision references unknown source 'unknown', available sources: policies, sql-source",
+		},
+		{
+			name:             "unknown source name with single source",
+			revision:         `input.sources.nothere.git.commit`,
+			availableSources: []string{"policies"},
+			wantErrContains:  "revision references unknown source 'nothere', available sources: policies",
+		},
+		{
+			name:            "invalid source type - http",
+			revision:        `input.sources.policies.http.url`,
+			wantErrContains: "revision source type must be 'git' or 'sql', found 'http'",
+		},
+		{
+			name:            "invalid source type - file",
+			revision:        `input.sources["sql-source"].file.path`,
+			wantErrContains: "revision source type must be 'git' or 'sql', found 'file'",
+		},
+		{
+			name:            "invalid source type - s3",
+			revision:        `input.sources.data.s3.bucket`,
+			wantErrContains: "revision source type must be 'git' or 'sql', found 's3'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sourceMetadata := make(map[string]map[string]any)
+			for _, src := range tt.availableSources {
+				sourceMetadata[src] = map[string]any{
+					"git": map[string]any{"commit": "abc123"},
+					"sql": map[string]any{"hash": "def456"},
+				}
+			}
+
+			_, err := ResolveRevision(context.Background(), tt.revision, sourceMetadata)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErrContains)
+			}
+
+			if !strings.Contains(err.Error(), tt.wantErrContains) {
+				t.Errorf("error message %q does not contain expected substring %q", err.Error(), tt.wantErrContains)
 			}
 		})
 	}
