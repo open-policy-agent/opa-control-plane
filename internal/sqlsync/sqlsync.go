@@ -67,16 +67,21 @@ func (s *SQLDataSynchronizer) Execute(ctx context.Context) (map[string]any, erro
 
 	metadata := make(map[string]any)
 
-	// Only compute hashsum if explicitly requested via WithMetadataFields
+	// Only compute hash if explicitly requested via WithMetadataFields
 	for _, field := range s.metadataFields {
-		if field == "hashsum" {
-			hashsum, err := computeDirectoryHash(s.path)
+		if field == "hash" {
+			hash, err := computeDirectoryHash(s.path)
 			if err != nil {
 				return nil, err
 			}
-			metadata["hashsum"] = hashsum
+			metadata["hash"] = hash
 			break
 		}
+	}
+
+	// Return nil if no metadata was computed
+	if len(metadata) == 0 {
+		return nil, nil
 	}
 
 	return metadata, nil

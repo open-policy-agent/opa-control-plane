@@ -23,32 +23,32 @@ func TestAnalyzeRevisionReferences(t *testing.T) {
 			want:     []ReferencedSource{},
 		},
 		{
-			name:     "single source with hashsum",
-			revision: `input.sources["sql-source"].hashsum`,
+			name:     "single source with sql hash",
+			revision: `input.sources["sql-source"].sql.hash`,
 			want: []ReferencedSource{
-				{SourceName: "sql-source", Fields: []string{"hashsum"}},
+				{SourceName: "sql-source", Fields: []string{"sql", "hash"}},
 			},
 		},
 		{
-			name:     "single source with commit",
-			revision: `input.sources.policies.commit`,
+			name:     "single source with git commit",
+			revision: `input.sources.policies.git.commit`,
 			want: []ReferencedSource{
-				{SourceName: "policies", Fields: []string{"commit"}},
+				{SourceName: "policies", Fields: []string{"git", "commit"}},
 			},
 		},
 		{
-			name:     "template string with substring of commit",
-			revision: `$"git-{substring(input.sources.policies.commit, 0, 7)}"`,
+			name:     "template string with substring of git commit",
+			revision: `$"git-{substring(input.sources.policies.git.commit, 0, 7)}"`,
 			want: []ReferencedSource{
-				{SourceName: "policies", Fields: []string{"commit"}},
+				{SourceName: "policies", Fields: []string{"git", "commit"}},
 			},
 		},
 		{
 			name:     "multiple sources",
-			revision: `$"git-{input.sources.foo.commit}-{substring(input.sources.bar.hashsum,0,7)}"`,
+			revision: `$"git-{input.sources.foo.git.commit}-{substring(input.sources.bar.sql.hash,0,7)}"`,
 			want: []ReferencedSource{
-				{SourceName: "foo", Fields: []string{"commit"}},
-				{SourceName: "bar", Fields: []string{"hashsum"}},
+				{SourceName: "foo", Fields: []string{"git", "commit"}},
+				{SourceName: "bar", Fields: []string{"sql", "hash"}},
 			},
 		},
 		{

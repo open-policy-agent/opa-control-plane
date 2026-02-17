@@ -491,6 +491,7 @@ func (src *source) SyncGit(syncs *[]sourceSynchronizer, sourceName string, git c
 		*syncs = append(*syncs, sourceSynchronizer{
 			sync:       gitsync.New(repoDir, git, sourceName),
 			sourceName: sourceName,
+			sourceType: "git",
 		})
 	}
 
@@ -520,6 +521,7 @@ func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName strin
 			*syncs = append(*syncs, sourceSynchronizer{
 				sync:       httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials),
 				sourceName: sourceName,
+				sourceType: "http", // not used yet
 			})
 		case "s3":
 			bucket, _ := datasource.Config["bucket"].(string)
@@ -539,6 +541,7 @@ func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName strin
 			*syncs = append(*syncs, sourceSynchronizer{
 				sync:       httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials),
 				sourceName: sourceName,
+				sourceType: "s3", // not used yet
 			})
 		}
 
@@ -563,6 +566,7 @@ func (src *source) SyncSourceSQL(syncs *[]sourceSynchronizer, sourceID int64, na
 	*syncs = append(*syncs, sourceSynchronizer{
 		sync:       sqlsync.NewSQLSourceDataSynchronizer(dir, database, sourceID, name, opts...),
 		sourceName: name,
+		sourceType: "sql",
 	})
 	src.addDir(dir, true, nil, nil)
 	return src

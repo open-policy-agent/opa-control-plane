@@ -33,7 +33,7 @@ tokens:
 bundles:
   hello-world:
     rebuild_interval: 5s
-    revision: 'input.sources["sql-a"].hashsum'
+    revision: 'input.sources["sql-a"].sql.hash'
     object_storage:
       filesystem:
         path: bundles/hello-world/bundle.tar.gz

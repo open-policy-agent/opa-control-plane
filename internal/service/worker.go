@@ -49,6 +49,7 @@ type Synchronizer interface {
 type sourceSynchronizer struct {
 	sync       Synchronizer
 	sourceName string
+	sourceType string // "git", "sql", "http", "s3"
 }
 
 func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Source, stacks []*config.Stack, logger *logging.Logger, bar *progress.Bar) *BundleWorker {
@@ -125,7 +126,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		}
 	}
 
-	// Collect source metadata from synchronizers
+	// Collect source metadata from synchronizers and structure by source type
 	// Note: Metadata fields to compute are configured at synchronizer construction time
 	sourceMetadata := make(map[string]map[string]any)
 	for _, ss := range w.synchronizers {
@@ -135,7 +136,11 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 			return w.report(ctx, BuildStateSyncFailed, startTime, err)
 		}
 		if metadata != nil {
-			sourceMetadata[ss.sourceName] = metadata
+			// Structure metadata by source type (git, sql, http, s3)
+			if sourceMetadata[ss.sourceName] == nil {
+				sourceMetadata[ss.sourceName] = make(map[string]any)
+			}
+			sourceMetadata[ss.sourceName][ss.sourceType] = metadata
 		}
 	}
 

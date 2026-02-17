@@ -33,7 +33,7 @@ bundles:
         path: bundles/hello-world/bundle.tar.gz
     requirements:
     - source: policies
-    revision: $"git-{substring(input.sources.policies.commit, 0, 7)}"
+    revision: $"git-{substring(input.sources.policies.git.commit, 0, 7)}"
 sources:
   policies:
     git:
