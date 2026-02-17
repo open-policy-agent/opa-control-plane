@@ -83,14 +83,53 @@ func ResolveRevision(ctx context.Context, revision string, sourceMetadata map[st
 		return "", fmt.Errorf("invalid rego query: %w", err)
 	}
 
-	result, err := evaluateRego(ctx, query, input)
+	result, err := evaluateRego(ctx, query, input, sourceMetadata)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve revision: %w", err)
 	}
 	return result, nil
 }
 
-func evaluateRego(ctx context.Context, query *ast.Expr, input map[string]any) (string, error) {
+func buildInputSchema(sourceMetadata map[string]map[string]any) *ast.SchemaSet {
+	sourceSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"git": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"commit": map[string]any{"type": "string"},
+				},
+			},
+			"sql": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"hash": map[string]any{"type": "string"},
+				},
+			},
+		},
+	}
+
+	sourceProps := make(map[string]any, len(sourceMetadata))
+	for sourceName := range sourceMetadata {
+		sourceProps[sourceName] = sourceSchema
+	}
+
+	schemas := ast.NewSchemaSet()
+	schemas.Put(ast.SchemaRootRef, map[string]any{
+		"$schema": "http://json-schema.org/draft-07/schema",
+		"type":    "object",
+		"properties": map[string]any{
+			"sources": map[string]any{
+				"type":       "object",
+				"properties": sourceProps,
+			},
+		},
+		"required": []string{"sources"},
+	})
+	return schemas
+}
+
+func evaluateRego(ctx context.Context, query *ast.Expr, input map[string]any, sourceMetadata map[string]map[string]any) (string, error) {
 	opts := []func(*rego.Rego){
 		rego.ParsedQuery([]*ast.Expr{query}),
 		rego.Strict(true),
@@ -101,22 +140,20 @@ func evaluateRego(ctx context.Context, query *ast.Expr, input map[string]any) (s
 		opts = append(opts, rego.Input(input))
 	}
 
+	if sourceMetadata != nil {
+		opts = append(opts, rego.Schemas(buildInputSchema(sourceMetadata)))
+	}
+
 	rs, err := rego.New(opts...).Eval(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	if len(rs) == 0 {
+	if len(rs) == 0 || len(rs[0].Expressions) == 0 {
 		return "", errors.New("no results from Rego evaluation")
 	}
 
-	if len(rs[0].Expressions) == 0 {
-		return "", errors.New("no expressions in result")
-	}
-
-	value := rs[0].Expressions[0].Value
-
-	return formatValue(value), nil
+	return formatValue(rs[0].Expressions[0].Value), nil
 }
 
 func makeRuntimeInfo() *ast.Term {

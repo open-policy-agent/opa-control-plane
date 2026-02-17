@@ -1,0 +1,36 @@
+# Test that shows the complete error message with schema validation error
+# Setup a local git repo
+cd repo
+env HOME=.
+exec git init .
+exec git branch -m main
+exec git config --global user.name "botbotbot"
+exec git config --global user.email "bot@bot.bot"
+exec git add .
+exec git commit -m initial-commit
+cd ..
+
+! exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr 'BUILD_FAILED'
+stderr 'undefined ref: input.sources.policies.s3.bucket'
+stderr 'have: "s3"'
+stderr 'want \(one of\): \["git" "sql"\]'
+
+-- repo/policy.rego --
+package rules
+import rego.v1
+allow if true
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: policies
+    revision: input.sources.policies.s3.bucket
+sources:
+  policies:
+    git:
+      repo: ./repo/
+      reference: main
