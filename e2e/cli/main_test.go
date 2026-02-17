@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
 )
@@ -80,9 +81,47 @@ func TestScript(t *testing.T) {
 				return false, fmt.Errorf("unknown condition %s", name)
 			}
 		},
+		Cmds: map[string]func(*testscript.TestScript, bool, []string){
+			"retry": retryCmd,
+		},
 		// NB: To quickly update expectations in txtar files, try re-running the tests with
 		// E2E_UPDATE=y, for example:
 		//   E2E_UPDATE=y go test -tags e2e ./e2e/cli -run TestScript/build_sources_from_migrate -v -count=1
 		UpdateScripts: os.Getenv("E2E_UPDATE") != "",
 	})
+}
+
+// retryCmd implements a builtin command that waits until a command is successful
+// by retrying up to 5 times with exponential delay starting with 2 seconds.
+func retryCmd(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) == 0 {
+		ts.Fatalf("usage: retry command [args...]")
+	}
+
+	const maxRetries = 5
+	const initialDelay = 2 * time.Second
+
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		if i > 0 {
+			delay := initialDelay * (1 << (i - 1))
+			ts.Logf("retrying in %v (attempt %d/%d)", delay, i+1, maxRetries)
+			time.Sleep(delay)
+		}
+
+		err := ts.Exec(args[0], args[1:]...)
+		if err == nil {
+			if neg {
+				ts.Fatalf("unexpected command success")
+			}
+			return
+		}
+		lastErr = err
+	}
+
+	if neg {
+		return
+	}
+
+	ts.Fatalf("command failed after %d attempts: %v", maxRetries, lastErr)
 }
