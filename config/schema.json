@@ -255,11 +255,28 @@
       },
       "type": "object"
     },
+    "ConfigOptimization": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "enum": [
+            0,
+            1,
+            2
+          ],
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "ConfigOptions": {
       "additionalProperties": false,
       "properties": {
         "no_default_stack_mount": {
           "type": "boolean"
+        },
+        "optimization": {
+          "$ref": "#/definitions/ConfigOptimization"
         },
         "target": {
           "enum": [

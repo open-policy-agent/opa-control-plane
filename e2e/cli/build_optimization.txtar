@@ -1,0 +1,164 @@
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --non-interactive
+! stderr .
+! stdout .
+
+# Verify bundle contents
+exec tar tf bundles/opt-level-1/bundle.tar.gz
+cmp stdout exp/level_1_tar
+
+exec tar tf bundles/opt-level-2/bundle.tar.gz
+cmp stdout exp/level_2_tar
+
+# Extract and verify level 1 optimization
+exec tar xf bundles/opt-level-1/bundle.tar.gz
+cmp .manifest exp/.manifest
+cmp optimized/pkg.rego exp/opt-level-1.rego
+cmp optimized/pkg.1.rego exp/opt-level-1.1.rego
+cmp source0/rules/rules.rego exp/rules-level-1.rego
+
+# Extract and verify level 2 optimization (in separate dir to avoid conflicts)
+mkdir level2
+cd level2
+exec tar xf ../bundles/opt-level-2/bundle.tar.gz
+cmp optimized/pkg.rego ../exp/opt-level-2.rego
+cmp optimized/pkg.1.rego ../exp/opt-level-2.1.rego
+cmp source0/rules/rules.rego ../exp/rules-level-2.rego
+
+-- files/sources/test/rules/rules.rego --
+package pkg
+import rego.v1
+
+# METADATA
+# entrypoint: true
+allow if {
+    is_admin
+    has_permission(input.action)
+}
+
+# METADATA
+# entrypoint: true
+deny if {
+    input.user == "guest"
+    input.action == "delete"
+}
+
+# Helper rules that should be optimized
+is_admin if input.user == "admin"
+valid_actions := ["read", "write", "delete"]
+has_permission(action) if action in valid_actions
+
+-- config.d/bundle.yml --
+bundles:
+  opt-level-1:
+    object_storage:
+      filesystem:
+        path: bundles/opt-level-1/bundle.tar.gz
+    options:
+      optimization:
+        level: 1
+    requirements:
+    - source: source0
+  opt-level-2:
+    object_storage:
+      filesystem:
+        path: bundles/opt-level-2/bundle.tar.gz
+    options:
+      optimization:
+        level: 2
+    requirements:
+    - source: source0
+sources:
+  source0:
+    directory: files/sources/test
+    paths:
+    - rules/rules.rego
+-- exp/.manifest --
+{"revision":"","roots":["pkg","partial"],"rego_version":0}
+-- exp/opt-level-1.rego --
+package pkg
+
+import rego.v1
+
+allow if {
+	data.pkg.is_admin = _term_1_01
+	_term_1_01
+	__local1__1 = input.action
+	data.pkg.has_permission(__local1__1)
+}
+
+is_admin if {
+	input.user = "admin"
+}
+
+has_permission(__local0__3) if {
+	__local0__3 in ["read", "write", "delete"]
+}
+-- exp/opt-level-2.rego --
+package pkg
+
+import future.keywords.in
+
+allow = __result__ {
+	input.user = "admin"
+
+	input.action in ["read", "write", "delete"]
+	__result__ = true
+}
+-- exp/opt-level-1.1.rego --
+package pkg
+
+import rego.v1
+
+deny if {
+	input.user = "guest"
+	input.action = "delete"
+}
+-- exp/opt-level-2.1.rego --
+package pkg
+
+deny = __result__ {
+	input.user = "guest"
+	input.action = "delete"
+	__result__ = true
+}
+-- exp/rules-level-1.rego --
+package pkg
+
+import rego.v1
+
+# METADATA
+# entrypoint: true
+
+# METADATA
+# entrypoint: true
+
+# Helper rules that should be optimized
+
+valid_actions := ["read", "write", "delete"]
+-- exp/rules-level-2.rego --
+package pkg
+
+import rego.v1
+
+# METADATA
+# entrypoint: true
+
+# METADATA
+# entrypoint: true
+
+# Helper rules that should be optimized
+is_admin if input.user == "admin"
+valid_actions := ["read", "write", "delete"]
+has_permission(action) if action in valid_actions
+-- exp/level_1_tar --
+/data.json
+/optimized/pkg.1.rego
+/optimized/pkg.rego
+/source0/rules/rules.rego
+/.manifest
+-- exp/level_2_tar --
+/data.json
+/optimized/pkg.1.rego
+/optimized/pkg.rego
+/source0/rules/rules.rego
+/.manifest

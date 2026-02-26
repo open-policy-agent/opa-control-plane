@@ -171,6 +171,10 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		WithRevision(resolvedRevision).
 		WithOutput(buffer)
 
+	if w.bundleConfig.Options.Optimization != nil {
+		b = b.WithOptimizationLevel(w.bundleConfig.Options.Optimization.Level)
+	}
+
 	if err = b.Build(ctx); err != nil {
 		w.log.Warnf("failed to build a bundle %q: %v", w.bundleConfig.Name, err)
 		return w.report(ctx, BuildStateBuildFailed, startTime, err)

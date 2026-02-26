@@ -164,11 +164,12 @@ type Dir struct {
 }
 
 type Builder struct {
-	sources  []*Source
-	output   io.Writer
-	excluded []string
-	target   string
-	revision string
+	sources           []*Source
+	output            io.Writer
+	excluded          []string
+	target            string
+	optimizationLevel int
+	revision          string
 }
 
 func New() *Builder {
@@ -192,6 +193,11 @@ func (b *Builder) WithExcluded(excluded []string) *Builder {
 
 func (b *Builder) WithTarget(target string) *Builder {
 	b.target = target
+	return b
+}
+
+func (b *Builder) WithOptimizationLevel(level int) *Builder {
+	b.optimizationLevel = level
 	return b
 }
 
@@ -387,6 +393,7 @@ func (b *Builder) Build(ctx context.Context) error {
 		WithRoots(roots...).
 		WithFS(fsBuild).
 		WithTarget(target).
+		WithOptimizationLevel(b.optimizationLevel).
 		WithRegoAnnotationEntrypoints(true).
 		WithPaths(paths...)
 	if err := c.Build(ctx); err != nil {
