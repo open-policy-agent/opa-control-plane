@@ -246,9 +246,16 @@ func Validate(data []byte) error {
 	return rootSchema.Validate(config)
 }
 
+type Optimization struct {
+	Level int `json:"level,omitzero" enum:"0,1,2"`
+
+	_ struct{} `additionalProperties:"false"`
+}
+
 type Options struct {
-	NoDefaultStackMount bool   `json:"no_default_stack_mount"`
-	Target              string `json:"target,omitzero" enum:"rego,ir,plan,wasm"`
+	NoDefaultStackMount bool          `json:"no_default_stack_mount"`
+	Optimization        *Optimization `json:"optimization,omitempty"`
+	Target              string        `json:"target,omitzero" enum:"rego,ir,plan,wasm"`
 
 	_ struct{} `additionalProperties:"false"`
 }

@@ -607,6 +607,143 @@ func TestBundleOptionsTargetParsing(t *testing.T) {
 	}
 }
 
+func TestBundleOptionsOptimizationParsing(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   string
+		expected *int
+		hasError bool
+	}{
+		{
+			name: "default optimization (not specified)",
+			config: `{
+				bundles: {
+					test: {
+						options: {}
+					}
+				}
+			}`,
+			expected: nil,
+		},
+		{
+			name: "optimization level 0",
+			config: `{
+				bundles: {
+					test: {
+						options: {
+							optimization: {
+								level: 0
+							}
+						}
+					}
+				}
+			}`,
+			expected: intPtr(0),
+		},
+		{
+			name: "optimization level 1",
+			config: `{
+				bundles: {
+					test: {
+						options: {
+							optimization: {
+								level: 1
+							}
+						}
+					}
+				}
+			}`,
+			expected: intPtr(1),
+		},
+		{
+			name: "optimization level 2",
+			config: `{
+				bundles: {
+					test: {
+						options: {
+							optimization: {
+								level: 2
+							}
+						}
+					}
+				}
+			}`,
+			expected: intPtr(2),
+		},
+		{
+			name: "invalid optimization level 3",
+			config: `{
+				bundles: {
+					test: {
+						options: {
+							optimization: {
+								level: 3
+							}
+						}
+					}
+				}
+			}`,
+			hasError: true,
+		},
+		{
+			name: "invalid optimization level -1",
+			config: `{
+				bundles: {
+					test: {
+						options: {
+							optimization: {
+								level: -1
+							}
+						}
+					}
+				}
+			}`,
+			hasError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Parse([]byte(tt.config))
+			if tt.hasError {
+				if err == nil {
+					t.Fatalf("Expected error for invalid optimization level")
+				}
+				if !strings.Contains(err.Error(), "value must be one of 0, 1, 2") {
+					t.Errorf("Expected error to contain schema validation message, got %v", err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+
+			bundle := cfg.Bundles["test"]
+			if bundle == nil {
+				t.Fatal("Expected bundle 'test' to exist")
+			}
+
+			if tt.expected == nil {
+				if bundle.Options.Optimization != nil {
+					t.Errorf("Expected optimization to be nil, got %v", bundle.Options.Optimization)
+				}
+			} else {
+				if bundle.Options.Optimization == nil {
+					t.Errorf("Expected optimization level %d, got nil", *tt.expected)
+				} else if bundle.Options.Optimization.Level != *tt.expected {
+					t.Errorf("Expected optimization level %d, got %d", *tt.expected, bundle.Options.Optimization.Level)
+				}
+			}
+		})
+	}
+}
+
+// TODO(sr): replace with new(i) when 1.26 is in go.mod
+func intPtr(i int) *int {
+	return &i
+}
+
 func TestSourceFilesWithGlobs(t *testing.T) {
 	tests := []struct {
 		name       string
