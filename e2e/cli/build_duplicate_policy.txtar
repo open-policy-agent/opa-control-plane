@@ -1,5 +1,5 @@
-exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
-stderr '^1/1 bundles built and pushed successfully$'
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --non-interactive
+! stderr .
 ! stdout .
 
 exec tar tf bundles/acme/bundle.tar.gz

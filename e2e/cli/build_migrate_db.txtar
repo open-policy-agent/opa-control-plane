@@ -11,8 +11,8 @@ exec git add .
 exec git commit -m initial-commit
 cd ..
 
-exec $E2E_OPACTL_PREV build --data-dir tmp --apply-migrations
-stderr '^1/1 bundles built and pushed successfully$'
+exec $E2E_OPACTL_PREV build --data-dir tmp --apply-migrations --non-interactive
+! stderr .
 ! stdout .
 
 exec tar tf bundles/a/bundle.tar.gz
