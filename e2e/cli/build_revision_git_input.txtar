@@ -10,8 +10,8 @@ exec git add .
 exec git commit -m initial-commit
 cd ..
 
-exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
-stderr '^1/1 bundles built and pushed successfully$'
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --non-interactive
+! stderr .
 ! stdout .
 
 exec tar xf bundles/hello-world/bundle.tar.gz /.manifest
