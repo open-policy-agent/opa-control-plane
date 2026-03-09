@@ -1,0 +1,50 @@
+cases:
+- note: config with requirements
+  config: |
+        {
+          bundles: {
+            TestSystem: {
+              object_storage: {
+                aws: {
+                  url: {{ .s3_url }},
+                  bucket: test,
+                  key: bundle.tar.gz,
+                  region: mock-region,
+                }
+              },
+              requirements: [{source: TestApp}]
+            }
+          },
+          sources: {
+            TestApp: {
+              files: {
+                "app.rego": {{ base64encode .app_rego }}
+              },
+              requirements: [{source: TestLibrary}]
+            },
+            TestLibrary: {
+              files: {
+                "main.rego": {{ base64encode .lib_rego }}
+              },
+              requirements: [{source: TestLibrary2}]
+            },
+            TestLibrary2: {
+              files: {
+                "lib2.rego": {{ base64encode .lib2_rego }}
+              }
+            }
+          }
+        }
+  content_parameters:
+    app_rego: &app_rego "package app\np := 7"
+    lib_rego: &lib_rego "package main\nmain := data.lib2.foo(data.app.p)"
+    lib2_rego: &lib2_rego "package lib2\nfoo(x) := x"
+  expected_filesystem:
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/database/app.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/database/main.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary2/database/lib2.rego"
+  expected_bundle:
+    rego:
+      TestApp/app.rego: *app_rego
+      TestLibrary/main.rego: *lib_rego
+      TestLibrary2/lib2.rego: *lib2_rego

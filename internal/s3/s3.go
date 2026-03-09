@@ -21,22 +21,18 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	internal_aws "github.com/open-policy-agent/opa-control-plane/internal/aws"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 	"google.golang.org/api/option"
 )
 
 var (
-	_ ObjectStorage = (*AmazonS3)(nil)
-	_ ObjectStorage = (*GCPCloudStorage)(nil)
-	_ ObjectStorage = (*AzureBlobStorage)(nil)
-	_ ObjectStorage = (*FileSystemStorage)(nil)
+	_ ext_os.ObjectStorage = (*AmazonS3)(nil)
+	_ ext_os.ObjectStorage = (*GCPCloudStorage)(nil)
+	_ ext_os.ObjectStorage = (*AzureBlobStorage)(nil)
+	_ ext_os.ObjectStorage = (*FileSystemStorage)(nil)
 )
 
 type (
-	ObjectStorage interface {
-		Upload(ctx context.Context, body io.ReadSeeker, revision string) error
-		Download(ctx context.Context) (io.Reader, error)
-	}
-
 	AmazonS3 struct {
 		bucket   string
 		key      string
@@ -64,7 +60,7 @@ type (
 )
 
 // New creates a new S3 client based on the provided configuration.
-func New(ctx context.Context, c config.ObjectStorage) (ObjectStorage, error) {
+func New(ctx context.Context, c config.ObjectStorage) (ext_os.ObjectStorage, error) {
 	switch {
 	case c.AmazonS3 != nil:
 		// There are two options for authentication to Amazon S3:
@@ -210,7 +206,7 @@ func (e *Error) Error() string {
 // Upload uploads a file to the S3-compatible storage. It computes the SHA256 digest of the file and records that to the object metadata.
 // Relying on object ETag is not if the object is encrypted with SSE-C or SSE-KMS, as the ETag will not be the MD5 hash of the object.
 // With (part) checksums, only parallellizable, less reliable checksums (CRCs) are supported.
-func (s *AmazonS3) Upload(ctx context.Context, body io.ReadSeeker, revision string) error {
+func (s *AmazonS3) Upload(ctx context.Context, body io.ReadSeeker, _ string, revision string, _ int64) error {
 
 	digest, equal, err := s.check(ctx, body)
 	if equal || err != nil {
@@ -279,7 +275,7 @@ func (s *AmazonS3) check(ctx context.Context, body io.Reader) ([]byte, bool, err
 	return digest, output.Metadata["sha256"] == hex.EncodeToString(digest), nil
 }
 
-func (s *GCPCloudStorage) Upload(ctx context.Context, body io.ReadSeeker, revision string) error {
+func (s *GCPCloudStorage) Upload(ctx context.Context, body io.ReadSeeker, _ string, revision string, _ int64) error {
 	w := s.client.Bucket(s.bucket).Object(s.object).NewWriter(ctx)
 	if w.Metadata == nil {
 		w.Metadata = make(map[string]string)
@@ -294,11 +290,11 @@ func (s *GCPCloudStorage) Upload(ctx context.Context, body io.ReadSeeker, revisi
 	return w.Close()
 }
 
-func (*GCPCloudStorage) Download(_ context.Context) (io.Reader, error) {
+func (*GCPCloudStorage) Download(context.Context) (io.Reader, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker, revision string) error {
+func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker, _ string, revision string, _ int64) error {
 	opts := &azblob.UploadStreamOptions{}
 	if revision != "" {
 		opts.Metadata = map[string]*string{
@@ -313,7 +309,7 @@ func (*AzureBlobStorage) Download(context.Context) (io.Reader, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (s *FileSystemStorage) Upload(ctx context.Context, body io.ReadSeeker, _ string) error {
+func (s *FileSystemStorage) Upload(ctx context.Context, body io.ReadSeeker, _ string, _ string, _ int64) error {
 	digest, equal, err := s.check(ctx, body)
 	if equal || err != nil {
 		return err

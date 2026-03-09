@@ -1,0 +1,96 @@
+cases:
+- note: config with git
+  config: |
+        {
+          bundles: {
+            TestSystem: {
+              object_storage: {
+                aws: {
+                  url: {{ .s3_url }},
+                  bucket: test,
+                  key: bundle.tar.gz,
+                  region: mock-region,
+                }
+              },
+              requirements: [
+                {source: TestApp},
+              ]
+            }
+          },
+          sources: {
+            TestApp: {
+              git: {
+                repo: {{ .git_url }},
+                reference: refs/heads/master,
+                path: "app/",
+              },
+              datasources: [
+                {
+                  name: "datasource1",
+                  path: "datasource1",
+                  type: "http",
+                  config: {
+                    url: {{ .http_url }}/datasource1
+                  }
+                }
+              ],
+              files: {
+                "foo.rego": {{ base64encode .foo_rego }}
+              },
+              requirements: [{source: TestLibrary}]
+            },
+            TestLibrary: {
+              git: {
+                repo: {{ .git_url }},
+                reference: refs/heads/master,
+                path: "lib/",
+              },
+              datasources: [
+              {
+                  name: "datasource2",
+                  path: "datasource2",
+                  type: "http",
+                  config: {
+                    url: {{ .http_url }}/datasource2
+                  }
+                }
+              ],
+              files: {
+                "bar.rego": {{ base64encode .bar_rego }}
+              }
+            }
+          }
+        }
+  content_parameters:
+    app_rego: &app_rego "package app\np := data.lib.q"
+    bar_rego: &bar_rego "package lib\ns := true"
+    foo_rego: &foo_rego "package foo"
+    lib_rego: &lib_rego "package lib\nq := data.lib.s"
+    datasource1_json: &datasource1_json '{"key": "value1"}'
+    datasource2_json: &datasource2_json '{"key": "value2"}'
+  git_files:
+    app/app.rego: *app_rego
+    lib/lib.rego: *lib_rego
+  http_endpoints:
+    /datasource1: *datasource1_json
+    /datasource2: *datasource2_json
+  expected_filesystem:
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/database/foo.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/datasources/datasource1/data.json"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/repo/app/app.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/repo/lib/lib.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/database/bar.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/datasources/datasource2/data.json"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/repo/app/app.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/repo/lib/lib.rego"
+  expected_bundle:
+    rego:
+      TestApp2/app.rego: *app_rego
+      TestLibrary/bar.rego: *bar_rego
+      TestApp/foo.rego: *foo_rego
+      TestLibrary2/lib.rego: *lib_rego
+    data: |
+        {
+          "datasource1": {{ .datasource1_json }},
+          "datasource2": {{ .datasource2_json }}
+        }

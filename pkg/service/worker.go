@@ -10,8 +10,8 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
-	"github.com/open-policy-agent/opa-control-plane/internal/s3"
 	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
+	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
 
 var (
@@ -31,7 +31,7 @@ type BundleWorker struct {
 	stackConfigs  config.Stacks
 	synchronizers []sourceSynchronizer
 	sources       []*builder.Source
-	storage       s3.ObjectStorage
+	storage       ext_os.ObjectStorage
 	changed       chan struct{}
 	done          chan struct{}
 	singleShot    bool
@@ -75,7 +75,7 @@ func (worker *BundleWorker) WithSources(sources []*builder.Source) *BundleWorker
 	return worker
 }
 
-func (worker *BundleWorker) WithStorage(storage s3.ObjectStorage) *BundleWorker {
+func (worker *BundleWorker) WithStorage(storage ext_os.ObjectStorage) *BundleWorker {
 	worker.storage = storage
 	return worker
 }
@@ -181,7 +181,8 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	}
 
 	if w.storage != nil {
-		if err := w.storage.Upload(ctx, bytes.NewReader(buffer.Bytes()), resolvedRevision); err != nil {
+		reader := bytes.NewReader(buffer.Bytes())
+		if err := w.storage.Upload(ctx, reader, w.bundleConfig.Name, resolvedRevision, reader.Size()); err != nil {
 			w.log.Warnf("failed to upload bundle %q: %v", w.bundleConfig.Name, err)
 			return w.report(ctx, BuildStatePushFailed, startTime, err)
 		}
