@@ -48,7 +48,7 @@ func TestS3(t *testing.T) {
 	}
 
 	bundle := bytes.NewReader([]byte("bundle content"))
-	err = storage.Upload(ctx, bundle, "")
+	err = storage.Upload(ctx, bundle, "testbundle", "", bundle.Size())
 	if err != nil {
 		t.Fatalf("expected no error while uploading bundle: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestS3WithRevision(t *testing.T) {
 	bundleContent := []byte("bundle content with revision")
 	bundle := bytes.NewReader(bundleContent)
 	revision := "v1.2.3"
-	err = storage.Upload(ctx, bundle, revision)
+	err = storage.Upload(ctx, bundle, "testbundle", revision, bundle.Size())
 	if err != nil {
 		t.Fatalf("expected no error while uploading bundle: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestS3WithoutRevision(t *testing.T) {
 	// Upload a bundle without a revision
 	bundleContent := []byte("bundle content without revision")
 	bundle := bytes.NewReader(bundleContent)
-	err = storage.Upload(ctx, bundle, "")
+	err = storage.Upload(ctx, bundle, "testbundle", "", bundle.Size())
 	if err != nil {
 		t.Fatalf("expected no error while uploading bundle: %v", err)
 	}

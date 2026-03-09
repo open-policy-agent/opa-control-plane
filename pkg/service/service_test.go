@@ -13,7 +13,7 @@ import (
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
-	"github.com/open-policy-agent/opa-control-plane/internal/service"
+	"github.com/open-policy-agent/opa-control-plane/pkg/service"
 )
 
 func TestUnconfiguredSecretHandling(t *testing.T) {

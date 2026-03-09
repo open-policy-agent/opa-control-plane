@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 	"github.com/open-policy-agent/opa/v1/ast"
 	_ "modernc.org/sqlite"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
 	"github.com/open-policy-agent/opa-control-plane/internal/sqlsync"
 	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
+	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
 
 const (
@@ -46,6 +48,7 @@ var (
 
 type Service struct {
 	config         *config.Root
+	rawConfig      []byte
 	persistenceDir string
 	pool           *pool.Pool
 	workers        map[string]*BundleWorker
@@ -60,6 +63,8 @@ type Service struct {
 	noninteractive bool
 	migrateDB      bool
 	initialized    bool
+	storage        ext_os.ObjectStorage
+	secretProvider pkgsync.SecretProvider
 }
 
 type Report struct {
@@ -125,6 +130,12 @@ func (s *Service) WithConfig(config *config.Root) *Service {
 	return s
 }
 
+func (s *Service) WithRawConfig(rawConfig []byte) *Service {
+	s.rawConfig = rawConfig
+	s.database = *s.database.WithRawRootConfig(rawConfig)
+	return s
+}
+
 func (s *Service) WithBuiltinFS(fs fs.FS) *Service {
 	s.builtinFS = fs
 	return s
@@ -152,6 +163,16 @@ func (s *Service) WithNoninteractive(yes bool) *Service {
 
 func (s *Service) WithMigrateDB(yes bool) *Service {
 	s.migrateDB = yes
+	return s
+}
+
+func (s *Service) WithStorage(storage ext_os.ObjectStorage) *Service {
+	s.storage = storage
+	return s
+}
+
+func (s *Service) WithSecretProvider(provider pkgsync.SecretProvider) *Service {
+	s.secretProvider = provider
 	return s
 }
 
@@ -227,6 +248,14 @@ func (s *Service) Ready(context.Context) error {
 func (s *Service) initDB(ctx context.Context) error {
 	bar := progress.New(s.noninteractive, -1, "loading configuration")
 	defer bar.Finish()
+
+	if s.rawConfig != nil {
+		cfg, err := config.Parse(s.rawConfig)
+		if err != nil {
+			return err
+		}
+		s.config = cfg
+	}
 
 	db, err := migrations.New().
 		WithConfig(s.config.Database).
@@ -381,25 +410,30 @@ func (s *Service) launchWorkers(ctx context.Context) {
 					SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
 					SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database"), metadataFields[dep.Name]).
 					SyncDatasources(&syncs, dep.Name, dep.Datasources, join(srcDir, "datasources")).
-					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name]).
+					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name], s.secretProvider).
 					AddRequirements(dep.Requirements)
 
 				sources = append(sources, &src.Source)
 			}
 
-			storage, err := s3.New(ctx, b.ObjectStorage)
-			if err != nil {
-				s.log.Errorf("error creating object storage client: %s", err.Error())
-				failures[b.Name] = Status{State: BuildStateConfigError, Message: fmt.Sprintf("object storage: %v", err)}
-				continue
-			}
-
 			w := NewBundleWorker(bundleDir, b, sourceDefs, stacks, s.log, bar).
 				WithSources(sources).
 				WithSynchronizers(syncs).
-				WithStorage(storage).
 				WithInterval(b.Interval).
 				WithSingleShot(s.singleShot)
+
+			if s.storage != nil {
+				w.WithStorage(s.storage)
+			} else {
+				storage, err := s3.New(ctx, b.ObjectStorage)
+				if err != nil {
+					s.log.Errorf("error creating object storage client: %s", err.Error())
+					failures[b.Name] = Status{State: BuildStateConfigError, Message: fmt.Sprintf("object storage: %v", err)}
+					continue
+				}
+				w.WithStorage(storage)
+			}
+
 			s.pool.Add(w.Execute)
 
 			s.workers[bName] = w
@@ -478,7 +512,7 @@ func (src *source) addFS(fsys fs.FS) {
 	src.Source.AddFS(fsys)
 }
 
-func (src *source) SyncGit(syncs *[]sourceSynchronizer, sourceName string, git config.Git, repoDir string, reqCommit string) *source {
+func (src *source) SyncGit(syncs *[]sourceSynchronizer, sourceName string, git config.Git, repoDir string, reqCommit string, provider pkgsync.SecretProvider) *source {
 	if git.Repo != "" {
 		srcDir := repoDir
 		if git.Path != nil {
@@ -489,7 +523,7 @@ func (src *source) SyncGit(syncs *[]sourceSynchronizer, sourceName string, git c
 			git.Commit = &reqCommit
 		}
 		*syncs = append(*syncs, sourceSynchronizer{
-			sync:       gitsync.New(repoDir, git, sourceName),
+			sync:       gitsync.New(repoDir, git, sourceName).WithSecretProvider(provider),
 			sourceName: sourceName,
 			sourceType: "git",
 		})

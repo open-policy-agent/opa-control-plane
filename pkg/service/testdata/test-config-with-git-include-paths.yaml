@@ -1,0 +1,54 @@
+cases:
+- note: config with git include paths
+  config: |
+        {
+          bundles: {
+            TestSystem: {
+              object_storage: {
+                aws: {
+                  url: {{ .s3_url }},
+                  bucket: test,
+                  key: bundle.tar.gz,
+                  region: mock-region,
+                }
+              },
+              requirements: [
+                {source: TestApp},
+              ]
+            }
+          },
+          sources: {
+            TestApp: {
+              git: {
+                repo: {{ .git_url }},
+                reference: refs/heads/master,
+                included_files: [app/*],
+              },
+              requirements: [
+                {source: TestLibrary},
+              ]
+            },
+            TestLibrary: {
+              git: {
+                repo: {{ .git_url }},
+                reference: refs/heads/master,
+                included_files: [lib/*],
+              },
+            }
+          }
+        }
+  content_parameters:
+    app_rego: &app_rego "package app\np := data.lib.q"
+    lib_rego: &lib_rego "package lib\nq := data.lib.s"
+  git_files:
+    app/app.rego: *app_rego
+    lib/lib.rego: *lib_rego
+  expected_filesystem:
+  - /be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/repo/app/app.rego
+  - /be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/repo/lib/lib.rego
+  - /be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/repo/app/app.rego
+  - /be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestLibrary/repo/lib/lib.rego
+  expected_bundle:
+    rego:
+      TestApp/app/app.rego: *app_rego
+      TestLibrary/lib/lib.rego: *lib_rego

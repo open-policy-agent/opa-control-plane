@@ -17,8 +17,8 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
-	"github.com/open-policy-agent/opa-control-plane/internal/service"
 	"github.com/open-policy-agent/opa-control-plane/libraries"
+	"github.com/open-policy-agent/opa-control-plane/pkg/service"
 )
 
 type buildParams struct {

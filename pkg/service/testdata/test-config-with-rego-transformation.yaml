@@ -1,0 +1,55 @@
+cases:
+- note: config with rego transformation
+  config: |
+        {
+          bundles: {
+            TestSystem: {
+              object_storage: {
+                aws: {
+                  url: {{ .s3_url }},
+                  bucket: test,
+                  key: bundle.tar.gz,
+                  region: mock-region,
+                }
+              },
+              requirements: [{source: TestApp}]
+            }
+          },
+          sources: {
+            TestApp: {
+              datasources: [
+                {
+                  name: "datasource1",
+                  path: "datasource1",
+                  type: "http",
+                  config: {
+                    url: {{ .http_url }}/datasource1
+                  },
+                  transform_query: "data.app.transform"
+                }
+              ],
+              files: {
+                "app/app.rego": {{ base64encode .app_rego }},
+                "foo.rego": {{ base64encode .foo_rego }}
+              }
+            }
+          }
+        }
+  content_parameters:
+    app_rego: &app_rego "package app\ntransform := [ input ]"
+    foo_rego: &foo_rego "package foo"
+    datasource1_json: &datasource1_json '{"key": "value1"}'
+  http_endpoints:
+    /datasource1: *datasource1_json
+  expected_filesystem:
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/database/app/app.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/database/foo.rego"
+  - "/be6f8f637a1ef9d3251dc5ecdeef9871/sources/TestApp/datasources/datasource1/data.json"
+  expected_bundle:
+    rego:
+      TestApp/app/app.rego: *app_rego
+      TestApp/foo.rego: *foo_rego
+    data: |
+        {
+          "datasource1": [{{ .datasource1_json }}]
+        }

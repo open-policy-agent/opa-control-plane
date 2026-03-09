@@ -50,6 +50,7 @@ const SQLiteMemoryOnlyDSN = "file::memory:?cache=shared"
 type Database struct {
 	db            *sql.DB
 	config        *config.Database
+	rawRootConfig []byte
 	kind          int
 	log           *logging.Logger
 	executeTx     func(context.Context, *sql.DB, *sql.TxOptions, func(*sql.Tx) error) error
@@ -111,6 +112,11 @@ func (d *Database) WithConfig(config *config.Database) *Database {
 	return d
 }
 
+func (d *Database) WithRawRootConfig(rawRootConfig []byte) *Database {
+	d.rawRootConfig = rawRootConfig
+	return d
+}
+
 func (d *Database) WithLogger(log *logging.Logger) *Database {
 	d.log = log
 	return d
@@ -127,6 +133,14 @@ func (d *Database) WithAccessFactory(accessFactory ext_authz.AccessFactory) *Dat
 }
 
 func (d *Database) InitDB(ctx context.Context) error {
+	if d.rawRootConfig != nil {
+		cfg, err := config.Parse(d.rawRootConfig)
+		if err != nil {
+			return err
+		}
+		d.config = cfg.Database
+	}
+
 	var err error
 	switch {
 	case d.config != nil && d.config.AWSRDS != nil:
