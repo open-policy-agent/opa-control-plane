@@ -296,6 +296,147 @@ func testGitsyncBranch(t *testing.T, refName string) {
 	}
 }
 
+// TestGitsyncOneShot simulates the reporter's scenario: running in one-shot mode
+// where a new Synchronizer instance is created each time.
+func TestGitsyncOneShot(t *testing.T) {
+	// Create a git repository to use for testing.
+	testRepositoryPath := t.TempDir() + "/testing"
+	repository, err := git.PlainInit(testRepositoryPath, false)
+	if err != nil {
+		t.Fatalf("expected no error while initializing test repository: %v", err)
+	}
+
+	w, err := repository.Worktree()
+	if err != nil {
+		t.Fatalf("expected no error while getting worktree: %v", err)
+	}
+
+	// Create initial commit on main
+	err = os.WriteFile(testRepositoryPath+"/README", []byte("first commit"), 0644)
+	if err != nil {
+		t.Fatalf("expected no error while creating new file: %v", err)
+	}
+
+	_, err = w.Add("README")
+	if err != nil {
+		t.Fatalf("expected no error while adding file to worktree: %v", err)
+	}
+
+	firstCommit, err := w.Commit("first", &git.CommitOptions{Author: &object.Signature{}})
+	if err != nil {
+		t.Fatalf("expected no error while committing changes: %v", err)
+	}
+
+	// Create main branch
+	headRef, err := repository.Head()
+	if err != nil {
+		t.Fatalf("expected no error getting HEAD: %v", err)
+	}
+
+	if err := w.Checkout(&git.CheckoutOptions{
+		Branch: "refs/heads/main",
+		Hash:   headRef.Hash(),
+		Create: true,
+	}); err != nil {
+		t.Fatalf("expected no error creating main branch: %v", err)
+	}
+
+	// Persistent clone directory (simulates service persistence dir)
+	clonedRepositoryPath := t.TempDir() + "/test-repo"
+
+	ref := "refs/heads/main"
+	ctx := t.Context()
+
+	// First one-shot execution: Create synchronizer, execute, discard
+	s1 := gitsync.New(clonedRepositoryPath, config.Git{
+		Repo:      testRepositoryPath,
+		Reference: &ref,
+		Commit:    nil,
+	}, "test-source")
+
+	meta1, err := s1.Execute(ctx)
+	if err != nil {
+		t.Fatalf("expected no error on first execute, got %v", err)
+	}
+
+	if meta1["commit"] != firstCommit.String() {
+		t.Fatalf("expected first commit hash %s, got %s", firstCommit.String(), meta1["commit"])
+	}
+
+	// Verify first commit content
+	data, err := os.ReadFile(clonedRepositoryPath + "/README")
+	if err != nil {
+		t.Fatalf("expected no error while reading file, got: %v", err)
+	}
+
+	if string(data) != "first commit" {
+		t.Fatalf("expected file content to be 'first commit', got: %s", string(data))
+	}
+
+	// Now push a second commit to the main branch (happens between one-shot runs)
+	err = os.WriteFile(testRepositoryPath+"/README", []byte("second commit"), 0644)
+	if err != nil {
+		t.Fatalf("expected no error while creating new file: %v", err)
+	}
+
+	_, err = w.Add("README")
+	if err != nil {
+		t.Fatalf("expected no error while adding file to worktree: %v", err)
+	}
+
+	secondCommit, err := w.Commit("second", &git.CommitOptions{Author: &object.Signature{}})
+	if err != nil {
+		t.Fatalf("expected no error while committing changes: %v", err)
+	}
+
+	t.Logf("Source repo now has second commit: %s", secondCommit.String())
+
+	// Second one-shot execution: Create NEW synchronizer instance, execute
+	// This simulates the service restarting
+	s2 := gitsync.New(clonedRepositoryPath, config.Git{
+		Repo:      testRepositoryPath,
+		Reference: &ref,
+		Commit:    nil,
+	}, "test-source")
+
+	meta2, err := s2.Execute(ctx)
+	if err != nil {
+		t.Fatalf("expected no error on second execute, got %v", err)
+	}
+
+	// This should get the second commit, but doesn't with the buggy code
+	if meta2["commit"] != secondCommit.String() {
+		t.Fatalf("expected second commit hash %s, got %s", secondCommit.String(), meta2["commit"])
+	}
+
+	// Verify file contents were updated
+	data, err = os.ReadFile(clonedRepositoryPath + "/README")
+	if err != nil {
+		t.Fatalf("expected no error while reading file, got: %v", err)
+	}
+
+	if string(data) != "second commit" {
+		t.Fatalf("expected file content to be 'second commit', got: %s", string(data))
+	}
+
+	// Check what the reporter saw: stale refs in the persistence dir
+	// Even though checkout works, refs/remotes/origin/main is stale
+	clonedRepo, err := git.PlainOpen(clonedRepositoryPath)
+	if err != nil {
+		t.Fatalf("expected no error opening cloned repo: %v", err)
+	}
+
+	originMainRef, err := clonedRepo.Reference(plumbing.ReferenceName("refs/remotes/origin/main"), true)
+	if err != nil {
+		t.Fatalf("expected refs/remotes/origin/main to exist: %v", err)
+	}
+
+	if originMainRef.Hash().String() != secondCommit.String() {
+		t.Fatalf("BUG (reporter's observation): refs/remotes/origin/main in persistence dir is STALE, points to %s but should point to %s",
+			originMainRef.Hash().String(), secondCommit.String())
+	}
+}
+
 // TestGitsyncLocalTag tests syncing to a git tag reference and updating that same tag (force fetch).
 func TestGitsyncLocalTag(t *testing.T) {
 	testRepositoryPath := t.TempDir() + "/testing"
