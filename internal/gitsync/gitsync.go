@@ -244,8 +244,8 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {
 		Auth:       authMethod,
 		Force:      true,
 		RefSpecs: []gitconfig.RefSpec{
-			gitconfig.RefSpec(fmt.Sprintf("+refs/heads/*:refs/remotes/%s/refs/heads/*", remote)),
-			gitconfig.RefSpec(fmt.Sprintf("+refs/tags/*:refs/remotes/%s/refs/tags/*", remote)),
+			gitconfig.RefSpec(fmt.Sprintf("+refs/heads/*:refs/remotes/%s/*", remote)),
+			gitconfig.RefSpec("+refs/tags/*:refs/tags/*"),
 		},
 	}); err != nil && err != git.NoErrAlreadyUpToDate {
 		return false, "", err
@@ -258,8 +258,16 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {
 	case s.config.Commit != nil:
 		opts.Hash = plumbing.NewHash(*s.config.Commit)
 	case s.config.Reference != nil:
-		ref := fmt.Sprintf("refs/remotes/%s/%s", remote, *s.config.Reference)
-		opts.Branch = plumbing.ReferenceName(ref)
+		ref := *s.config.Reference
+		if after, ok := strings.CutPrefix(ref, "refs/heads/"); ok {
+			opts.Branch = plumbing.NewRemoteReferenceName(remote, after)
+		} else if strings.HasPrefix(ref, "refs/tags/") {
+			// Tags are stored locally as refs/tags/*, so keep the full path
+			opts.Branch = plumbing.ReferenceName(ref)
+		} else {
+			// Short name like "main" -> refs/remotes/origin/main
+			opts.Branch = plumbing.NewRemoteReferenceName(remote, ref)
+		}
 	}
 
 	if err := w.Checkout(opts); err != nil {
