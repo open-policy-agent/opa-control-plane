@@ -20,7 +20,7 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "ocp_bundle_build_duration_seconds",
 			Help:    "Bundle build duration in seconds",
-			Buckets: []float64{0.1, 0.2, 0.5, 1, 1.5, 2, 5, 10, 30, 60},
+			Buckets: []float64{0.5, 1, 1.5},
 		},
 		[]string{"bundle"},
 	)

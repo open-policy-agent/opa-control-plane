@@ -20,7 +20,7 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "ocp_git_sync_duration_seconds",
 			Help:    "Git sync duration in seconds",
-			Buckets: []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.5, 2, 5, 10, 30, 60},
+			Buckets: []float64{0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.5},
 		},
 		[]string{"source", "repo"},
 	)
