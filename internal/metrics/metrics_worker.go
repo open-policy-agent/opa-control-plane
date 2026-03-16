@@ -5,32 +5,63 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/open-policy-agent/opa-control-plane/internal/config"
 )
 
 var (
-	bundleBuildCount = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "ocp_bundle_build_count_total",
-			Help: "Number of times a bundle build has been performed and its state",
-		},
-		[]string{"bundle", "state"},
-	)
+	bundleBuildCount    *prometheus.CounterVec
+	bundleBuildDuration *prometheus.HistogramVec
+
+	defaultWorkerBuckets = []float64{0.1, 0.2, 0.5, 1, 1.5, 2, 5, 10, 30, 60}
+)
+
+func initWorkerMetrics(cfg *config.MetricsConfig) {
+	var wcfg *config.WorkerMetrics
+	if cfg != nil {
+		wcfg = cfg.Worker
+	}
+
+	if wcfg == nil || isEnabled(wcfg.GetCountEnabled()) {
+		bundleBuildCount = promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "ocp_bundle_build_count_total",
+				Help: "Number of times a bundle build has been performed and its state",
+			},
+			[]string{"bundle", "state"},
+		)
+	}
+
+	var hcfg *config.HistogramConfig
+	if wcfg != nil {
+		hcfg = wcfg.BundleBuildDuration
+	}
+
+	if hcfg != nil && !isEnabled(hcfg.Enabled) {
+		return
+	}
 
 	bundleBuildDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ocp_bundle_build_duration_seconds",
 			Help:    "Bundle build duration in seconds",
-			Buckets: []float64{0.1, 0.2, 0.5, 1, 1.5, 2, 5, 10, 30, 60},
+			Buckets: buckets(hcfg.GetBuckets(), defaultWorkerBuckets),
 		},
 		[]string{"bundle"},
 	)
-)
+}
 
 func BundleBuildFailed(bundle string, state string) {
-	bundleBuildCount.WithLabelValues(bundle, state).Inc()
+	if bundleBuildCount != nil {
+		bundleBuildCount.WithLabelValues(bundle, state).Inc()
+	}
 }
 
 func BundleBuildSucceeded(bundle string, state string, startTime time.Time) {
-	bundleBuildCount.WithLabelValues(bundle, state).Inc()
-	bundleBuildDuration.WithLabelValues(bundle).Observe(float64(time.Since(startTime).Seconds()))
+	if bundleBuildCount != nil {
+		bundleBuildCount.WithLabelValues(bundle, state).Inc()
+	}
+	if bundleBuildDuration != nil {
+		bundleBuildDuration.WithLabelValues(bundle).Observe(float64(time.Since(startTime).Seconds()))
+	}
 }
