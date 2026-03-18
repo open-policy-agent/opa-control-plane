@@ -40,6 +40,8 @@ func Migrations(dialect string) (fs.FS, error) {
 		crossTablesWithIDPKeys(19, dialect),
 		addRequirementsOptions(20, dialect), // adds 3, next is 23.
 		addBundlesRevision(23, dialect),
+		addDatasourcesCredentialsName(24, dialect),
+		addSourcesGitCredentialsName(25, dialect),
 	), nil
 }
 

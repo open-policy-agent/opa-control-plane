@@ -23,6 +23,34 @@ func addBundlesRevision(offset int, dialect string) fs.FS {
 	})
 }
 
+func addSourcesGitCredentialsName(offset int, dialect string) fs.FS {
+	var stmt string
+	switch dialect {
+	case "sqlite", "postgresql", "cockroachdb":
+		stmt = `ALTER TABLE sources ADD git_credentials_name TEXT`
+	case "mysql":
+		stmt = `ALTER TABLE sources ADD git_credentials_name VARCHAR(255)`
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_sources_git_credentials_name.up.sql", offset): stmt,
+	})
+}
+
+func addDatasourcesCredentialsName(offset int, dialect string) fs.FS {
+	var stmt string
+	switch dialect {
+	case "sqlite", "postgresql", "cockroachdb":
+		stmt = `ALTER TABLE sources_datasources ADD credentials_name TEXT`
+	case "mysql":
+		stmt = `ALTER TABLE sources_datasources ADD credentials_name VARCHAR(255)`
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_datasources_credentials_name.up.sql", offset): stmt,
+	})
+}
+
 func addRequirementsOptions(offset int, dialect string) fs.FS {
 	var stmtBundles, stmtSources, stmtStacks string
 	switch dialect {

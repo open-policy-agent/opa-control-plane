@@ -397,7 +397,7 @@ func tlsConfig(ctx context.Context, cred *config.SecretRef, dsn *tls.Config) (*t
 	if err != nil {
 		return nil, err
 	}
-	creds, ok := value.(config.SecretTLSCert)
+	creds, ok := value.(*config.SecretTLSCert)
 	if !ok {
 		return nil, fmt.Errorf("unsupported secret type '%T' for SQL credentials", value)
 	}
@@ -987,7 +987,8 @@ func (d *Database) ListSources(ctx context.Context, principal, tenant string, op
 	sources.gitcommit,
 	sources.path,
 	sources.git_included_files,
-	sources.git_excluded_files
+	sources.git_excluded_files,
+	sources.git_credentials_name
 FROM sources
 JOIN tenants ON tenants.id = sources.tenant_id
 WHERE (` + conditions + ") AND tenants.name = " + d.arg(len(args))
@@ -1042,6 +1043,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			builtin                                          *string
 			repo                                             string
 			ref, gitCommit, path, includePaths, excludePaths *string
+			gitCredentialsName                               *string
 			secretName, secretRefType, secretValue           *string
 			requirementName, requirementCommit               *string
 			reqPath, reqPrefix                               sql.Null[string]
@@ -1063,6 +1065,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 				&row.path,
 				&row.includePaths,
 				&row.excludePaths,
+				&row.gitCredentialsName,
 				&row.secretName,
 				&row.secretRefType,
 				&row.secretValue,
@@ -1117,6 +1120,9 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 					}
 				}
 				src.Git.Credentials = s.Ref()
+			} else if row.gitCredentialsName != nil {
+				s := config.Secret{Name: *row.gitCredentialsName}
+				src.Git.Credentials = s.Ref()
 			}
 
 			if row.requirementName != nil {
@@ -1163,6 +1169,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 		sources_datasources.type,
 		sources_datasources.config,
 		sources_datasources.transform_query,
+		sources_datasources.credentials_name,
 	    secrets.name,
 	    secrets.value AS secret_value
 	FROM
@@ -1180,8 +1187,8 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 
 		for rows2.Next() {
 			var name, source_name, path, type_, configuration, transformQuery string
-			var secretName, secretValue sql.NullString
-			if err := rows2.Scan(&name, &source_name, &path, &type_, &configuration, &transformQuery, &secretName, &secretValue); err != nil {
+			var credentialsName, secretName, secretValue sql.NullString
+			if err := rows2.Scan(&name, &source_name, &path, &type_, &configuration, &transformQuery, &credentialsName, &secretName, &secretValue); err != nil {
 				return nil, "", err
 			}
 
@@ -1201,6 +1208,10 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 				if err := json.Unmarshal([]byte(secretValue.String), &s.Value); err != nil {
 					return nil, "", err
 				}
+				datasource.Credentials = s.Ref()
+			} else if credentialsName.Valid {
+				// Secret not in DB but credential name preserved — will be resolved by secret provider at sync time
+				s := config.Secret{Name: credentialsName.String}
 				datasource.Credentials = s.Ref()
 			}
 
@@ -1683,21 +1694,29 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 			return err
 		}
 
-		id, err := d.upsert(ctx, tx, tenant, "sources", []string{"name", "builtin", "repo", "ref", "gitcommit", "path", "git_included_files", "git_excluded_files"}, []string{"name"},
-			source.Name, source.Builtin, source.Git.Repo, source.Git.Reference, source.Git.Commit, source.Git.Path, string(includedFiles), string(excludedFiles))
+		var gitCredentialsName *string
+		if source.Git.Credentials != nil {
+			gitCredentialsName = &source.Git.Credentials.Name
+		}
+
+		id, err := d.upsert(ctx, tx, tenant, "sources", []string{"name", "builtin", "repo", "ref", "gitcommit", "path", "git_included_files", "git_excluded_files", "git_credentials_name"}, []string{"name"},
+			source.Name, source.Builtin, source.Git.Repo, source.Git.Reference, source.Git.Commit, source.Git.Path, string(includedFiles), string(excludedFiles), gitCredentialsName)
 		if err != nil {
 			return err
 		}
 
 		if source.Git.Credentials != nil {
 			secretID, err := d.lookupID(ctx, tx, tenant, "secrets", source.Git.Credentials.Name)
-			if err != nil {
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return fmt.Errorf("lookup id of secret %s: %w", source.Git.Credentials.Name, err)
 			}
-			if err := d.upsertRel(ctx, tx, "sources_secrets", []string{"source_id", "secret_id", "ref_type"}, []string{"source_id", "secret_id"},
-				id, secretID, "git_credentials"); err != nil {
-				return fmt.Errorf("upsert of secret link %s: %w", source.Git.Credentials.Name, err)
+			if err == nil {
+				if err := d.upsertRel(ctx, tx, "sources_secrets", []string{"source_id", "secret_id", "ref_type"}, []string{"source_id", "secret_id"},
+					id, secretID, "git_credentials"); err != nil {
+					return fmt.Errorf("upsert of secret link %s: %w", source.Git.Credentials.Name, err)
+				}
 			}
+			// If secret not found in DB (sql.ErrNoRows), skip — it will be resolved by the secret provider at sync time
 		}
 
 		// Upsert data sources
@@ -1708,16 +1727,21 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 			}
 
 			var secret sql.NullInt64
+			var credentialsName sql.NullString
 			if datasource.Credentials != nil {
+				credentialsName.String, credentialsName.Valid = datasource.Credentials.Name, true
 				secretID, err := d.lookupID(ctx, tx, tenant, "secrets", datasource.Credentials.Name)
-				if err != nil {
-					return err
+				if err != nil && !errors.Is(err, sql.ErrNoRows) {
+					return fmt.Errorf("lookup id of secret %s: %w", datasource.Credentials.Name, err)
 				}
-				secret.Int64, secret.Valid = int64(secretID), true
+				if err == nil {
+					secret.Int64, secret.Valid = int64(secretID), true
+				}
+				// If secret not found in DB (sql.ErrNoRows), skip — it will be resolved by the secret provider at sync time
 			}
-			if err := d.upsertRel(ctx, tx, "sources_datasources", []string{"source_id", "name", "type", "path", "config", "transform_query", "secret_id"},
+			if err := d.upsertRel(ctx, tx, "sources_datasources", []string{"source_id", "name", "type", "path", "config", "transform_query", "secret_id", "credentials_name"},
 				[]string{"source_id", "name"},
-				id, datasource.Name, datasource.Type, datasource.Path, string(bs), datasource.TransformQuery, secret); err != nil {
+				id, datasource.Name, datasource.Type, datasource.Path, string(bs), datasource.TransformQuery, secret, credentialsName); err != nil {
 				return fmt.Errorf("upsert of datasource link %s: %w", datasource.Name, err)
 			}
 		}
