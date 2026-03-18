@@ -479,6 +479,99 @@ func TestDatabase(t *testing.T) {
 					DeleteSecret("secret1", false). // in use
 					DeleteSecret("secret2", true).  // unused
 					GetSecret("secret2", nil),
+				newTestCase("upsert source with git credentials not in DB").
+					UpsertSource(&config.Source{
+						Name: "git-ext-creds",
+						Git: config.Git{
+							Repo:        "https://github.com/example/repo",
+							Credentials: (&config.Secret{Name: "provider-only-git-secret"}).Ref(),
+						},
+					}).
+					GetSource("git-ext-creds", &config.Source{
+						Name: "git-ext-creds",
+						Git: config.Git{
+							Credentials: (&config.Secret{Name: "provider-only-git-secret"}).Ref(),
+						},
+					}),
+				newTestCase("upsert source with datasource credentials not in DB").
+					UpsertSource(&config.Source{
+						Name: "ds-ext-creds",
+						Datasources: config.Datasources{
+							{
+								Name: "http-ds",
+								Path: "data/http",
+								Type: "http",
+								Config: map[string]any{
+									"url": "https://example.com/data",
+								},
+								Credentials: (&config.Secret{Name: "provider-only-http-secret"}).Ref(),
+							},
+						},
+					}).
+					GetSource("ds-ext-creds", &config.Source{
+						Name: "ds-ext-creds",
+						Datasources: config.Datasources{
+							{
+								Name: "http-ds",
+								Path: "data/http",
+								Type: "http",
+								Config: map[string]any{
+									"url": "https://example.com/data",
+								},
+								Credentials: (&config.Secret{Name: "provider-only-http-secret"}).Ref(),
+							},
+						},
+					}),
+				newTestCase("upsert source with git credentials in DB").
+					UpsertSource(&config.Source{
+						Name: "git-db-creds",
+						Git: config.Git{
+							Repo:        "https://github.com/example/repo2",
+							Credentials: root.Secrets["secret1"].Ref(),
+						},
+					}).
+					GetSource("git-db-creds", &config.Source{
+						Name: "git-db-creds",
+						Git: config.Git{
+							Credentials: root.Secrets["secret1"].Ref(),
+						},
+					}),
+				newTestCase("upsert source with combined git + datasource credentials not in DB").
+					UpsertSource(&config.Source{
+						Name: "combined-ext-creds",
+						Git: config.Git{
+							Repo:        "https://github.com/example/combined",
+							Credentials: (&config.Secret{Name: "ext-git-cred"}).Ref(),
+						},
+						Datasources: config.Datasources{
+							{
+								Name: "ds1",
+								Path: "data/ds1",
+								Type: "http",
+								Config: map[string]any{
+									"url": "https://example.com/ds1",
+								},
+								Credentials: (&config.Secret{Name: "ext-ds-cred"}).Ref(),
+							},
+						},
+					}).
+					GetSource("combined-ext-creds", &config.Source{
+						Name: "combined-ext-creds",
+						Git: config.Git{
+							Credentials: (&config.Secret{Name: "ext-git-cred"}).Ref(),
+						},
+						Datasources: config.Datasources{
+							{
+								Name: "ds1",
+								Path: "data/ds1",
+								Type: "http",
+								Config: map[string]any{
+									"url": "https://example.com/ds1",
+								},
+								Credentials: (&config.Secret{Name: "ext-ds-cred"}).Ref(),
+							},
+						},
+					}),
 			}
 			for _, test := range tests {
 				t.Run(test.note, func(t *testing.T) {
@@ -584,6 +677,15 @@ func (tc *testCase) SourcesPutRequirements(id string, requirements config.Requir
 			Name:         id,
 			Requirements: requirements,
 		}); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+	return tc
+}
+
+func (tc *testCase) UpsertSource(source *config.Source) *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		if err := db.UpsertSource(ctx, "admin", tenant, source); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})

@@ -244,7 +244,7 @@ func (s *Secret) Typed(context.Context) (any, error) {
 			return nil, err
 		}
 
-		return value, nil
+		return &value, nil
 
 	case "api_key":
 		var value SecretAPIKey
