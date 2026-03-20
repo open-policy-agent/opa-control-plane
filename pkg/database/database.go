@@ -1,9 +1,8 @@
 // Package database provides a public API for OPA Control Plane database operations.
 //
 // This package wraps the internal database layer, exposing Bundle, Source, and
-// Source Data CRUD operations using JSON ([]byte) as the data boundary. This
-// follows the same pattern as pkg/gitsync and pkg/httpsync: external consumers
-// pass generic data types, and the wrapper handles serialization internally.
+// Source Data CRUD operations using typed config structs. External consumers
+// work directly with config.Bundle and config.Source types.
 //
 // Example usage:
 //
@@ -15,29 +14,28 @@
 //	}
 //	defer db.CloseDB()
 //
-//	// Upsert a bundle from JSON
-//	bundleJSON := []byte(`{"name": "my-bundle", "requirements": [{"source": "my-source"}]}`)
-//	if err := db.UpsertBundle(ctx, "admin", "default", bundleJSON); err != nil {
+//	// Upsert a bundle
+//	bundle := &config.Bundle{Name: "my-bundle", Requirements: config.Requirements{{Source: ptr("my-source")}}}
+//	if err := db.UpsertBundle(ctx, "admin", "default", bundle); err != nil {
 //	    log.Fatal(err)
 //	}
 //
-//	// Get a bundle as JSON
-//	data, err := db.GetBundle(ctx, "admin", "default", "my-bundle")
+//	// Get a bundle
+//	b, err := db.GetBundle(ctx, "admin", "default", "my-bundle")
 package database
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"iter"
 
 	jp "github.com/evanphx/json-patch/v5"
 
-	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	internaldatabase "github.com/open-policy-agent/opa-control-plane/internal/database"
 	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
+	"github.com/open-policy-agent/opa-control-plane/pkg/config"
 )
 
 // Re-export sentinel errors.
@@ -55,7 +53,7 @@ func invalidJSON(typeName string, err error) error {
 	return fmt.Errorf("%w: failed to decode %s: %v", ErrInvalidJSON, typeName, err)
 }
 
-// Database wraps the internal database layer, providing a JSON-based API
+// Database wraps the internal database layer, providing a typed API
 // for external consumers.
 type Database struct {
 	db *internaldatabase.Database
@@ -106,43 +104,25 @@ func (d *Database) Dialect() (string, error) {
 
 // Bundle CRUD
 
-// GetBundle retrieves a bundle by name and returns it as JSON.
-func (d *Database) GetBundle(ctx context.Context, principal, tenant, name string) ([]byte, error) {
-	bundle, err := d.db.GetBundle(ctx, principal, tenant, name)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(bundle)
+// GetBundle retrieves a bundle by name.
+func (d *Database) GetBundle(ctx context.Context, principal, tenant, name string) (*config.Bundle, error) {
+	return d.db.GetBundle(ctx, principal, tenant, name)
 }
 
-// ListBundles lists bundles for a tenant, returning a JSON array and the next cursor.
-func (d *Database) ListBundles(ctx context.Context, principal, tenant string, limit int, cursor string) ([]byte, string, error) {
-	bundles, nextCursor, err := d.db.ListBundles(ctx, principal, tenant, internaldatabase.ListOptions{
+// ListBundles lists bundles for a tenant, returning the bundles and the next cursor.
+func (d *Database) ListBundles(ctx context.Context, principal, tenant string, limit int, cursor string) ([]*config.Bundle, string, error) {
+	return d.db.ListBundles(ctx, principal, tenant, internaldatabase.ListOptions{
 		Limit:  limit,
 		Cursor: cursor,
 	})
-	if err != nil {
-		return nil, "", err
-	}
-	data, err := json.Marshal(bundles)
-	if err != nil {
-		return nil, "", err
-	}
-	return data, nextCursor, nil
 }
 
-// UpsertBundle creates or updates a bundle from JSON.
-//
-// The JSON must contain at least a "name" field. See internal/config.Bundle for the full schema.
-func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, bundleJSON []byte) error {
-	var bundle config.Bundle
-	if err := json.Unmarshal(bundleJSON, &bundle); err != nil {
-		return invalidJSON("bundle", err)
-	}
+// UpsertBundle creates or updates a bundle.
+func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, bundle *config.Bundle) error {
 	if bundle.Name == "" {
-		return invalidJSON("bundle", errors.New("name is required"))
+		return errors.New("bundle name is required")
 	}
-	return d.db.UpsertBundle(ctx, principal, tenant, &bundle)
+	return d.db.UpsertBundle(ctx, principal, tenant, bundle)
 }
 
 // DeleteBundle deletes a bundle by name.
@@ -152,43 +132,25 @@ func (d *Database) DeleteBundle(ctx context.Context, principal, tenant, name str
 
 // Source CRUD
 
-// GetSource retrieves a source by name and returns it as JSON.
-func (d *Database) GetSource(ctx context.Context, principal, tenant, name string) ([]byte, error) {
-	source, err := d.db.GetSource(ctx, principal, tenant, name)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(source)
+// GetSource retrieves a source by name.
+func (d *Database) GetSource(ctx context.Context, principal, tenant, name string) (*config.Source, error) {
+	return d.db.GetSource(ctx, principal, tenant, name)
 }
 
-// ListSources lists sources for a tenant, returning a JSON array and the next cursor.
-func (d *Database) ListSources(ctx context.Context, principal, tenant string, limit int, cursor string) ([]byte, string, error) {
-	sources, nextCursor, err := d.db.ListSources(ctx, principal, tenant, internaldatabase.ListOptions{
+// ListSources lists sources for a tenant, returning the sources and the next cursor.
+func (d *Database) ListSources(ctx context.Context, principal, tenant string, limit int, cursor string) ([]*config.Source, string, error) {
+	return d.db.ListSources(ctx, principal, tenant, internaldatabase.ListOptions{
 		Limit:  limit,
 		Cursor: cursor,
 	})
-	if err != nil {
-		return nil, "", err
-	}
-	data, err := json.Marshal(sources)
-	if err != nil {
-		return nil, "", err
-	}
-	return data, nextCursor, nil
 }
 
-// UpsertSource creates or updates a source from JSON.
-//
-// The JSON must contain at least a "name" field. See internal/config.Source for the full schema.
-func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, sourceJSON []byte) error {
-	var source config.Source
-	if err := json.Unmarshal(sourceJSON, &source); err != nil {
-		return invalidJSON("source", err)
-	}
+// UpsertSource creates or updates a source.
+func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, source *config.Source) error {
 	if source.Name == "" {
-		return invalidJSON("source", errors.New("name is required"))
+		return errors.New("source name is required")
 	}
-	return d.db.UpsertSource(ctx, principal, tenant, &source)
+	return d.db.UpsertSource(ctx, principal, tenant, source)
 }
 
 // DeleteSource deletes a source by name.

@@ -228,8 +228,12 @@ func TestPruneConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !reflect.DeepEqual(expRoot, root) {
-		t.Fatal("expected root differed from pruned root")
+	// Compare via JSON to ignore unexported fields (e.g. SecretRef.resolve closures
+	// which cannot be compared with reflect.DeepEqual).
+	expJSON, _ := json.Marshal(expRoot)
+	gotJSON, _ := json.Marshal(root)
+	if !reflect.DeepEqual(json.RawMessage(expJSON), json.RawMessage(gotJSON)) {
+		t.Fatalf("expected root differed from pruned root\nexpected: %s\ngot:      %s", expJSON, gotJSON)
 	}
 }
 

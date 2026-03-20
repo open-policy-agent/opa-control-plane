@@ -40,30 +40,6 @@ func ReflectSchema() ([]byte, error) {
 	return json.MarshalIndent(s, "", "  ")
 }
 
-func (Duration) PrepareJSONSchema(schema *schemareflector.Schema) error {
-	schema.Type = nil
-	schema.AddType(schemareflector.String)
-	return nil
-}
-
-func (*SecretRef) PrepareJSONSchema(schema *schemareflector.Schema) error {
-	schema.Type = nil
-	schema.AddType(schemareflector.String)
-	return nil
-}
-
-// We do this so that the following YAML config is considered valid:
-//
-//	sources:
-//	  empty-source:
-//
-// This would be desirable when you want a source to only be there for
-// PUT data updates.
-func (*Source) PrepareJSONSchema(schema *schemareflector.Schema) error {
-	schema.AddType(schemareflector.Null)
-	return nil
-}
-
 func (*Selector) PrepareJSONSchema(schema *schemareflector.Schema) error {
 	str := schemareflector.String.ToSchemaOrBool()
 
