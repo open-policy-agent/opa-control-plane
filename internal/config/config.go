@@ -3,26 +3,47 @@ package config
 import (
 	"cmp"
 	"context"
-	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
 	"iter"
 	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"sort"
-	"time"
 
 	"github.com/gobwas/glob"
 	"github.com/goccy/go-yaml"
 
-	internalfs "github.com/open-policy-agent/opa-control-plane/internal/fs"
-	internalutil "github.com/open-policy-agent/opa-control-plane/internal/util"
 	extconfig "github.com/open-policy-agent/opa-control-plane/pkg/config"
+	internalutil "github.com/open-policy-agent/opa-control-plane/pkg/util"
+)
+
+// Type aliases for types now defined in pkg/config. These allow internal code
+// to continue using the short names (e.g. config.Bundle) while the canonical
+// definitions live in the public package.
+type (
+	Bundle            = extconfig.Bundle
+	Source            = extconfig.Source
+	Sources           = extconfig.Sources
+	Labels            = extconfig.Labels
+	Duration          = extconfig.Duration
+	Options           = extconfig.Options
+	Optimization      = extconfig.Optimization
+	ObjectStorage     = extconfig.ObjectStorage
+	AmazonS3          = extconfig.AmazonS3
+	GCPCloudStorage   = extconfig.GCPCloudStorage
+	AzureBlobStorage  = extconfig.AzureBlobStorage
+	FileSystemStorage = extconfig.FileSystemStorage
+	StringSet         = extconfig.StringSet
+	Requirements      = extconfig.Requirements
+	Files             = extconfig.Files
+	Git               = extconfig.Git
+	Datasource        = extconfig.Datasource
+	Datasources       = extconfig.Datasources
+	SecretRef         = extconfig.SecretRef
+	Requirement       = extconfig.Requirement
+	GitRequirement    = extconfig.GitRequirement
 )
 
 // Internal configuration data structures for OPA Control Plane.
@@ -110,6 +131,17 @@ func (r *Root) Unmarshal() error {
 	return r.unmarshal(r)
 }
 
+// wireSecret configures a SecretRef to resolve using the given Secret.
+func wireSecret(ref *SecretRef, secret *Secret) {
+	if ref == nil || secret == nil {
+		return
+	}
+	s := secret // capture for closure
+	ref.SetResolver(func(ctx context.Context) (any, error) {
+		return s.Typed(ctx)
+	})
+}
+
 func (*Root) unmarshal(raw *Root) error {
 	for name := range raw.Tokens {
 		raw.Tokens[name] = cmp.Or(raw.Tokens[name], &Token{})
@@ -125,13 +157,13 @@ func (*Root) unmarshal(raw *Root) error {
 		raw.Bundles[name] = cmp.Or(raw.Bundles[name], &Bundle{})
 		raw.Bundles[name].Name = name
 		if raw.Bundles[name].ObjectStorage.AmazonS3 != nil && raw.Bundles[name].ObjectStorage.AmazonS3.Credentials != nil {
-			raw.Bundles[name].ObjectStorage.AmazonS3.Credentials.value = raw.Secrets[raw.Bundles[name].ObjectStorage.AmazonS3.Credentials.Name]
+			wireSecret(raw.Bundles[name].ObjectStorage.AmazonS3.Credentials, raw.Secrets[raw.Bundles[name].ObjectStorage.AmazonS3.Credentials.Name])
 		}
 		if raw.Bundles[name].ObjectStorage.AzureBlobStorage != nil && raw.Bundles[name].ObjectStorage.AzureBlobStorage.Credentials != nil {
-			raw.Bundles[name].ObjectStorage.AzureBlobStorage.Credentials.value = raw.Secrets[raw.Bundles[name].ObjectStorage.AzureBlobStorage.Credentials.Name]
+			wireSecret(raw.Bundles[name].ObjectStorage.AzureBlobStorage.Credentials, raw.Secrets[raw.Bundles[name].ObjectStorage.AzureBlobStorage.Credentials.Name])
 		}
 		if raw.Bundles[name].ObjectStorage.GCPCloudStorage != nil && raw.Bundles[name].ObjectStorage.GCPCloudStorage.Credentials != nil {
-			raw.Bundles[name].ObjectStorage.GCPCloudStorage.Credentials.value = raw.Secrets[raw.Bundles[name].ObjectStorage.GCPCloudStorage.Credentials.Name]
+			wireSecret(raw.Bundles[name].ObjectStorage.GCPCloudStorage.Credentials, raw.Secrets[raw.Bundles[name].ObjectStorage.GCPCloudStorage.Credentials.Name])
 		}
 	}
 
@@ -139,7 +171,7 @@ func (*Root) unmarshal(raw *Root) error {
 		raw.Sources[name] = cmp.Or(raw.Sources[name], &Source{})
 		raw.Sources[name].Name = name
 		if raw.Sources[name].Git.Credentials != nil {
-			raw.Sources[name].Git.Credentials.value = raw.Secrets[raw.Sources[name].Git.Credentials.Name]
+			wireSecret(raw.Sources[name].Git.Credentials, raw.Secrets[raw.Sources[name].Git.Credentials.Name])
 		}
 	}
 
@@ -150,10 +182,10 @@ func (*Root) unmarshal(raw *Root) error {
 
 	if raw.Database != nil {
 		if raw.Database.AWSRDS != nil && raw.Database.AWSRDS.Credentials != nil {
-			raw.Database.AWSRDS.Credentials.value = raw.Secrets[raw.Database.AWSRDS.Credentials.Name]
+			wireSecret(raw.Database.AWSRDS.Credentials, raw.Secrets[raw.Database.AWSRDS.Credentials.Name])
 		}
 		if raw.Database.SQL != nil && raw.Database.SQL.Credentials != nil {
-			raw.Database.SQL.Credentials.value = raw.Secrets[raw.Database.SQL.Credentials.Name]
+			wireSecret(raw.Database.SQL.Credentials, raw.Secrets[raw.Database.SQL.Credentials.Name])
 		}
 	}
 
@@ -246,305 +278,6 @@ func Validate(data []byte) error {
 	return rootSchema.Validate(config)
 }
 
-type Optimization struct {
-	Level int `json:"level,omitzero" enum:"0,1,2"`
-
-	_ struct{} `additionalProperties:"false"`
-}
-
-type Options struct {
-	NoDefaultStackMount bool          `json:"no_default_stack_mount"`
-	Optimization        *Optimization `json:"optimization,omitempty"`
-	Target              string        `json:"target,omitzero" enum:"rego,ir,plan,wasm"`
-
-	_ struct{} `additionalProperties:"false"`
-}
-
-func (o Options) Empty() bool {
-	return o == Options{}
-}
-
-// Bundle defines the configuration for an OPA Control Plane Bundle.
-type Bundle struct {
-	Name          string        `json:"name"`
-	Labels        Labels        `json:"labels,omitempty"`
-	Revision      string        `json:"revision,omitempty"`
-	ObjectStorage ObjectStorage `json:"object_storage,omitzero"`
-	Requirements  Requirements  `json:"requirements,omitempty"`
-	ExcludedFiles StringSet     `json:"excluded_files,omitempty"`
-	Interval      Duration      `json:"rebuild_interval,omitzero"`
-	Options       Options       `json:"options,omitzero"`
-
-	_ struct{} `additionalProperties:"false"`
-}
-
-// Instead of marshaling and unmarshaling as int64 it uses strings, like "5m" or "0.5s".
-type Duration time.Duration
-
-func (d Duration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(d.String())
-}
-
-func (d *Duration) UnmarshalJSON(data []byte) error {
-	var str string
-	if err := json.Unmarshal(data, &str); err != nil {
-		return err
-	}
-	val, err := time.ParseDuration(str)
-	*d = Duration(val)
-	return err
-}
-
-func (d *Duration) UnmarshalYAML(bs []byte) error {
-	var s string
-	if err := yaml.Unmarshal(bs, &s); err != nil {
-		return err
-	}
-	val, err := time.ParseDuration(s)
-	*d = Duration(val)
-	return err
-}
-
-func (d Duration) String() string {
-	return time.Duration(d).String()
-}
-
-type Labels map[string]string
-
-type Requirement = extconfig.Requirement
-
-type GitRequirement = extconfig.GitRequirement
-
-type Requirements []Requirement
-
-func (a Requirements) Equal(b Requirements) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	// Ordering of requirements does not matter, so we sort copies before comparing if
-	// the slices have more than one element.
-	if len(a) > 1 {
-		a = slices.Clone(a)
-		slices.SortFunc(a, Requirement.Compare)
-	}
-	if len(b) > 1 {
-		b = slices.Clone(b)
-		slices.SortFunc(b, Requirement.Compare)
-	}
-
-	return slices.EqualFunc(a, b, Requirement.Equal)
-}
-
-type Files map[string]string
-
-func (f Files) Equal(other Files) bool {
-	return maps.Equal(f, other)
-}
-
-func (f Files) MarshalYAML() (any, error) {
-	encodedMap := make(map[string]string)
-	for key, value := range f {
-		encodedMap[key] = base64.StdEncoding.EncodeToString([]byte(value))
-	}
-	return encodedMap, nil
-}
-
-func (f Files) MarshalJSON() ([]byte, error) {
-	v, err := f.MarshalYAML()
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(v)
-}
-
-func (f *Files) UnmarshalYAML(bs []byte) error {
-	var m map[string]string
-	if err := yaml.Unmarshal(bs, &m); err != nil {
-		return err
-	}
-
-	return f.unmarshal(m)
-}
-
-func (f *Files) UnmarshalJSON(bs []byte) error {
-	var m map[string]string
-	if err := json.Unmarshal(bs, &m); err != nil {
-		return err
-	}
-
-	return f.unmarshal(m)
-}
-
-func (f *Files) unmarshal(raw map[string]string) error {
-	*f = Files{}
-	for key, encodedValue := range raw {
-		decodedBytes, err := base64.StdEncoding.DecodeString(encodedValue)
-		if err != nil {
-			return fmt.Errorf("failed to decode value for key %q: %w", key, err)
-		}
-		(*f)[key] = string(decodedBytes)
-	}
-	return nil
-}
-
-// MarshalYAML implements the yaml.Marshaler interface for the Bundle struct. This
-
-func (s *Bundle) UnmarshalJSON(bs []byte) error {
-	type rawBundle Bundle // avoid recursive calls to UnmarshalJSON by type aliasing
-	var raw rawBundle
-
-	if err := json.Unmarshal(bs, &raw); err != nil {
-		return fmt.Errorf("failed to decode bundle: %w", err)
-	}
-
-	*s = Bundle(raw)
-	return s.validate()
-}
-
-func (s *Bundle) UnmarshalYAML(bs []byte) error {
-	type rawBundle Bundle // avoid recursive calls to UnmarshalJSON by type aliasing
-	var raw rawBundle
-
-	if err := yaml.Unmarshal(bs, &raw); err != nil {
-		return fmt.Errorf("failed to decode bundle: %w", err)
-	}
-
-	*s = Bundle(raw)
-	return s.validate()
-}
-
-func (s *Bundle) validate() error {
-	for _, pattern := range s.ExcludedFiles {
-		if _, err := glob.Compile(pattern); err != nil {
-			return fmt.Errorf("failed to compile excluded file pattern %q: %w", pattern, err)
-		}
-	}
-
-	return s.ObjectStorage.validate()
-}
-
-func (s *Bundle) Equal(other *Bundle) bool {
-	return internalutil.FastEqual(s, other, func(s, other *Bundle) bool {
-		return s.Name == other.Name &&
-			maps.Equal(s.Labels, other.Labels) &&
-			s.Revision == other.Revision &&
-			s.ObjectStorage.Equal(&other.ObjectStorage) &&
-			s.Requirements.Equal(other.Requirements) &&
-			s.ExcludedFiles.Equal(other.ExcludedFiles) &&
-			s.Interval == other.Interval
-	})
-}
-
-// Source defines the configuration for an OPA Control Plane Source.
-type Source struct {
-	ID            int64        `json:"-"`
-	Name          string       `json:"name"`
-	Builtin       *string      `json:"builtin,omitempty"`
-	Git           Git          `json:"git,omitzero"`
-	Datasources   Datasources  `json:"datasources,omitempty"`
-	EmbeddedFiles Files        `json:"files,omitempty"`
-	Directory     string       `json:"directory,omitempty"` // Root directory for the source files, used to resolve file paths below.
-	Paths         StringSet    `json:"paths,omitempty"`
-	Requirements  Requirements `json:"requirements,omitempty"`
-
-	// NOTE(sr): additional properties need to be allowed here because we support things like
-	//
-	// sources:
-	//   builtin-entz:
-	//     styra.entitlements.v1: entitlements-v1/completions/completions/completions.rego
-}
-
-func (s *Source) Equal(other *Source) bool {
-	return internalutil.FastEqual(s, other, func(s, other *Source) bool {
-		return s.Name == other.Name &&
-			internalutil.PtrEqual(s.Builtin, other.Builtin) &&
-			s.Git.Equal(&other.Git) &&
-			s.Datasources.Equal(other.Datasources) &&
-			s.EmbeddedFiles.Equal(other.EmbeddedFiles) &&
-			s.Directory == other.Directory &&
-			s.Paths.Equal(other.Paths) &&
-			s.Requirements.Equal(other.Requirements)
-	})
-}
-
-func (s *Source) Requirement() Requirement {
-	return Requirement{Source: &s.Name}
-}
-
-func (s *Source) Files() (map[string]string, error) {
-	m := make(map[string]string, len(s.EmbeddedFiles))
-	maps.Copy(m, s.EmbeddedFiles)
-
-	if len(s.Paths) == 0 {
-		return m, nil
-	}
-
-	baseDir := cmp.Or(s.Directory, ".") // CWD if unset
-	baseFS := os.DirFS(baseDir)
-	filteredFS, err := internalfs.NewFilterFS(baseFS, s.Paths, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create filtered filesystem for source %q: %w", s.Name, err)
-	}
-
-	if err := fs.WalkDir(filteredFS, ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		data, err := fs.ReadFile(filteredFS, path)
-		if err != nil {
-			return fmt.Errorf("failed to read file %q: %w", path, err)
-		}
-
-		m[path] = string(data)
-		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("failed to walk source %q: %w", s.Name, err)
-	}
-
-	if len(m) == len(s.EmbeddedFiles) {
-		return nil, fmt.Errorf("no files matched patterns for source %q", s.Name)
-	}
-
-	return m, nil
-}
-
-func (s *Source) SetEmbeddedFile(path string, content string) {
-	if s.EmbeddedFiles == nil {
-		s.EmbeddedFiles = make(Files)
-	}
-	s.EmbeddedFiles[path] = content
-}
-
-func (s *Source) SetEmbeddedFiles(files map[string]string) {
-	s.EmbeddedFiles = nil
-	for path, content := range files {
-		s.SetEmbeddedFile(path, content)
-	}
-}
-
-func (s *Source) SetPath(path string) {
-	if slices.Contains(s.Paths, path) {
-		return
-	}
-
-	s.Paths = append(s.Paths, path)
-}
-
-func (s *Source) SetDirectory(directory string) {
-	s.Directory = directory
-}
-
-type Sources []*Source
-
-func (a Sources) Equal(b Sources) bool {
-	return internalutil.SetEqual(a, b, func(s *Source) string { return s.Name }, (*Source).Equal)
-}
-
 // Stack defines the configuration for an OPA Control Plane Stack.
 type Stack struct {
 	Name            string       `json:"name"`
@@ -598,7 +331,7 @@ func (s *Selector) Matches(labels Labels) bool {
 }
 
 func (s Selector) Equal(other Selector) bool {
-	return maps.EqualFunc(s.s, other.s, StringSet.Equal)
+	return maps.EqualFunc(s.s, other.s, extconfig.StringSet.Equal)
 }
 
 func (s *Selector) PtrMatches(labels Labels) bool {
@@ -700,98 +433,6 @@ func (s *Selector) init() {
 	}
 }
 
-type StringSet []string
-
-func (a StringSet) Equal(b StringSet) bool {
-	return internalutil.SetEqual(a, b, func(s string) string { return s }, func(a, b string) bool { return a == b })
-}
-
-func (a StringSet) Add(value string) StringSet {
-	i := sort.Search(len(a), func(i int) bool { return a[i] >= value })
-	if i < len(a) && a[i] == value {
-		return a
-	}
-
-	return slices.Insert(a, i, value)
-}
-
-// Git defines the Git synchronization configuration used by OPA Control Plane Sources.
-type Git struct {
-	Repo          string     `json:"repo"`
-	Reference     *string    `json:"reference,omitempty"`
-	Commit        *string    `json:"commit,omitempty"`
-	Path          *string    `json:"path,omitempty"`
-	IncludedFiles StringSet  `json:"included_files,omitempty"`
-	ExcludedFiles StringSet  `json:"excluded_files,omitempty"`
-	Credentials   *SecretRef `json:"credentials,omitempty"` // If nil, use the default SSH authentication mechanisms available
-	// or no authentication for public repos. Note, JSON schema validation overrides this to string type.
-
-	_ struct{} `additionalProperties:"false"`
-}
-
-func (g *Git) Equal(other *Git) bool {
-	return internalutil.FastEqual(g, other, func(g, other *Git) bool {
-		return internalutil.PtrEqual(g.Reference, other.Reference) &&
-			internalutil.PtrEqual(g.Commit, other.Commit) &&
-			internalutil.PtrEqual(g.Path, other.Path) &&
-			g.Credentials.Equal(other.Credentials) &&
-			g.IncludedFiles.Equal(other.IncludedFiles) &&
-			g.ExcludedFiles.Equal(other.ExcludedFiles)
-	})
-}
-
-type SecretRef struct {
-	Name  string `json:"-"`
-	value *Secret
-}
-
-// Resolve retrieves the secret value from the secret store. If the secret is not found, an error is returned.
-// If the secret is found, it returns the value as an interface{} which can be further typed as needed.
-func (s *SecretRef) Resolve(ctx context.Context) (any, error) {
-	if s.value == nil {
-		return nil, fmt.Errorf("secret %q not found", s.Name)
-	}
-
-	return s.value.Typed(ctx)
-}
-
-func (s *SecretRef) MarshalYAML() (any, error) {
-	if s.Name == "" {
-		return nil, nil
-	}
-	return s.Name, nil
-}
-
-func (s *SecretRef) MarshalJSON() ([]byte, error) {
-	v, err := s.MarshalYAML()
-	if err != nil {
-		return nil, err
-	}
-
-	return json.Marshal(v)
-}
-
-func (s *SecretRef) UnmarshalYAML(bs []byte) error {
-	if err := yaml.Unmarshal(bs, &s.Name); err != nil {
-		return fmt.Errorf("expected scalar node: %w", err)
-	}
-	return nil
-}
-
-func (s *SecretRef) UnmarshalJSON(bs []byte) error {
-	if err := json.Unmarshal(bs, &s.Name); err != nil {
-		return fmt.Errorf("failed to unmarshal SecretRef: %w", err)
-	}
-
-	return nil
-}
-
-func (s *SecretRef) Equal(other *SecretRef) bool {
-	return internalutil.FastEqual(s, other, func(s, other *SecretRef) bool {
-		return s.Name == other.Name && s.value.Equal(other.value)
-	})
-}
-
 // Token represents an API token to access the OPA Control Plane APIs.
 type Token struct {
 	Name   string  `json:"-"`
@@ -847,200 +488,6 @@ func Parse(bs []byte) (*Root, error) {
 	}
 
 	return &root, nil
-}
-
-type ObjectStorage struct {
-	AmazonS3          *AmazonS3          `json:"aws,omitempty"`
-	GCPCloudStorage   *GCPCloudStorage   `json:"gcp,omitempty"`
-	AzureBlobStorage  *AzureBlobStorage  `json:"azure,omitempty"`
-	FileSystemStorage *FileSystemStorage `json:"filesystem,omitempty"`
-}
-
-func (o *ObjectStorage) Equal(other *ObjectStorage) bool {
-	return internalutil.FastEqual(o, other, func(o, other *ObjectStorage) bool {
-		return o.AmazonS3.Equal(other.AmazonS3) &&
-			o.GCPCloudStorage.Equal(other.GCPCloudStorage) &&
-			o.AzureBlobStorage.Equal(other.AzureBlobStorage) &&
-			o.FileSystemStorage.Equal(other.FileSystemStorage)
-	})
-}
-
-func (o *ObjectStorage) validate() error {
-	if err := o.AmazonS3.validate(); err != nil {
-		return err
-	}
-	if err := o.GCPCloudStorage.validate(); err != nil {
-		return err
-	}
-	if err := o.AzureBlobStorage.validate(); err != nil {
-		return err
-	}
-	return o.FileSystemStorage.validate()
-}
-
-// AmazonS3 defines the configuration for an Amazon S3-compatible object storage.
-type AmazonS3 struct {
-	Bucket      string     `json:"bucket"`
-	Key         string     `json:"key"`
-	Region      string     `json:"region,omitempty"`
-	Credentials *SecretRef `json:"credentials,omitempty"` // If nil, use default credentials chain: environment variables,
-	// shared credentials file, ECS or EC2 instance role. More details in s3.go.
-	URL string `json:"url,omitempty"` // for test purposes
-}
-
-// GCPCloudStorage defines the configuration for a Google Cloud Storage bucket.
-type GCPCloudStorage struct {
-	Project     string     `json:"project"`
-	Bucket      string     `json:"bucket"`
-	Object      string     `json:"object"`
-	Credentials *SecretRef `json:"credentials,omitempty"` // If nil, use default credentials chain: environment variables,
-	// file created by gcloud auth application-default login, GCE/GKE metadata server. More details in s3.go.
-}
-
-// AzureBlobStorage defines the configuration for an Azure Blob Storage container.
-type AzureBlobStorage struct {
-	AccountURL  string     `json:"account_url"`
-	Container   string     `json:"container"`
-	Path        string     `json:"path"`
-	Credentials *SecretRef `json:"credentials,omitempty"` // If nil, use default credentials chain: environment variables,
-	// managed identity, Azure CLI login. More details in s3.go.
-}
-
-// FileSystemStorage defines the configuration for a local filesystem storage.
-type FileSystemStorage struct {
-	Path string `json:"path"` // Path to the bundle on the local filesystem.
-}
-
-func (a *AmazonS3) Equal(other *AmazonS3) bool {
-	return internalutil.FastEqual(a, other, func(a, other *AmazonS3) bool {
-		return a.Bucket == other.Bucket &&
-			a.Key == other.Key &&
-			a.Region == other.Region &&
-			a.Credentials.Equal(other.Credentials) &&
-			a.URL == other.URL
-	})
-}
-
-func (a *AmazonS3) validate() error {
-	if a == nil {
-		return nil
-	}
-
-	if a.Bucket == "" {
-		return errors.New("amazon s3 bucket is required")
-	}
-
-	if a.Key == "" {
-		return errors.New("amazon s3 key is required")
-	}
-
-	if a.Region == "" {
-		return errors.New("amazon s3 region is required")
-	}
-
-	return nil
-}
-
-func (g *GCPCloudStorage) Equal(other *GCPCloudStorage) bool {
-	return internalutil.FastEqual(g, other, func(g, other *GCPCloudStorage) bool {
-		return g.Project == other.Project &&
-			g.Bucket == other.Bucket &&
-			g.Object == other.Object
-	})
-}
-
-func (g *GCPCloudStorage) validate() error {
-	if g == nil {
-		return nil
-	}
-
-	if g.Project == "" {
-		return errors.New("gcp cloud storage project is required")
-	}
-
-	if g.Bucket == "" {
-		return errors.New("gcp cloud storage bucket is required")
-	}
-
-	if g.Object == "" {
-		return errors.New("gcp cloud storage object is required")
-	}
-
-	return nil
-}
-
-func (a *AzureBlobStorage) Equal(other *AzureBlobStorage) bool {
-	return internalutil.FastEqual(a, other, func(a, other *AzureBlobStorage) bool {
-		return a.AccountURL == other.AccountURL &&
-			a.Container == other.Container &&
-			a.Path == other.Path
-	})
-}
-
-func (a *AzureBlobStorage) validate() error {
-	if a == nil {
-		return nil
-	}
-
-	if a.AccountURL == "" {
-		return errors.New("azure blob storage account URL is required")
-	}
-
-	if a.Container == "" {
-		return errors.New("azure blob storage container is required")
-	}
-
-	if a.Path == "" {
-		return errors.New("azure blob storage path is required")
-	}
-
-	return nil
-}
-
-func (f *FileSystemStorage) Equal(other *FileSystemStorage) bool {
-	return internalutil.FastEqual(f, other, func(f, other *FileSystemStorage) bool {
-		return f.Path == other.Path
-	})
-}
-
-func (f *FileSystemStorage) validate() error {
-	if f == nil {
-		return nil
-	}
-
-	if f.Path == "" {
-		return errors.New("filesystem storage path is required")
-	}
-
-	return nil
-}
-
-type Datasource struct {
-	Name           string         `json:"name"`
-	Path           string         `json:"path"`
-	Type           string         `json:"type"`
-	TransformQuery string         `json:"transform_query,omitempty"`
-	Config         map[string]any `json:"config,omitempty"`
-	Credentials    *SecretRef     `json:"credentials,omitempty"`
-
-	_ struct{} `additionalProperties:"false"`
-}
-
-func (d *Datasource) Equal(other *Datasource) bool {
-	return internalutil.FastEqual(d, other, func(d, other *Datasource) bool {
-		return d.Name == other.Name &&
-			d.Path == other.Path &&
-			d.Type == other.Type &&
-			d.TransformQuery == other.TransformQuery &&
-			reflect.DeepEqual(d.Config, other.Config) &&
-			d.Credentials.Equal(other.Credentials)
-	})
-}
-
-type Datasources []Datasource
-
-func (a Datasources) Equal(b Datasources) bool {
-	return internalutil.SetEqual(a, b, func(ds Datasource) string { return ds.Name }, func(a, b Datasource) bool { return a.Equal(&b) })
 }
 
 type Database struct {
