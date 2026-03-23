@@ -18,30 +18,22 @@ services:
     depends_on:
       - db
 
-  localstack:
-    image: localstack/localstack:latest
+  s3proxy:
+    image: andrewgaul/s3proxy:3.0.0
     ports:
-      - 4566:4566
-    volumes:
-      - ./initaws.d:/docker-entrypoint-initaws.d
+      - 8080:80
     environment:
-      - SERVICES=s3
-      - AWS_DEFAULT_REGION=us-east-1
+      - S3PROXY_AUTHORIZATION=none
+      - JCLOUDS_PROVIDER=transient-nio2
 
-  localstack-init:
-    image: localstack/localstack:latest
+  s3proxy-init:
+    image: alpine/curl
     volumes:
       - ./init-s3.sh:/init-s3.sh
-    environment:
-      - AWS_DEFAULT_REGION=us-east-1
     entrypoint: /bin/sh
     command: ["/init-s3.sh"]
     depends_on:
-      - localstack
-    healthcheck: # override healthcheck defined in image
-      test:
-      - CMD-SHELL
-      - exit 0
+      - s3proxy
 
   db:
     image: postgres:18-alpine
@@ -77,6 +69,6 @@ services:
       - --log-level=debug
       - --config-file=/opa.yml
     environment:
-      AWS_ACCESS_KEY_ID: doesntmatter
-      AWS_SECRET_ACCESS_KEY: doesntmatter
+      AWS_ACCESS_KEY_ID: anonymous
+      AWS_SECRET_ACCESS_KEY: anonymous
       AWS_REGION: us-east-1
