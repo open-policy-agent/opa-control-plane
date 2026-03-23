@@ -72,8 +72,8 @@ jobs:
           OCP_IMAGE: docker.io/openpolicyagent/opa-control-plane:dev
       - name: smoke test curl
         run: |
-          curl --retry 12 --retry-delay 10 --retry-all-errors --fail http://127.0.0.1:8282/v1/bundles -H "Authorization: bearer sesame"
-          curl --retry 12 --retry-delay 10 --retry-all-errors --fail http://127.0.0.1:8181/v1/data/k8s/authz/decision/status/allowed -d '{"input":{"apiVersion":"v1"}}'
+          curl --retry 12 --retry-delay 10 --retry-all-errors --fail -s http://127.0.0.1:8282/v1/bundles -H "Authorization: bearer sesame" | jq -e '.result | length > 0'
+          curl --retry 12 --retry-delay 10 --retry-all-errors --fail -s http://127.0.0.1:8181/v1/data/k8s/authz/decision/status/allowed -d '{"input":{"apiVersion":"v1"}}' | jq -e '.result == true'
       - name: dump logs
         run: docker compose logs
         working-directory: examples/docker
