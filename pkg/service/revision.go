@@ -106,6 +106,18 @@ func buildInputSchema(sourceMetadata map[string]map[string]any) *ast.SchemaSet {
 					"hash": map[string]any{"type": "string"},
 				},
 			},
+			"http": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"hash": map[string]any{"type": "string"},
+				},
+			},
+			"s3": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"hash": map[string]any{"type": "string"},
+				},
+			},
 		},
 	}
 

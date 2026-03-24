@@ -1,0 +1,29 @@
+# Test revision using HTTP datasource hash
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar xf bundles/hello-world/bundle.tar.gz /.manifest
+
+exec cat .manifest
+stdout '"revision":"[0-9a-f]{64}"'
+stdout '"roots":\["users"\]'
+stdout '"rego_version":0'
+
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: http-data
+    revision: 'input.sources["http-data"].http.hash'
+sources:
+  http-data:
+    datasources:
+    - type: http
+      name: users
+      path: users
+      config:
+        url: http://${HTTP_ENDPOINT}/users

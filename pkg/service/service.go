@@ -409,7 +409,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				src := newSource(dep.Name).
 					SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
 					SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database"), metadataFields[dep.Name]).
-					SyncDatasources(&syncs, dep.Name, dep.Datasources, join(srcDir, "datasources"), s.secretProvider).
+					SyncDatasources(&syncs, dep.Name, dep.Datasources, join(srcDir, "datasources"), s.secretProvider, metadataFields[dep.Name]).
 					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name], s.secretProvider).
 					AddRequirements(dep.Requirements)
 
@@ -542,7 +542,11 @@ func (src *source) SyncBuiltin(syncs *[]sourceSynchronizer, builtin *string, fs_
 	return src
 }
 
-func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName string, datasources []config.Datasource, dir string, provider pkgsync.SecretProvider) *source {
+func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName string, datasources []config.Datasource, dir string, provider pkgsync.SecretProvider, metadataFields []string) *source {
+	var opts []httpsync.HTTPSyncOption
+	if len(metadataFields) > 0 {
+		opts = append(opts, httpsync.WithMetadataFields(metadataFields))
+	}
 	for _, datasource := range datasources {
 		switch datasource.Type {
 		case "http":
@@ -553,9 +557,9 @@ func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName strin
 			body, _ := datasource.Config["body"].(string)
 			headers, _ := datasource.Config["headers"].(map[string]any)
 			*syncs = append(*syncs, sourceSynchronizer{
-				sync:       httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials).WithSecretProvider(provider),
+				sync:       httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials, opts...).WithSecretProvider(provider),
 				sourceName: sourceName,
-				sourceType: "http", // not used yet
+				sourceType: "http",
 			})
 		case "s3":
 			bucket, _ := datasource.Config["bucket"].(string)
@@ -573,9 +577,9 @@ func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName strin
 			}
 
 			*syncs = append(*syncs, sourceSynchronizer{
-				sync:       httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials),
+				sync:       httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials, opts...),
 				sourceName: sourceName,
-				sourceType: "s3", // not used yet
+				sourceType: "s3",
 			})
 		}
 
