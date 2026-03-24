@@ -14,34 +14,54 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	internal_aws "github.com/open-policy-agent/opa-control-plane/internal/aws"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	internalfs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
 
 // HttpDataSynchronizer is a struct that implements the Synchronizer interface for downloading JSON from HTTP endpoints.
 type HttpDataSynchronizer struct {
-	path        string // The path where the data will be saved
-	url         string
-	method      string
-	body        string
-	headers     map[string]any // Headers to include in the HTTP request
-	credentials *config.SecretRef
-	provider    pkgsync.SecretProvider // For external SecretProvider integration
-	region      string                 // AWS region for S3 datasources
-	endpoint    string                 // Custom S3 endpoint for S3-compatible services
-	client      *http.Client
-	s3Client    *s3.Client
+	path           string // The path where the data will be saved
+	url            string
+	method         string
+	body           string
+	headers        map[string]any // Headers to include in the HTTP request
+	credentials    *config.SecretRef
+	provider       pkgsync.SecretProvider // For external SecretProvider integration
+	region         string                 // AWS region for S3 datasources
+	endpoint       string                 // Custom S3 endpoint for S3-compatible services
+	client         *http.Client
+	s3Client       *s3.Client
+	metadataFields []string // Fields to compute (e.g., ["hash"])
 }
 
 type HeaderSetter interface {
 	SetHeader(*http.Request) error
 }
 
-func New(path, url, method, body string, headers map[string]any, credentials *config.SecretRef) *HttpDataSynchronizer {
-	return &HttpDataSynchronizer{path: path, url: url, method: method, body: body, headers: headers, credentials: credentials}
+type HTTPSyncOption func(*HttpDataSynchronizer)
+
+// WithMetadataFields configures which metadata fields should be computed.
+// If not specified or empty, no expensive metadata (like hash) will be computed.
+func WithMetadataFields(fields []string) HTTPSyncOption {
+	return func(s *HttpDataSynchronizer) {
+		s.metadataFields = fields
+	}
 }
 
-func NewS3(path, url, region, endpoint string, credentials *config.SecretRef) *HttpDataSynchronizer {
-	return &HttpDataSynchronizer{path: path, url: url, region: region, endpoint: endpoint, credentials: credentials}
+func New(path, url, method, body string, headers map[string]any, credentials *config.SecretRef, opts ...HTTPSyncOption) *HttpDataSynchronizer {
+	s := &HttpDataSynchronizer{path: path, url: url, method: method, body: body, headers: headers, credentials: credentials}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+func NewS3(path, url, region, endpoint string, credentials *config.SecretRef, opts ...HTTPSyncOption) *HttpDataSynchronizer {
+	s := &HttpDataSynchronizer{path: path, url: url, region: region, endpoint: endpoint, credentials: credentials}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // WithSecretProvider configures the synchronizer to use an external SecretProvider for authentication.
@@ -79,7 +99,25 @@ func (s *HttpDataSynchronizer) Execute(ctx context.Context) (map[string]any, err
 		_ = f.Truncate(0)
 		return nil, err
 	}
-	return nil, nil
+
+	metadata := make(map[string]any)
+
+	for _, field := range s.metadataFields {
+		if field == "hash" {
+			hash, err := internalfs.HashDirectory(filepath.Dir(s.path))
+			if err != nil {
+				return nil, err
+			}
+			metadata["hash"] = hash
+			break
+		}
+	}
+
+	if len(metadata) == 0 {
+		return nil, nil
+	}
+
+	return metadata, nil
 }
 
 func (s *HttpDataSynchronizer) executeHTTP(ctx context.Context) (io.ReadCloser, error) {

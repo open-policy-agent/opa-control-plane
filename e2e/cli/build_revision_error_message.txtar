@@ -13,8 +13,8 @@ cd ..
 ! exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
 stderr 'BUILD_FAILED'
 stderr 'undefined ref: input.sources.policies.s3.bucket'
-stderr 'have: "s3"'
-stderr 'want \(one of\): \["git" "sql"\]'
+stderr 'have: "bucket"'
+stderr 'want \(one of\): \["hash"\]'
 
 -- repo/policy.rego --
 package rules
