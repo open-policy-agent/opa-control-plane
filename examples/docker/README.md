@@ -5,7 +5,7 @@ The `docker-compose.yml` definition in this repository starts the following serv
 1. OCP (edge image build, or env var `OCP_IMAGE`)
 2. PostgreSQL
 3. Prometheus
-4. Localstack (S3), with an init service that creates be bucket "bundles"
+4. s3proxy (S3), with an init service that creates the bucket "bundles"
 
 ## TLS
 

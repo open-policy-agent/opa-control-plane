@@ -72,8 +72,12 @@ jobs:
           OCP_IMAGE: docker.io/openpolicyagent/opa-control-plane:dev
       - name: smoke test curl
         run: |
-          curl --retry 12 --retry-delay 10 --retry-all-errors --fail http://127.0.0.1:8282/v1/bundles -H "Authorization: bearer sesame"
-          curl --retry 12 --retry-delay 10 --retry-all-errors --fail http://127.0.0.1:8181/v1/data/k8s/authz/decision/status/allowed -d '{"input":{"apiVersion":"v1"}}'
+          # Retry the full curl|jq pipeline — curl --retry only retries on
+          # connection/HTTP errors, not on "200 but wrong body" which happens
+          # while OPA is still waiting for the bundle from s3proxy.
+          retry() { for i in $(seq 1 30); do if "$@"; then return 0; fi; echo "attempt $i failed, retrying in 5s..."; sleep 5; done; return 1; }
+          retry sh -c 'curl --fail -s http://127.0.0.1:8282/v1/bundles -H "Authorization: bearer sesame" | jq -e ".result | length > 0"'
+          retry sh -c 'curl --fail -s http://127.0.0.1:8181/v1/data/k8s/authz/decision/status/allowed -d "{\"input\":{\"apiVersion\":\"v1\"}}" | jq -e ".result == true"'
       - name: dump logs
         run: docker compose logs
         working-directory: examples/docker

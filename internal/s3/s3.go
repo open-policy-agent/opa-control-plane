@@ -16,7 +16,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	internal_aws "github.com/open-policy-agent/opa-control-plane/internal/aws"
@@ -34,10 +33,9 @@ var (
 
 type (
 	AmazonS3 struct {
-		bucket   string
-		key      string
-		uploader *transfermanager.Client
-		client   *s3.Client
+		bucket string
+		key    string
+		client *s3.Client
 	}
 
 	GCPCloudStorage struct {
@@ -82,10 +80,12 @@ func New(ctx context.Context, c config.ObjectStorage) (ext_os.ObjectStorage, err
 			if c.AmazonS3.URL != "" {
 				o.UsePathStyle = true
 				o.BaseEndpoint = aws.String(c.AmazonS3.URL)
+				o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+				o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 			}
 		})
 
-		return &AmazonS3{bucket: c.AmazonS3.Bucket, key: c.AmazonS3.Key, uploader: transfermanager.New(client), client: client}, nil
+		return &AmazonS3{bucket: c.AmazonS3.Bucket, key: c.AmazonS3.Key, client: client}, nil
 	case c.GCPCloudStorage != nil:
 		var client *storage.Client
 
@@ -225,7 +225,7 @@ func (s *AmazonS3) Upload(ctx context.Context, body io.ReadSeeker, _ string, rev
 		metadata["revision"] = revision
 	}
 
-	_, err = s.uploader.UploadObject(ctx, &transfermanager.UploadObjectInput{
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:   aws.String(s.bucket),
 		Key:      aws.String(s.key),
 		Body:     body,
