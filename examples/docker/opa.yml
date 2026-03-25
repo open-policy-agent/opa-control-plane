@@ -1,7 +1,14 @@
 services:
   s3:
     url: http://s3proxy:80
+  ocp:
+    url: http://ocp:8282
+    headers:
+      Authorization: Bearer opa-token
 bundles:
   hello-world:
     service: s3
     resource: bundles/hello-world
+  hello-http:
+    service: ocp
+    resource: bundles/hello-http/bundle.tar.gz

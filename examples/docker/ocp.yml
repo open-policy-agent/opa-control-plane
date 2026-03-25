@@ -9,6 +9,12 @@ bundles:
         credentials: s3-creds
     requirements:
     - source: git-policies
+  hello-http:
+    object_storage:
+      http_server:
+        path: bundles/hello-http/bundle.tar.gz
+    requirements:
+    - source: http-policies
 sources:
   git-policies:
     git:
@@ -16,11 +22,21 @@ sources:
       commit: 0f81d9a0018451d98dcd3f4bb885ee676f49f6fe
       included_files:
       - k8s_authorization/policy/policy.rego
+  http-policies:
+    git:
+      repo: https://github.com/open-policy-agent/contrib
+      commit: 0f81d9a0018451d98dcd3f4bb885ee676f49f6fe
+      included_files:
+      - data_filter_example/example.rego
 tokens:
   admin:
     api_key: sesame
     scopes:
     - role: administrator
+  opa:
+    api_key: opa-token
+    scopes:
+    - role: downloader
 database:
   sql:
     driver: postgres

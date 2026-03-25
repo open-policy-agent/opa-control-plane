@@ -27,7 +27,12 @@ This will generate the certs needed for the examples (via `tls/gencerts.sh`), an
 When it's running, you can go to http://127.0.0.1:9090 to examine the published Prometheus metrics.
 Enter `ocp_` in the expression field to see completion options for the various metrics in the expression field to see completion options for the various metrics in the expression field to see completion options for the various metrics.
 
-The OCP configuration already contains a bundle, pulling some rego from https://github.com/open-policy-agent/contrib, so that there are some metrics to explore.
+The OCP configuration contains two bundles:
+
+1. `hello-world` — pushed to S3, OPA pulls from s3proxy
+2. `hello-http` — served directly by OCP via in-memory `http_server` storage, OPA pulls from OCP using a `downloader` token
+
+Both pull rego from https://github.com/open-policy-agent/contrib, so that there are some metrics to explore.
 
 > [!WARNING]
 > Note that on startup, it will take a while until the system settles:
