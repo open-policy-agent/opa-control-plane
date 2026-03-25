@@ -14,6 +14,7 @@ allow if {
 	in_tenant(data.principals.tenant_id)
 	input.permission in [
 		"bundles.view",
+		"bundles.download",
 		"sources.view",
 		"secrets.view",
 		"stacks.view",
@@ -38,6 +39,13 @@ allow if {
 	data.principals.role == "stack_owner"
 	in_tenant(data.principals.tenant_id)
 	input.permission == "stacks.create"
+}
+
+allow if {
+	data.principals.id == input.principal
+	data.principals.role == "downloader"
+	in_tenant(data.principals.tenant_id)
+	input.permission == "bundles.download"
 }
 
 allow if {

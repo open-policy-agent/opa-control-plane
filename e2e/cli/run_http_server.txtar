@@ -19,6 +19,12 @@ exec grep Etag headers.txt
 # Verify bad token is rejected
 ! exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer wrong-token' http://localhost/bundles/hello-world/bundle.tar.gz
 
+# Verify downloader-only token can download bundles
+exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer dl-token' http://localhost/bundles/hello-world/bundle.tar.gz -o /dev/null
+
+# Verify downloader-only token cannot access the API
+! exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer dl-token' http://localhost/v1/bundles/hello-world
+
 # Verify unknown bundle path returns 404
 ! exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer test-token' http://localhost/bundles/nonexistent/bundle.tar.gz
 
@@ -35,6 +41,10 @@ tokens:
     api_key: test-token
     scopes:
     - role: viewer
+  downloader:
+    api_key: dl-token
+    scopes:
+    - role: downloader
 bundles:
   hello-world:
     object_storage:

@@ -646,6 +646,20 @@ func (d *Database) GetBundle(ctx context.Context, principal, tenant, name string
 	return bundles[0], nil
 }
 
+func (d *Database) CheckBundleDownload(ctx context.Context, principal, tenant, name string) error {
+	return tx1(ctx, d, func(tx *sql.Tx) error {
+		if err := d.resourceExists(ctx, tx, tenant, "bundles", name); err != nil {
+			return err
+		}
+
+		ad := d.accessFactory().WithPrincipal(principal).WithTenant(tenant).WithResource("bundles").WithPermission("bundles.download").WithName(name)
+		if !d.authorizer.Check(ctx, tx, d.arg, ad) {
+			return ErrNotAuthorized
+		}
+		return nil
+	})
+}
+
 func (d *Database) DeleteBundle(ctx context.Context, principal, tenant, name string) error {
 	return tx1(ctx, d, func(tx *sql.Tx) error {
 		if err := d.prepareDelete(ctx, tx, principal, tenant, "bundles", name, "bundles.manage"); err != nil {

@@ -86,7 +86,7 @@ func (s *Server) Init() *Server {
 			name := bs.BundleName // capture for closure
 			s.router.Handle("GET "+apiPrefix+urlPath, append(base, metrics.InstrumentHandler(apiPrefix+urlPath)).ThenFunc(func(w http.ResponseWriter, r *http.Request) {
 				principal, tenant := s.auth(r)
-				if _, err := s.db.GetBundle(r.Context(), principal, tenant, name); err != nil {
+				if err := s.db.CheckBundleDownload(r.Context(), principal, tenant, name); err != nil {
 					errorAuto(w, err)
 					return
 				}

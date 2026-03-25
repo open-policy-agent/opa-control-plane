@@ -450,7 +450,7 @@ func (t *Token) Equal(other *Token) bool {
 }
 
 type Scope struct {
-	Role string `json:"role" enum:"administrator,viewer,owner,stack_owner"`
+	Role string `json:"role" enum:"administrator,viewer,owner,stack_owner,downloader"`
 }
 
 func scopesEqual(a, b []Scope) bool {
