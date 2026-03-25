@@ -3,30 +3,30 @@
 exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/health
 
 # Wait for bundle to be built and download it
-retry curl -f --unix-socket ocp.sock -H 'Authorization: Bearer test-token' http://localhost/bundles/hello-world/bundle.tar.gz -o bundle.tar.gz
+retry curl -f --unix-socket ocp.sock -H 'Authorization: Bearer test-token' http://localhost/v1/external/bundles/hello-world/bundle.tar.gz -o bundle.tar.gz
 
 # Verify the bundle is a valid tarball with expected contents
 exec tar tf bundle.tar.gz
 cmp stdout exp/tarball
 
 # Verify ETag header is returned
-exec curl -f -D headers.txt --unix-socket ocp.sock -H 'Authorization: Bearer test-token' http://localhost/bundles/hello-world/bundle.tar.gz -o /dev/null
+exec curl -f -D headers.txt --unix-socket ocp.sock -H 'Authorization: Bearer test-token' http://localhost/v1/external/bundles/hello-world/bundle.tar.gz -o /dev/null
 exec grep Etag headers.txt
 
 # Verify unauthenticated request is rejected
-! exec curl -f --unix-socket ocp.sock http://localhost/bundles/hello-world/bundle.tar.gz
+! exec curl -f --unix-socket ocp.sock http://localhost/v1/external/bundles/hello-world/bundle.tar.gz
 
 # Verify bad token is rejected
-! exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer wrong-token' http://localhost/bundles/hello-world/bundle.tar.gz
+! exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer wrong-token' http://localhost/v1/external/bundles/hello-world/bundle.tar.gz
 
 # Verify downloader-only token can download bundles
-exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer dl-token' http://localhost/bundles/hello-world/bundle.tar.gz -o /dev/null
+exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer dl-token' http://localhost/v1/external/bundles/hello-world/bundle.tar.gz -o /dev/null
 
 # Verify downloader-only token cannot access the API
 ! exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer dl-token' http://localhost/v1/bundles/hello-world
 
 # Verify unknown bundle path returns 404
-! exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer test-token' http://localhost/bundles/nonexistent/bundle.tar.gz
+! exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer test-token' http://localhost/v1/external/bundles/nonexistent/bundle.tar.gz
 
 kill opactl
 wait opactl

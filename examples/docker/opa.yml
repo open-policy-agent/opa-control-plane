@@ -11,4 +11,4 @@ bundles:
     resource: bundles/hello-world
   hello-http:
     service: ocp
-    resource: bundles/hello-http/bundle.tar.gz
+    resource: v1/external/bundles/hello-http/bundle.tar.gz

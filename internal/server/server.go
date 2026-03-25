@@ -81,7 +81,7 @@ func (s *Server) Init() *Server {
 
 	if len(s.bundleStorages) > 0 {
 		for _, bs := range s.bundleStorages {
-			urlPath := "/" + bs.Path
+			urlPath := "/v1/external/" + path.Clean(bs.Path)
 			h := bs.Handler       // capture for closure
 			name := bs.BundleName // capture for closure
 			s.router.Handle("GET "+apiPrefix+urlPath, append(base, metrics.InstrumentHandler(apiPrefix+urlPath)).ThenFunc(func(w http.ResponseWriter, r *http.Request) {
