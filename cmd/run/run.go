@@ -71,7 +71,13 @@ func init() {
 			}
 
 			go func() {
-				if err := server.New().WithDatabase(svc.Database()).WithReadiness(svc.Ready).WithConfig(config.Service).Init().ListenAndServe(params.addr); err != nil {
+				srv := server.New().
+					WithDatabase(svc.Database()).
+					WithReadiness(svc.Ready).
+					WithConfig(config.Service).
+					WithBundleStorages(svc.BundleStorages()).
+					Init()
+				if err := srv.ListenAndServe(params.addr); err != nil {
 					log.Fatalf("failed to start server: %v", err)
 				}
 			}()

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"net/http"
 	"path"
 	"path/filepath"
 	"slices"
@@ -65,6 +66,12 @@ type Service struct {
 	initialized    bool
 	storage        ext_os.ObjectStorage
 	secretProvider pkgsync.SecretProvider
+	bundleStorages map[bundleStorageKey]*s3.InMemoryStorage
+}
+
+type bundleStorageKey struct {
+	path       string
+	bundleName string
 }
 
 type Report struct {
@@ -176,13 +183,57 @@ func (s *Service) WithSecretProvider(provider pkgsync.SecretProvider) *Service {
 	return s
 }
 
+// BundleStorages returns the list of bundle storages served via in-memory storage.
+// Returns nil if no http_server storages are configured.
+func (s *Service) BundleStorages() []BundleStorage {
+	if len(s.bundleStorages) == 0 {
+		return nil
+	}
+	result := make([]BundleStorage, 0, len(s.bundleStorages))
+	for key, storage := range s.bundleStorages {
+		result = append(result, BundleStorage{
+			Path:       key.path,
+			BundleName: key.bundleName,
+			Handler:    storage,
+		})
+	}
+	return result
+}
+
+// BundleStorage associates a URL path with a bundle name and its HTTP handler.
+type BundleStorage struct {
+	Path       string
+	BundleName string
+	Handler    http.Handler
+}
+
 func (s *Service) Init(ctx context.Context) error {
 	if s.initialized {
 		return nil
 	}
 	err := s.initDB(ctx)
-	s.initialized = err == nil
-	return err
+	if err != nil {
+		return err
+	}
+	s.initialized = true
+
+	// Pre-create InMemoryStorage instances for bundles configured with
+	// http_server object storage, so they are available before Run() is called.
+	if s.config != nil {
+		for _, b := range s.config.Bundles {
+			if b.ObjectStorage.HTTPServer != nil {
+				if s.bundleStorages == nil {
+					s.bundleStorages = make(map[bundleStorageKey]*s3.InMemoryStorage)
+				}
+				s.bundleStorages[bundleStorageKey{
+					path:       b.ObjectStorage.HTTPServer.Path,
+					bundleName: b.Name,
+				}] = s3.NewInMemoryStorage()
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) Run(ctx context.Context) error {
@@ -424,6 +475,14 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 			if s.storage != nil {
 				w.WithStorage(s.storage)
+			} else if b.ObjectStorage.HTTPServer != nil {
+				ms := s.bundleStorages[bundleStorageKey{path: b.ObjectStorage.HTTPServer.Path, bundleName: b.Name}]
+				if ms == nil {
+					s.log.Errorf("no in-memory storage found for bundle %q", b.Name)
+					failures[b.Name] = Status{State: BuildStateConfigError, Message: "http_server storage not initialized"}
+					continue
+				}
+				w.WithStorage(ms)
 			} else {
 				storage, err := s3.New(ctx, b.ObjectStorage)
 				if err != nil {

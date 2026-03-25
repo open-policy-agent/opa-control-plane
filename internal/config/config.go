@@ -35,6 +35,7 @@ type (
 	GCPCloudStorage   = extconfig.GCPCloudStorage
 	AzureBlobStorage  = extconfig.AzureBlobStorage
 	FileSystemStorage = extconfig.FileSystemStorage
+	HTTPServer        = extconfig.HTTPServer
 	StringSet         = extconfig.StringSet
 	Requirements      = extconfig.Requirements
 	Files             = extconfig.Files

@@ -335,6 +335,7 @@ type ObjectStorage struct {
 	GCPCloudStorage   *GCPCloudStorage   `json:"gcp,omitempty"`
 	AzureBlobStorage  *AzureBlobStorage  `json:"azure,omitempty"`
 	FileSystemStorage *FileSystemStorage `json:"filesystem,omitempty"`
+	HTTPServer        *HTTPServer        `json:"http_server,omitempty"`
 }
 
 func (o *ObjectStorage) validate() error {
@@ -347,7 +348,10 @@ func (o *ObjectStorage) validate() error {
 	if err := o.AzureBlobStorage.validate(); err != nil {
 		return err
 	}
-	return o.FileSystemStorage.validate()
+	if err := o.FileSystemStorage.validate(); err != nil {
+		return err
+	}
+	return o.HTTPServer.validate()
 }
 
 // AmazonS3 defines the configuration for an Amazon S3-compatible object storage.
@@ -447,6 +451,24 @@ func (f *FileSystemStorage) validate() error {
 
 	if f.Path == "" {
 		return errors.New("filesystem storage path is required")
+	}
+
+	return nil
+}
+
+// HTTPServer defines the configuration for serving bundles directly from OCP's HTTP server.
+// When configured, the bundle is held in memory and served at the specified path.
+type HTTPServer struct {
+	Path string `json:"path"`
+}
+
+func (h *HTTPServer) validate() error {
+	if h == nil {
+		return nil
+	}
+
+	if h.Path == "" {
+		return errors.New("http server path is required")
 	}
 
 	return nil

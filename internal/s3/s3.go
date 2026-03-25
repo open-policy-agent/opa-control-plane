@@ -9,8 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
+	"sync"
 
 	"cloud.google.com/go/storage"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -29,7 +32,77 @@ var (
 	_ ext_os.ObjectStorage = (*GCPCloudStorage)(nil)
 	_ ext_os.ObjectStorage = (*AzureBlobStorage)(nil)
 	_ ext_os.ObjectStorage = (*FileSystemStorage)(nil)
+	_ ext_os.ObjectStorage = (*InMemoryStorage)(nil)
 )
+
+// InMemoryStorage is an ObjectStorage implementation that holds the bundle
+// bytes in memory. It also implements http.Handler so it can serve bundles
+// directly via the OPA bundle protocol.
+type InMemoryStorage struct {
+	mu       sync.RWMutex
+	data     []byte
+	etag     string
+	revision string
+}
+
+// NewInMemoryStorage creates a new InMemoryStorage instance.
+func NewInMemoryStorage() *InMemoryStorage {
+	return &InMemoryStorage{}
+}
+
+func (m *InMemoryStorage) Upload(_ context.Context, body io.ReadSeeker, _ string, revision string, _ int64) error {
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
+
+	hash := sha256.Sum256(data)
+	etag := hex.EncodeToString(hash[:])
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.data = data
+	m.etag = etag
+	m.revision = revision
+
+	return nil
+}
+
+func (m *InMemoryStorage) Download(context.Context) (io.Reader, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.data == nil {
+		return nil, errors.New("no bundle uploaded")
+	}
+
+	return bytes.NewReader(slices.Clone(m.data)), nil
+}
+
+func (m *InMemoryStorage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.data == nil {
+		http.Error(w, "no bundle available", http.StatusNotFound)
+		return
+	}
+
+	if match := r.Header.Get("If-None-Match"); match == m.etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("ETag", m.etag)
+	if m.revision != "" {
+		w.Header().Set("X-OPA-Revision", m.revision)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(m.data)
+}
 
 type (
 	AmazonS3 struct {
@@ -185,6 +258,8 @@ func New(ctx context.Context, c config.ObjectStorage) (ext_os.ObjectStorage, err
 		return &AzureBlobStorage{container: c.AzureBlobStorage.Container, path: c.AzureBlobStorage.Path, client: client}, nil
 	case c.FileSystemStorage != nil:
 		return &FileSystemStorage{path: c.FileSystemStorage.Path}, nil
+	case c.HTTPServer != nil:
+		return NewInMemoryStorage(), nil
 	default:
 		return nil, ErrUnsupportedProvider
 	}
