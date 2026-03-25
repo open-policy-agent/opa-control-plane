@@ -15,7 +15,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/goccy/go-yaml"
-	"github.com/open-policy-agent/opa-control-plane/internal/util"
+	"github.com/open-policy-agent/opa-control-plane/pkg/util"
 	"golang.org/x/oauth2/clientcredentials"
 )
 
@@ -84,7 +84,12 @@ type Secret struct {
 }
 
 func (s *Secret) Ref() *SecretRef {
-	return &SecretRef{Name: s.Name, value: s}
+	ref := &SecretRef{Name: s.Name}
+	secret := s // capture for closure
+	ref.SetResolver(func(ctx context.Context) (any, error) {
+		return secret.Typed(ctx)
+	})
+	return ref
 }
 
 func (s *Secret) MarshalYAML() (any, error) {

@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/das"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/libraries"
@@ -228,8 +231,8 @@ func TestPruneConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !reflect.DeepEqual(expRoot, root) {
-		t.Fatal("expected root differed from pruned root")
+	if diff := cmp.Diff(expRoot, root, cmpopts.IgnoreUnexported(config.SecretRef{})); diff != "" {
+		t.Fatalf("expected root differed from pruned root (-want +got):\n%s", diff)
 	}
 }
 

@@ -161,10 +161,10 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {
 	// resolved file alone won't have the secrets, only their names.
 
 	if data, err := os.ReadFile(filepath.Join(s.path, ".git", configFile)); err == nil {
-		config := config.Git{
+		gitConfig := config.Git{
 			Credentials: s.config.Credentials,
 		}
-		if err := json.Unmarshal(data, &config); err != nil || !config.Equal(&s.config) {
+		if err := json.Unmarshal(data, &gitConfig); err != nil || !gitConfig.Equal(&s.config) {
 			if err := os.RemoveAll(s.path); err != nil {
 				return false, "", err
 			}
