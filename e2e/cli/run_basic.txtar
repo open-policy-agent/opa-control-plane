@@ -2,6 +2,8 @@
 
 exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/health
 
+retry tar tf bundles/hello-world/bundle.tar.gz
+
 kill opactl
 wait opactl
 exec ls tmp/sqlite.db # sqlite in persistence dir
