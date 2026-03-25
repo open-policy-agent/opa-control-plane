@@ -28,6 +28,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
+	objectstore "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 	"github.com/open-policy-agent/opa/ast"    // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
 	"github.com/open-policy-agent/opa/sdk"    // nolint:staticcheck
@@ -311,7 +312,12 @@ func backtestBundle(ctx context.Context, opts Options, styra *das.Client, b *con
 		return err
 	}
 
-	r, err := s.Download(ctx)
+	d, ok := s.(objectstore.Downloader)
+	if !ok {
+		return fmt.Errorf("object storage for %q does not support download", b.Name)
+	}
+
+	r, err := d.Download(ctx)
 	if err != nil {
 		return err
 	}

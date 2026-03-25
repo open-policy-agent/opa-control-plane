@@ -70,7 +70,7 @@ func TestS3(t *testing.T) {
 		t.Fatalf("expected object contents to be 'bundle content', got '%s'", contents)
 	}
 
-	reader, err := storage.Download(ctx)
+	reader, err := storage.(*AmazonS3).Download(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,48 +215,37 @@ func TestS3WithoutRevision(t *testing.T) {
 }
 
 func TestInMemoryStorage(t *testing.T) {
-	ctx := context.Background()
 	ms := NewInMemoryStorage()
-
-	// Download before any upload should fail.
-	if _, err := ms.Download(ctx); err == nil {
-		t.Fatal("expected error on download before upload")
-	}
 
 	// Upload content.
 	content := []byte("test bundle data")
-	err := ms.Upload(ctx, bytes.NewReader(content), "mybundle", "rev1", int64(len(content)))
+	err := ms.Upload(t.Context(), bytes.NewReader(content), "mybundle", "rev1", int64(len(content)))
 	if err != nil {
 		t.Fatalf("unexpected upload error: %v", err)
 	}
 
-	// Download and verify.
-	reader, err := ms.Download(ctx)
-	if err != nil {
-		t.Fatalf("unexpected download error: %v", err)
-	}
-	got, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatalf("unexpected read error: %v", err)
-	}
-	if !bytes.Equal(got, content) {
-		t.Fatalf("expected %q, got %q", content, got)
+	// Verify via HTTP handler.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/bundles/mybundle", nil)
+	ms.ServeHTTP(rec, req)
+	if !bytes.Equal(rec.Body.Bytes(), content) {
+		t.Fatalf("expected %q, got %q", content, rec.Body.Bytes())
 	}
 
 	// Upload new content replaces old.
 	content2 := []byte("updated bundle")
-	if err := ms.Upload(ctx, bytes.NewReader(content2), "mybundle", "rev2", int64(len(content2))); err != nil {
+	if err := ms.Upload(t.Context(), bytes.NewReader(content2), "mybundle", "rev2", int64(len(content2))); err != nil {
 		t.Fatalf("unexpected upload error: %v", err)
 	}
-	reader, _ = ms.Download(ctx)
-	got, _ = io.ReadAll(reader)
-	if !bytes.Equal(got, content2) {
-		t.Fatalf("expected %q, got %q", content2, got)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/bundles/mybundle", nil)
+	ms.ServeHTTP(rec, req)
+	if !bytes.Equal(rec.Body.Bytes(), content2) {
+		t.Fatalf("expected %q, got %q", content2, rec.Body.Bytes())
 	}
 }
 
 func TestInMemoryStorageServeHTTP(t *testing.T) {
-	ctx := context.Background()
 	ms := NewInMemoryStorage()
 
 	// Serve before upload should return 404.
@@ -269,7 +258,7 @@ func TestInMemoryStorageServeHTTP(t *testing.T) {
 
 	// Upload content.
 	content := []byte("gzipped bundle content")
-	if err := ms.Upload(ctx, bytes.NewReader(content), "test", "rev1", int64(len(content))); err != nil {
+	if err := ms.Upload(t.Context(), bytes.NewReader(content), "test", "rev1", int64(len(content))); err != nil {
 		t.Fatal(err)
 	}
 

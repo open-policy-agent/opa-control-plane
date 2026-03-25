@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"sync"
 
 	"cloud.google.com/go/storage"
@@ -67,17 +66,6 @@ func (m *InMemoryStorage) Upload(_ context.Context, body io.ReadSeeker, _ string
 	m.revision = revision
 
 	return nil
-}
-
-func (m *InMemoryStorage) Download(context.Context) (io.Reader, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if m.data == nil {
-		return nil, errors.New("no bundle uploaded")
-	}
-
-	return bytes.NewReader(slices.Clone(m.data)), nil
 }
 
 func (m *InMemoryStorage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -365,10 +353,6 @@ func (s *GCPCloudStorage) Upload(ctx context.Context, body io.ReadSeeker, _ stri
 	return w.Close()
 }
 
-func (*GCPCloudStorage) Download(context.Context) (io.Reader, error) {
-	return nil, errors.New("not implemented")
-}
-
 func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker, _ string, revision string, _ int64) error {
 	opts := &azblob.UploadStreamOptions{}
 	if revision != "" {
@@ -378,10 +362,6 @@ func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker, _ str
 	}
 	_, err := s.client.UploadStream(ctx, s.container, s.path, body, opts)
 	return err
-}
-
-func (*AzureBlobStorage) Download(context.Context) (io.Reader, error) {
-	return nil, errors.New("not implemented")
 }
 
 func (s *FileSystemStorage) Upload(ctx context.Context, body io.ReadSeeker, _ string, _ string, _ int64) error {
