@@ -8,10 +8,11 @@ import (
 
 func TestExtractRevisionRefs(t *testing.T) {
 	tests := []struct {
-		name     string
-		revision string
-		want     []ReferencedSource
-		wantErr  bool
+		name           string
+		revision       string
+		want           []ReferencedSource
+		wantBundleHash bool
+		wantErr        bool
 	}{
 		{
 			name:     "empty revision",
@@ -88,17 +89,35 @@ func TestExtractRevisionRefs(t *testing.T) {
 				{SourceName: "sql-source", Fields: []string{"file", "path"}},
 			},
 		},
+		{
+			name:           "bundle hash only",
+			revision:       `input.bundle.hash`,
+			want:           []ReferencedSource{},
+			wantBundleHash: true,
+		},
+		{
+			name:     "bundle hash combined with source",
+			revision: `$"{input.sources.policies.git.commit}-{input.bundle.hash}"`,
+			want: []ReferencedSource{
+				{SourceName: "policies", Fields: []string{"git", "commit"}},
+			},
+			wantBundleHash: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ExtractRevisionRefs(tt.revision)
+			got, gotBundleHash, err := ExtractRevisionRefs(tt.revision)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if tt.wantErr {
 				return
+			}
+
+			if gotBundleHash != tt.wantBundleHash {
+				t.Errorf("needsBundleHash = %v, want %v", gotBundleHash, tt.wantBundleHash)
 			}
 
 			if len(got) != len(tt.want) {
@@ -189,7 +208,7 @@ func TestValidationErrorMessages(t *testing.T) {
 				}
 			}
 
-			_, err := ResolveRevision(t.Context(), tt.revision, sourceMetadata)
+			_, err := ResolveRevision(t.Context(), tt.revision, sourceMetadata, "")
 			if err == nil {
 				t.Fatalf("expected error containing %q, got nil", tt.wantErrContains)
 			}
@@ -199,4 +218,43 @@ func TestValidationErrorMessages(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveRevision(t *testing.T) {
+	t.Run("input.bundle.hash resolves to provided hash", func(t *testing.T) {
+		bundleHash := "abc123def456"
+		result, err := ResolveRevision(t.Context(), `input.bundle.hash`, nil, bundleHash)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result != bundleHash {
+			t.Fatalf("expected %q, got %q", bundleHash, result)
+		}
+	})
+
+	t.Run("template combining bundle hash and source metadata", func(t *testing.T) {
+		sourceMetadata := map[string]map[string]any{
+			"policies": {"git": map[string]any{"commit": "deadbeef"}},
+		}
+		bundleHash := "abc123"
+		result, err := ResolveRevision(t.Context(), `$"{input.sources.policies.git.commit}-{input.bundle.hash}"`, sourceMetadata, bundleHash)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := "deadbeef-abc123"
+		if result != expected {
+			t.Fatalf("expected %q, got %q", expected, result)
+		}
+	})
+
+	t.Run("schema error on input.bundle.nonexistent", func(t *testing.T) {
+		bundleHash := "abc123"
+		_, err := ResolveRevision(t.Context(), `input.bundle.nonexistent`, nil, bundleHash)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "undefined ref") {
+			t.Errorf("expected undefined ref error, got: %v", err)
+		}
+	})
 }

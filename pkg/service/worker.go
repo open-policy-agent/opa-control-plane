@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"io/fs"
 	"time"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
@@ -144,13 +146,6 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		}
 	}
 
-	// Resolve revision string using source metadata
-	resolvedRevision, err := ResolveRevision(ctx, w.bundleConfig.Revision, sourceMetadata)
-	if err != nil {
-		w.log.Warnf("failed to resolve revision for bundle %q: %v", w.bundleConfig.Name, err)
-		return w.report(ctx, BuildStateBuildFailed, startTime, err)
-	}
-
 	for _, src := range w.sources {
 		buf, err := src.Transform(ctx)
 		if buf != nil && buf.Len() > 0 {
@@ -164,18 +159,36 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 
 	buffer := bytes.NewBuffer(nil)
 
+	_, needsBundleHash, _ := ExtractRevisionRefs(w.bundleConfig.Revision)
+
+	var resolvedRevision string
 	b := builder.New().
 		WithSources(w.sources).
 		WithExcluded(w.bundleConfig.ExcludedFiles).
 		WithTarget(w.bundleConfig.Options.Target).
-		WithRevision(resolvedRevision).
-		WithOutput(buffer)
+		WithOutput(buffer).
+		WithRevisionFunc(func(fsys fs.FS) (string, error) {
+			var bundleHash string
+			if needsBundleHash {
+				var err error
+				bundleHash, err = ocp_fs.HashFS(fsys)
+				if err != nil {
+					return "", err
+				}
+			}
+			rev, err := ResolveRevision(ctx, w.bundleConfig.Revision, sourceMetadata, bundleHash)
+			if err != nil {
+				return "", err
+			}
+			resolvedRevision = rev
+			return rev, nil
+		})
 
 	if w.bundleConfig.Options.Optimization != nil {
 		b = b.WithOptimizationLevel(w.bundleConfig.Options.Optimization.Level)
 	}
 
-	if err = b.Build(ctx); err != nil {
+	if err := b.Build(ctx); err != nil {
 		w.log.Warnf("failed to build a bundle %q: %v", w.bundleConfig.Name, err)
 		return w.report(ctx, BuildStateBuildFailed, startTime, err)
 	}

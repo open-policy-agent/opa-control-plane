@@ -170,6 +170,7 @@ type Builder struct {
 	target            string
 	optimizationLevel int
 	revision          string
+	revisionFunc      func(fs.FS) (string, error)
 }
 
 func New() *Builder {
@@ -203,6 +204,13 @@ func (b *Builder) WithOptimizationLevel(level int) *Builder {
 
 func (b *Builder) WithRevision(revision string) *Builder {
 	b.revision = revision
+	return b
+}
+
+// WithRevisionFunc sets a function to compute the revision from the assembled
+// bundle filesystem. It is called after FS assembly and before compilation.
+func (b *Builder) WithRevisionFunc(fn func(fs.FS) (string, error)) *Builder {
+	b.revisionFunc = fn
 	return b
 }
 
@@ -383,6 +391,14 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	fsBuild := mountfs.New(buildSources.fs())
 	paths := slices.Collect(maps.Keys(fsBuild))
+
+	if b.revisionFunc != nil {
+		revision, err := b.revisionFunc(fsBuild)
+		if err != nil {
+			return fmt.Errorf("revision: %w", err)
+		}
+		b.revision = revision
+	}
 
 	target := cmp.Or(b.target, "rego")
 	if target == "ir" { // fix naming convention

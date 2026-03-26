@@ -1,0 +1,27 @@
+# Test revision using input.bundle.hash
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
+stderr '^1/1 bundles built and pushed successfully$'
+! stdout .
+
+exec tar xf bundles/hello-world/bundle.tar.gz /.manifest
+cmp .manifest exp_manifest
+
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: http-data
+    revision: 'input.bundle.hash'
+sources:
+  http-data:
+    datasources:
+    - type: http
+      name: users
+      path: users
+      config:
+        url: http://${HTTP_ENDPOINT}/users
+-- exp_manifest --
+{"revision":"0aa9261ac4e2c8c267a28b261acd98a17607b504bf2c9b51cddeb7dec7c750bb","roots":["users"],"rego_version":0}
