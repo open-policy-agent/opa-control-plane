@@ -103,6 +103,42 @@ func TestExtractRevisionRefs(t *testing.T) {
 			},
 			wantBundleHash: true,
 		},
+		{
+			name:     "http datasource with name",
+			revision: `input.sources["my-data"].http.users.hash`,
+			want: []ReferencedSource{
+				{SourceName: "my-data", Fields: []string{"http", "users", "hash"}},
+			},
+		},
+		{
+			name:     "http datasource with bracket notation",
+			revision: `input.sources["my-data"].http["user-list"].hash`,
+			want: []ReferencedSource{
+				{SourceName: "my-data", Fields: []string{"http", "user-list", "hash"}},
+			},
+		},
+		{
+			name:     "s3 datasource with name",
+			revision: `input.sources["my-data"].s3["model-weights"].hash`,
+			want: []ReferencedSource{
+				{SourceName: "my-data", Fields: []string{"s3", "model-weights", "hash"}},
+			},
+		},
+		{
+			name:     "multiple datasources from same source",
+			revision: `$"{input.sources.data.http.users.hash}-{input.sources.data.http.products.hash}"`,
+			want: []ReferencedSource{
+				{SourceName: "data", Fields: []string{"http", "users", "hash", "products"}},
+			},
+		},
+		{
+			name:     "mixed git and http datasource",
+			revision: `$"{input.sources.policies.git.commit}-{input.sources.data.http.users.hash}"`,
+			want: []ReferencedSource{
+				{SourceName: "policies", Fields: []string{"git", "commit"}},
+				{SourceName: "data", Fields: []string{"http", "users", "hash"}},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -179,7 +215,7 @@ func TestValidationErrorMessages(t *testing.T) {
 			wantErrContains:  `undefined ref: input.sources.nothere.git.commit`,
 		},
 		{
-			name:             "invalid source type - http (schema validation)",
+			name:             "invalid source type - http without datasources (schema validation)",
 			revision:         `input.sources.policies.http.url`,
 			availableSources: []string{"policies"},
 			wantErrContains:  `undefined ref: input.sources.policies.http.url`,
@@ -191,7 +227,7 @@ func TestValidationErrorMessages(t *testing.T) {
 			wantErrContains:  `undefined ref: input.sources.policies.file.path`,
 		},
 		{
-			name:             "invalid source type - s3 (schema validation)",
+			name:             "invalid source type - s3 without datasources (schema validation)",
 			revision:         `input.sources.policies.s3.bucket`,
 			availableSources: []string{"policies"},
 			wantErrContains:  `undefined ref: input.sources.policies.s3.bucket`,
@@ -220,41 +256,244 @@ func TestValidationErrorMessages(t *testing.T) {
 	}
 }
 
+func TestValidationErrorMessagesWithDatasources(t *testing.T) {
+	tests := []struct {
+		name            string
+		revision        string
+		sourceMetadata  map[string]map[string]any
+		wantErrContains string
+	}{
+		{
+			name:     "unknown datasource name under http",
+			revision: `input.sources.data.http.unknown.hash`,
+			sourceMetadata: map[string]map[string]any{
+				"data": {
+					"http": map[string]any{
+						"users":    map[string]any{"hash": "abc123"},
+						"products": map[string]any{"hash": "def456"},
+					},
+				},
+			},
+			wantErrContains: `undefined ref: input.sources.data.http.unknown.hash`,
+		},
+		{
+			name:     "unknown datasource name under s3",
+			revision: `input.sources.data.s3.unknown.hash`,
+			sourceMetadata: map[string]map[string]any{
+				"data": {
+					"s3": map[string]any{
+						"model-weights": map[string]any{"hash": "abc123"},
+					},
+				},
+			},
+			wantErrContains: `undefined ref: input.sources.data.s3.unknown.hash`,
+		},
+		{
+			name:     "accessing http.hash directly without datasource name",
+			revision: `input.sources.data.http.hash`,
+			sourceMetadata: map[string]map[string]any{
+				"data": {
+					"http": map[string]any{
+						"users": map[string]any{"hash": "abc123"},
+					},
+				},
+			},
+			wantErrContains: `undefined ref: input.sources.data.http.hash`,
+		},
+		{
+			name:     "wrong field name on datasource",
+			revision: `input.sources.data.http.users.url`,
+			sourceMetadata: map[string]map[string]any{
+				"data": {
+					"http": map[string]any{
+						"users": map[string]any{"hash": "abc123"},
+					},
+				},
+			},
+			wantErrContains: `undefined ref: input.sources.data.http.users.url`,
+		},
+		{
+			name:     "http not in schema when no http datasources exist",
+			revision: `input.sources.policies.http.users.hash`,
+			sourceMetadata: map[string]map[string]any{
+				"policies": {
+					"git": map[string]any{"commit": "abc123"},
+				},
+			},
+			wantErrContains: `undefined ref: input.sources.policies.http.users.hash`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ResolveRevision(t.Context(), tt.revision, tt.sourceMetadata, "")
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErrContains)
+			}
+
+			if !strings.Contains(err.Error(), tt.wantErrContains) {
+				t.Errorf("error message %q does not contain expected substring %q", err.Error(), tt.wantErrContains)
+			}
+		})
+	}
+}
+
 func TestResolveRevision(t *testing.T) {
-	t.Run("input.bundle.hash resolves to provided hash", func(t *testing.T) {
-		bundleHash := "abc123def456"
-		result, err := ResolveRevision(t.Context(), `input.bundle.hash`, nil, bundleHash)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if result != bundleHash {
-			t.Fatalf("expected %q, got %q", bundleHash, result)
-		}
-	})
+	tests := []struct {
+		name            string
+		revision        string
+		sourceMetadata  map[string]map[string]any
+		bundleHash      string
+		want            string
+		wantErr         bool
+		wantErrContains string
+	}{
+		{
+			name:     "empty revision",
+			revision: "",
+			want:     "",
+		},
+		{
+			name:     "static string",
+			revision: `"v1.0.0"`,
+			want:     "v1.0.0",
+		},
+		{
+			name:     "git commit",
+			revision: `input.sources.policies.git.commit`,
+			sourceMetadata: map[string]map[string]any{
+				"policies": {
+					"git": map[string]any{"commit": "abc123def456"},
+				},
+			},
+			want: "abc123def456",
+		},
+		{
+			name:     "sql hash",
+			revision: `input.sources["sql-source"].sql.hash`,
+			sourceMetadata: map[string]map[string]any{
+				"sql-source": {
+					"sql": map[string]any{"hash": "deadbeef"},
+				},
+			},
+			want: "deadbeef",
+		},
+		{
+			name:     "http datasource hash",
+			revision: `input.sources.data.http.users.hash`,
+			sourceMetadata: map[string]map[string]any{
+				"data": {
+					"http": map[string]any{
+						"users": map[string]any{"hash": "a1b2c3d4"},
+					},
+				},
+			},
+			want: "a1b2c3d4",
+		},
+		{
+			name:     "s3 datasource hash",
+			revision: `input.sources.data.s3["model-weights"].hash`,
+			sourceMetadata: map[string]map[string]any{
+				"data": {
+					"s3": map[string]any{
+						"model-weights": map[string]any{"hash": "s3hash999"},
+					},
+				},
+			},
+			want: "s3hash999",
+		},
+		{
+			name:     "template with git commit substring",
+			revision: `$"git-{substring(input.sources.policies.git.commit, 0, 7)}"`,
+			sourceMetadata: map[string]map[string]any{
+				"policies": {
+					"git": map[string]any{"commit": "abc123def456"},
+				},
+			},
+			want: "git-abc123d",
+		},
+		{
+			name:     "template combining git and http datasource",
+			revision: `$"{substring(input.sources.policies.git.commit, 0, 7)}-{substring(input.sources.data.http.users.hash, 0, 7)}"`,
+			sourceMetadata: map[string]map[string]any{
+				"policies": {
+					"git": map[string]any{"commit": "abc123def456"},
+				},
+				"data": {
+					"http": map[string]any{
+						"users": map[string]any{"hash": "fedcba9876543210"},
+					},
+				},
+			},
+			want: "abc123d-fedcba9",
+		},
+		{
+			name:     "template combining two http datasources from same source",
+			revision: `$"{substring(input.sources.data.http.users.hash, 0, 8)}-{substring(input.sources.data.http.products.hash, 0, 8)}"`,
+			sourceMetadata: map[string]map[string]any{
+				"data": {
+					"http": map[string]any{
+						"users":    map[string]any{"hash": "1111111122222222"},
+						"products": map[string]any{"hash": "3333333344444444"},
+					},
+				},
+			},
+			want: "11111111-33333333",
+		},
+		{
+			name:     "http datasource with bracket notation",
+			revision: `input.sources.data.http["user-list"].hash`,
+			sourceMetadata: map[string]map[string]any{
+				"data": {
+					"http": map[string]any{
+						"user-list": map[string]any{"hash": "bracket-hash"},
+					},
+				},
+			},
+			want: "bracket-hash",
+		},
+		{
+			name:       "input.bundle.hash resolves to provided hash",
+			revision:   `input.bundle.hash`,
+			bundleHash: "abc123def456",
+			want:       "abc123def456",
+		},
+		{
+			name:     "template combining bundle hash and source metadata",
+			revision: `$"{input.sources.policies.git.commit}-{input.bundle.hash}"`,
+			sourceMetadata: map[string]map[string]any{
+				"policies": {"git": map[string]any{"commit": "deadbeef"}},
+			},
+			bundleHash: "abc123",
+			want:       "deadbeef-abc123",
+		},
+		{
+			name:            "schema error on input.bundle.nonexistent",
+			revision:        `input.bundle.nonexistent`,
+			bundleHash:      "abc123",
+			wantErr:         true,
+			wantErrContains: "undefined ref",
+		},
+	}
 
-	t.Run("template combining bundle hash and source metadata", func(t *testing.T) {
-		sourceMetadata := map[string]map[string]any{
-			"policies": {"git": map[string]any{"commit": "deadbeef"}},
-		}
-		bundleHash := "abc123"
-		result, err := ResolveRevision(t.Context(), `$"{input.sources.policies.git.commit}-{input.bundle.hash}"`, sourceMetadata, bundleHash)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		expected := "deadbeef-abc123"
-		if result != expected {
-			t.Fatalf("expected %q, got %q", expected, result)
-		}
-	})
-
-	t.Run("schema error on input.bundle.nonexistent", func(t *testing.T) {
-		bundleHash := "abc123"
-		_, err := ResolveRevision(t.Context(), `input.bundle.nonexistent`, nil, bundleHash)
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
-		if !strings.Contains(err.Error(), "undefined ref") {
-			t.Errorf("expected undefined ref error, got: %v", err)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResolveRevision(t.Context(), tt.revision, tt.sourceMetadata, tt.bundleHash)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("error message %q does not contain expected substring %q", err.Error(), tt.wantErrContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
