@@ -14,6 +14,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/pkg/service"
+	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
 
 func TestUnconfiguredSecretHandling(t *testing.T) {
@@ -370,10 +371,205 @@ func oneshot(t *testing.T, bs []byte, dir string) *service.Service {
 		WithMigrateDB(true).
 		WithLogger(log)
 
-	err = svc.Run(context.Background())
+	err = svc.Run(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	return svc
+}
+
+// mock types for SecretProviderFactory tests
+
+type mockSecretProviderFactory struct {
+	calls []string
+}
+
+func (f *mockSecretProviderFactory) SecretProviderForTenant(_ context.Context, tenant string) (pkgsync.SecretProvider, error) {
+	f.calls = append(f.calls, tenant)
+	return &mockSecretProvider{tenant: tenant}, nil
+}
+
+type nilSecretProviderFactory struct {
+	calls []string
+}
+
+func (f *nilSecretProviderFactory) SecretProviderForTenant(_ context.Context, tenant string) (pkgsync.SecretProvider, error) {
+	f.calls = append(f.calls, tenant)
+	return nil, nil
+}
+
+type mockSecretProvider struct {
+	tenant string
+}
+
+func (p *mockSecretProvider) GetSecret(_ context.Context, name string) (map[string]any, error) {
+	return map[string]any{
+		"type":  "token_auth",
+		"token": fmt.Sprintf("token-for-%s-%s", p.tenant, name),
+	}, nil
+}
+
+func TestSecretProviderFactoryCalledPerTenant(t *testing.T) {
+
+	bs := fmt.Appendf(nil, `{
+		bundles: {
+			test_bundle: {
+				object_storage: {
+					filesystem: {
+						path: %q
+					}
+				},
+				requirements: [
+					{source: test_src}
+				]
+			}
+		},
+		sources: {
+			test_src: {
+				git: {
+					repo: https://example.com/repo.git,
+					credentials: my_creds,
+					reference: refs/heads/main,
+				}
+			}
+		}
+	}`, filepath.Join(t.TempDir(), "bundles"))
+
+	factory := &mockSecretProviderFactory{}
+
+	svc := service.New().
+		WithRawConfig(bs).
+		WithPersistenceDir(filepath.Join(t.TempDir(), "data")).
+		WithSingleShot(true).
+		WithMigrateDB(true).
+		WithSecretProviderFactory(factory)
+
+	_ = svc.Run(t.Context())
+
+	if len(factory.calls) == 0 {
+		t.Fatal("expected SecretProviderFactory to be called")
+	}
+	if factory.calls[0] != "default" {
+		t.Fatalf("expected tenant 'default', got %q", factory.calls[0])
+	}
+}
+
+func TestSecretProviderFactoryReturningNil(t *testing.T) {
+
+	bs := fmt.Appendf(nil, `{
+		bundles: {
+			test_bundle: {
+				object_storage: {
+					filesystem: {
+						path: %q
+					}
+				},
+				requirements: [
+					{source: test_src}
+				]
+			}
+		},
+		sources: {
+			test_src: {
+				git: {
+					repo: https://example.com/repo.git,
+					credentials: my_creds,
+					reference: refs/heads/main,
+				}
+			}
+		}
+	}`, filepath.Join(t.TempDir(), "bundles"))
+
+	factory := &nilSecretProviderFactory{}
+
+	svc := service.New().
+		WithRawConfig(bs).
+		WithPersistenceDir(filepath.Join(t.TempDir(), "data")).
+		WithSingleShot(true).
+		WithMigrateDB(true).
+		WithSecretProviderFactory(factory)
+
+	_ = svc.Run(t.Context())
+
+	if len(factory.calls) == 0 {
+		t.Fatal("expected factory to be consulted")
+	}
+}
+
+func TestSecretProviderFactoryWithGitSync(t *testing.T) {
+
+	tempDir := t.TempDir()
+
+	repoDir := filepath.Join(tempDir, "remotegit")
+	h := writeGitRepo(t, repoDir, map[string]string{
+		"foo.rego": "package foo\np := 1",
+	}, nil)
+
+	bs := render(t, `{
+		bundles: {
+			test_bundle: {
+				object_storage: {
+					filesystem: {
+						path: "{{ printf "%s/%s" .Path "bundles.tar.gz" }}",
+					}
+				},
+				requirements: [
+					{source: test_src, git: {commit: "{{ .GitHash }}"}},
+				],
+			},
+		},
+		sources: {
+			test_src: {
+				git: {
+					repo: "{{ .RepoDir }}",
+					reference: refs/heads/master,
+				},
+			},
+		},
+	}`, struct {
+		Path    string
+		GitHash string
+		RepoDir string
+	}{
+		Path:    tempDir,
+		GitHash: h.String(),
+		RepoDir: repoDir,
+	})
+
+	factory := &mockSecretProviderFactory{}
+
+	svc := service.New().
+		WithRawConfig(bs).
+		WithPersistenceDir(filepath.Join(tempDir, "data")).
+		WithSingleShot(true).
+		WithMigrateDB(true).
+		WithSecretProviderFactory(factory)
+
+	if err := svc.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	report := svc.Report()
+	if report.Bundles["test_bundle"].State != service.BuildStateSuccess {
+		t.Fatalf("expected success, got %v: %s", report.Bundles["test_bundle"].State, report.Bundles["test_bundle"].Message)
+	}
+
+	if len(factory.calls) == 0 {
+		t.Fatal("expected factory to be called")
+	}
+
+	glob := filepath.Join(tempDir, "data", "*", "sources", "test_src", "repo", "foo.rego")
+	matches, err := filepath.Glob(glob)
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("expected foo.rego to be synced, glob: %s, err: %v", glob, err)
+	}
+
+	content, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "package foo\np := 1" {
+		t.Fatalf("unexpected content: %s", content)
+	}
 }

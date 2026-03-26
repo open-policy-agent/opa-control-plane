@@ -101,3 +101,14 @@ type SecretProvider interface {
 	// Returns an error if the secret cannot be retrieved or does not exist.
 	GetSecret(ctx context.Context, name string) (map[string]any, error)
 }
+
+// SecretProviderFactory creates tenant-scoped SecretProvider instances.
+// In multi-tenant deployments, each tenant (application) may store secrets
+// in a separate namespace or bucket. The factory resolves the correct
+// SecretProvider for a given tenant at worker launch time.
+//
+// Returning (nil, nil) means no provider is available for this tenant;
+// credentials configured on sources will be resolved from the database only.
+type SecretProviderFactory interface {
+	SecretProviderForTenant(ctx context.Context, tenant string) (SecretProvider, error)
+}
