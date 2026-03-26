@@ -64,7 +64,7 @@ type Service struct {
 	migrateDB      bool
 	initialized    bool
 	storage        ext_os.ObjectStorage
-	secretProvider pkgsync.SecretProvider
+	secretFactory  pkgsync.SecretProviderFactory
 }
 
 type Report struct {
@@ -171,8 +171,8 @@ func (s *Service) WithStorage(storage ext_os.ObjectStorage) *Service {
 	return s
 }
 
-func (s *Service) WithSecretProvider(provider pkgsync.SecretProvider) *Service {
-	s.secretProvider = provider
+func (s *Service) WithSecretProviderFactory(factory pkgsync.SecretProviderFactory) *Service {
+	s.secretFactory = factory
 	return s
 }
 
@@ -401,6 +401,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			syncs := []sourceSynchronizer{}
 			sources := []*builder.Source{&root.Source}
 			bundleDir := join(s.persistenceDir, md5sum(bName))
+			tenantProvider := s.secretProviderForTenant(ctx, tenant)
 
 			for _, dep := range deps {
 				// NB(sr): dep.Name could contain a `:` which cause build errors in OPA's bundle build machinery
@@ -409,8 +410,8 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				src := newSource(dep.Name).
 					SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
 					SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database"), metadataFields[dep.Name]).
-					SyncDatasources(&syncs, dep.Name, dep.Datasources, join(srcDir, "datasources"), s.secretProvider, metadataFields[dep.Name]).
-					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name], s.secretProvider).
+					SyncDatasources(&syncs, dep.Name, dep.Datasources, join(srcDir, "datasources"), tenantProvider, metadataFields[dep.Name]).
+					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name], tenantProvider).
 					AddRequirements(dep.Requirements)
 
 				sources = append(sources, &src.Source)
@@ -441,6 +442,18 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 		s.failures = failures
 	}
+}
+
+func (s *Service) secretProviderForTenant(ctx context.Context, tenant string) pkgsync.SecretProvider {
+	if s.secretFactory != nil {
+		provider, err := s.secretFactory.SecretProviderForTenant(ctx, tenant)
+		if err != nil {
+			s.log.Warnf("secret provider factory error for tenant %q: %v", tenant, err)
+			return nil
+		}
+		return provider
+	}
+	return nil
 }
 
 func (s *Service) allWorkersDone() bool {
