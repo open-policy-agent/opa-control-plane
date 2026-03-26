@@ -1,4 +1,4 @@
-# Test revision using HTTP datasource hash
+# Test revision using HTTP datasource hash with multiple datasources and sources
 exec $OPACTL build --config config.d/bundle.yml --data-dir tmp
 stderr '^1/1 bundles built and pushed successfully$'
 ! stdout .
@@ -6,8 +6,9 @@ stderr '^1/1 bundles built and pushed successfully$'
 exec tar xf bundles/hello-world/bundle.tar.gz /.manifest
 
 exec cat .manifest
-stdout '"revision":"[0-9a-f]{64}"'
-stdout '"roots":\["users"\]'
+# Revision should be a composite of all three hashes (each 8 chars, separated by dashes)
+stdout '"revision":"[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}"'
+stdout '"roots":\["headers","users","extra"\]'
 stdout '"rego_version":0'
 
 -- config.d/bundle.yml --
@@ -17,13 +18,26 @@ bundles:
       filesystem:
         path: bundles/hello-world/bundle.tar.gz
     requirements:
-    - source: http-data
-    revision: 'input.sources["http-data"].http.hash'
+    - source: data-a
+    - source: data-b
+    revision: '$"{substring(input.sources["data-a"].http.users.hash, 0, 8)}-{substring(input.sources["data-a"].http.headers.hash, 0, 8)}-{substring(input.sources["data-b"].http.extra.hash, 0, 8)}"'
 sources:
-  http-data:
+  data-a:
     datasources:
     - type: http
       name: users
       path: users
+      config:
+        url: http://${HTTP_ENDPOINT}/users
+    - type: http
+      name: headers
+      path: headers
+      config:
+        url: http://${HTTP_ENDPOINT}/headers
+  data-b:
+    datasources:
+    - type: http
+      name: extra
+      path: extra
       config:
         url: http://${HTTP_ENDPOINT}/users

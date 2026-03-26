@@ -557,9 +557,10 @@ func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName strin
 			body, _ := datasource.Config["body"].(string)
 			headers, _ := datasource.Config["headers"].(map[string]any)
 			*syncs = append(*syncs, sourceSynchronizer{
-				sync:       httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials, opts...).WithSecretProvider(provider),
-				sourceName: sourceName,
-				sourceType: "http",
+				sync:           httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials, opts...).WithSecretProvider(provider),
+				sourceName:     sourceName,
+				sourceType:     "http",
+				datasourceName: datasource.Name,
 			})
 		case "s3":
 			bucket, _ := datasource.Config["bucket"].(string)
@@ -577,9 +578,10 @@ func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName strin
 			}
 
 			*syncs = append(*syncs, sourceSynchronizer{
-				sync:       httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials, opts...),
-				sourceName: sourceName,
-				sourceType: "s3",
+				sync:           httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials, opts...),
+				sourceName:     sourceName,
+				sourceType:     "s3",
+				datasourceName: datasource.Name,
 			})
 		}
 

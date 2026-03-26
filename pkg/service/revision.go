@@ -103,9 +103,16 @@ func ResolveRevision(ctx context.Context, revision string, sourceMetadata map[st
 }
 
 func buildInputSchema(sourceMetadata map[string]map[string]any, bundleHash string) *ast.SchemaSet {
-	sourceSchema := map[string]any{
+	datasourceEntrySchema := map[string]any{
 		"type": "object",
 		"properties": map[string]any{
+			"hash": map[string]any{"type": "string"},
+		},
+	}
+
+	sourceProps := make(map[string]any, len(sourceMetadata))
+	for sourceName, types := range sourceMetadata {
+		props := map[string]any{
 			"git": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -118,24 +125,26 @@ func buildInputSchema(sourceMetadata map[string]map[string]any, bundleHash strin
 					"hash": map[string]any{"type": "string"},
 				},
 			},
-			"http": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"hash": map[string]any{"type": "string"},
-				},
-			},
-			"s3": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"hash": map[string]any{"type": "string"},
-				},
-			},
-		},
-	}
+		}
 
-	sourceProps := make(map[string]any, len(sourceMetadata))
-	for sourceName := range sourceMetadata {
-		sourceProps[sourceName] = sourceSchema
+		// For http and s3, build schema from actual datasource names in metadata
+		for _, sourceType := range []string{"http", "s3"} {
+			if typeData, ok := types[sourceType].(map[string]any); ok {
+				dsProps := make(map[string]any, len(typeData))
+				for dsName := range typeData {
+					dsProps[dsName] = datasourceEntrySchema
+				}
+				props[sourceType] = map[string]any{
+					"type":       "object",
+					"properties": dsProps,
+				}
+			}
+		}
+
+		sourceProps[sourceName] = map[string]any{
+			"type":       "object",
+			"properties": props,
+		}
 	}
 
 	schemas := ast.NewSchemaSet()

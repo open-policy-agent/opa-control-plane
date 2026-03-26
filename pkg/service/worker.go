@@ -49,9 +49,10 @@ type Synchronizer interface {
 }
 
 type sourceSynchronizer struct {
-	sync       Synchronizer
-	sourceName string
-	sourceType string // "git", "sql", "http", "s3"
+	sync           Synchronizer
+	sourceName     string
+	sourceType     string // "git", "sql", "http", "s3"
+	datasourceName string // For http/s3: the datasource name used as key in metadata
 }
 
 func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Source, stacks []*config.Stack, logger *logging.Logger, bar *progress.Bar) *BundleWorker {
@@ -138,11 +139,22 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 			return w.report(ctx, BuildStateSyncFailed, startTime, err)
 		}
 		if metadata != nil {
-			// Structure metadata by source type (git, sql, http, s3)
 			if sourceMetadata[ss.sourceName] == nil {
 				sourceMetadata[ss.sourceName] = make(map[string]any)
 			}
-			sourceMetadata[ss.sourceName][ss.sourceType] = metadata
+			// For datasource types (http, s3), nest metadata under datasource name
+			// to support multiple datasources of the same type per source:
+			//   input.sources["src"].http["ds-name"].hash
+			if ss.datasourceName != "" {
+				typeMap, ok := sourceMetadata[ss.sourceName][ss.sourceType].(map[string]any)
+				if !ok {
+					typeMap = make(map[string]any)
+					sourceMetadata[ss.sourceName][ss.sourceType] = typeMap
+				}
+				typeMap[ss.datasourceName] = metadata
+			} else {
+				sourceMetadata[ss.sourceName][ss.sourceType] = metadata
+			}
 		}
 	}
 
