@@ -4,8 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"io/fs"
 	"os"
-	"path/filepath"
 	"sort"
 )
 
@@ -14,18 +14,21 @@ import (
 // (null-terminated) followed by its contents to the hash. An empty directory produces
 // the hash of an empty input.
 func HashDirectory(root string) (string, error) {
+	return HashFS(os.DirFS(root))
+}
+
+// HashFS computes a deterministic SHA-256 hash over all files in an fs.FS.
+// Files are sorted by path, each contributing its path (null-terminated)
+// followed by its contents.
+func HashFS(fsys fs.FS) (string, error) {
 	var files []string
 
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if !d.IsDir() {
-			relPath, err := filepath.Rel(root, path)
-			if err != nil {
-				return err
-			}
-			files = append(files, relPath)
+			files = append(files, path)
 		}
 		return nil
 	})
@@ -40,8 +43,7 @@ func HashDirectory(root string) (string, error) {
 		h.Write([]byte(file))
 		h.Write([]byte{0})
 
-		fullPath := filepath.Join(root, file)
-		f, err := os.Open(fullPath)
+		f, err := fsys.Open(file)
 		if err != nil {
 			return "", err
 		}
