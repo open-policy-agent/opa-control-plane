@@ -143,7 +143,7 @@ func TestExtractRevisionRefs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, gotBundleHash, err := ExtractRevisionRefs(tt.revision)
+			got, gotBundleHash, err := extractRevisionRefs(tt.revision)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -244,7 +244,7 @@ func TestValidationErrorMessages(t *testing.T) {
 				}
 			}
 
-			_, err := ResolveRevision(t.Context(), tt.revision, sourceMetadata, "")
+			_, err := resolveRevision(t.Context(), tt.revision, sourceMetadata, "")
 			if err == nil {
 				t.Fatalf("expected error containing %q, got nil", tt.wantErrContains)
 			}
@@ -326,7 +326,7 @@ func TestValidationErrorMessagesWithDatasources(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := ResolveRevision(t.Context(), tt.revision, tt.sourceMetadata, "")
+			_, err := resolveRevision(t.Context(), tt.revision, tt.sourceMetadata, "")
 			if err == nil {
 				t.Fatalf("expected error containing %q, got nil", tt.wantErrContains)
 			}
@@ -478,7 +478,7 @@ func TestResolveRevision(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ResolveRevision(t.Context(), tt.revision, tt.sourceMetadata, tt.bundleHash)
+			got, err := resolveRevision(t.Context(), tt.revision, tt.sourceMetadata, tt.bundleHash)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
