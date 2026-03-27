@@ -186,6 +186,21 @@ func (o Options) Empty() bool {
 	return o == Options{}
 }
 
+// BundleStatus represents the build status of a bundle.
+type BundleStatus struct {
+	ID           int64     `json:"-"`
+	TenantID     int64     `json:"-"`
+	BundleID     int64     `json:"-"`
+	BundleName   string    `json:"bundle_name"`
+	Revision     string    `json:"revision,omitempty"`
+	Phase        string    `json:"phase"`
+	Status       string    `json:"status"`
+	ErrorMessage *string   `json:"error_message,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+
+	_ struct{} `additionalProperties:"false"`
+}
+
 // Bundle defines the configuration for an OPA Control Plane Bundle.
 type Bundle struct {
 	Name          string        `json:"name"`

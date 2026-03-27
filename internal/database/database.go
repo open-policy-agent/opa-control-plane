@@ -291,6 +291,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 					return err
 				}
 				cfg.MultiStatements = true // required for migrations to work
+				cfg.ParseTime = true       // required for scanning time.Time columns
 			} else {
 				cfg = &mysqldriver.Config{
 					User:                    dbUser,
@@ -302,6 +303,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 					AllowOldPasswords:       true,
 					TLSConfig:               tlsConfigName,
 					MultiStatements:         true, // required for migrations
+					ParseTime:               true, // required for scanning time.Time columns
 				}
 
 				_ = cfg.Apply(mysqldriver.BeforeConnect(func(ctx context.Context, config *mysqldriver.Config) error {
@@ -369,6 +371,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 			return err
 		}
 		cfg.MultiStatements = true // required for migrations
+		cfg.ParseTime = true       // required for scanning time.Time columns
 
 		cfg.TLS, err = tlsConfig(ctx, d.config.SQL.Credentials, cfg.TLS)
 		if err != nil {
@@ -1945,20 +1948,20 @@ func (d *Database) lookupID(ctx context.Context, tx *sql.Tx, tenant, table, name
 }
 
 func (d *Database) upsert(ctx context.Context, tx *sql.Tx, tenant, table string, columns []string, primaryKey []string, values ...any) (int, error) {
-	return d.upsertReturning(ctx, true, tx, tenant, table, columns, primaryKey, values...)
+	return d.upsertReturning(ctx, true, false, tx, tenant, table, columns, primaryKey, values...)
 }
 
 func (d *Database) upsertNoID(ctx context.Context, tx *sql.Tx, tenant, table string, columns []string, primaryKey []string, values ...any) error {
-	_, err := d.upsertReturning(ctx, false, tx, tenant, table, columns, primaryKey, values...)
+	_, err := d.upsertReturning(ctx, false, false, tx, tenant, table, columns, primaryKey, values...)
 	return err
 }
 
 func (d *Database) upsertRel(ctx context.Context, tx *sql.Tx, table string, columns []string, primaryKey []string, values ...any) error {
-	_, err := d.upsertReturning(ctx, false, tx, "", table, columns, primaryKey, values...)
+	_, err := d.upsertReturning(ctx, false, false, tx, "", table, columns, primaryKey, values...)
 	return err
 }
 
-func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.Tx, tenant, table string, columns []string, primaryKey []string, values ...any) (int, error) {
+func (d *Database) upsertReturning(ctx context.Context, returning, returningLastInsertID bool, tx *sql.Tx, tenant, table string, columns []string, primaryKey []string, values ...any) (int, error) {
 	valueArgs := d.args(len(columns))
 	if tenant != "" { // not a relation-only table
 		// add tenant
@@ -1991,6 +1994,13 @@ func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.
 
 	case mysql:
 		set := make([]string, 0, len(columns))
+
+		if returning && returningLastInsertID {
+			// Include id = LAST_INSERT_ID(id) so that LastInsertId() returns the
+			// correct row ID even when the row already exists and is updated.
+			set = append(set, "id = LAST_INSERT_ID(id)")
+		}
+
 		for i := range columns {
 			set = append(set, fmt.Sprintf("%s = VALUES(%s)", columns[i], columns[i]))
 		}
@@ -2002,10 +2012,20 @@ func (d *Database) upsertReturning(ctx context.Context, returning bool, tx *sql.
 
 	if returning {
 		if d.kind == mysql { // MySQL has no "... RETURNING (cols)"
-			_, err := tx.ExecContext(ctx, query, values...)
+			result, err := tx.ExecContext(ctx, query, values...)
 			if err != nil {
 				return 0, err
 			}
+
+			if returningLastInsertID {
+				// retrieve the inserted row's ID instead of performing a follow-up SELECT query.
+				id, err := result.LastInsertId()
+				if err != nil {
+					return 0, err
+				}
+				return int(id), nil
+			}
+
 			var id int
 			query = fmt.Sprintf("SELECT %[1]s.id FROM %[1]s JOIN tenants ON tenants.id = %[1]s.tenant_id AND %[1]s.%[2]s = %[3]s", table, primaryKey[0], d.arg(0))
 			return id, tx.QueryRowContext(ctx, query, values[0]).Scan(&id)

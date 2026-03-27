@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
@@ -42,6 +43,8 @@ type BundleWorker struct {
 	bar           *progress.Bar
 	status        Status
 	interval      time.Duration
+	database      *database.Database
+	tenant        string
 }
 
 type Synchronizer interface {
@@ -91,6 +94,16 @@ func (worker *BundleWorker) WithSingleShot(singleShot bool) *BundleWorker {
 
 func (worker *BundleWorker) WithInterval(d config.Duration) *BundleWorker {
 	worker.interval = cmp.Or(time.Duration(d), defaultInterval)
+	return worker
+}
+
+func (worker *BundleWorker) WithDatabase(database *database.Database) *BundleWorker {
+	worker.database = database
+	return worker
+}
+
+func (worker *BundleWorker) WithTenant(tenant string) *BundleWorker {
+	worker.tenant = tenant
 	return worker
 }
 
@@ -203,7 +216,21 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 
 	if err := b.Build(ctx); err != nil {
 		w.log.Warnf("failed to build a bundle %q: %v", w.bundleConfig.Name, err)
+
+		if b.Revision() != "" {
+			_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhaseBuild.String(), BuildStateBuildFailed.String(), err.Error())
+			if err != nil {
+				w.log.Warnf("failed to track bundle build state %q: %v", w.bundleConfig.Name, err)
+			}
+		}
 		return w.report(ctx, BuildStateBuildFailed, startTime, err)
+	}
+
+	if b.Revision() != "" {
+		_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhaseBuild.String(), BuildStateSuccess.String(), "")
+		if err != nil {
+			w.log.Warnf("failed to track bundle build state %q: %v", w.bundleConfig.Name, err)
+		}
 	}
 
 	if w.storage != nil {
@@ -214,10 +241,24 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 				return w.report(ctx, BuildStateSuccess, startTime, nil)
 			}
 			w.log.Warnf("failed to upload bundle %q: %v", w.bundleConfig.Name, err)
+
+			if b.Revision() != "" {
+				_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhasePush.String(), BuildStatePushFailed.String(), err.Error())
+				if err != nil {
+					w.log.Warnf("failed to track bundle upload state %q: %v", w.bundleConfig.Name, err)
+				}
+			}
 			return w.report(ctx, BuildStatePushFailed, startTime, err)
 		}
 
 		w.log.Debugf("Bundle %q built and uploaded.", w.bundleConfig.Name)
+
+		if b.Revision() != "" {
+			_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhasePush.String(), BuildStateSuccess.String(), "")
+			if err != nil {
+				w.log.Warnf("failed to track bundle upload state %q: %v", w.bundleConfig.Name, err)
+			}
+		}
 		return w.report(ctx, BuildStateSuccess, startTime, nil)
 	}
 

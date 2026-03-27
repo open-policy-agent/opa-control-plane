@@ -13,6 +13,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/open-policy-agent/opa/v1/util"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
@@ -1166,4 +1168,202 @@ func (tr *testResponse) ExpectBody(x any) *testResponse {
 		tr.ts.t.Fatal(err)
 	}
 	return tr
+}
+
+func TestV1BundleStatusLatestGet(t *testing.T) {
+	ctx := t.Context()
+	for databaseType, databaseConfig := range dbs.Configs(t) {
+		t.Run(databaseType, func(t *testing.T) {
+			t.Parallel()
+
+			var ctr testcontainers.Container
+			if databaseConfig.Setup != nil {
+				ctr = databaseConfig.Setup(t)
+				if databaseConfig.Cleanup != nil {
+					t.Cleanup(databaseConfig.Cleanup(t, ctr))
+				}
+			}
+
+			db := initTestDB(t, databaseConfig.Database(t, ctr).Database)
+			ts := initTestServer(t, db)
+			defer ts.Close()
+
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
+				t.Fatal(err)
+			}
+
+			const ownerKey = "test-owner-key"
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{
+				Name:   "testowner",
+				APIKey: ownerKey,
+				Scopes: []config.Scope{{Role: "viewer"}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := db.UpsertBundle(ctx, principal.Id, principal.Tenant, &config.Bundle{Name: "bundle1"}); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := db.UpsertBundleStatus(ctx, principal.Tenant, "bundle1", "rev1", "build", "in_progress", ""); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.UpsertBundleStatus(ctx, principal.Tenant, "bundle1", "rev2", "push", "completed", ""); err != nil {
+				t.Fatal(err)
+			}
+
+			t.Run("success", func(t *testing.T) {
+				var resp types.BundleStatusGetResponseV1
+				ts.Request("GET", "/v1/bundles/bundle1/status/latest", "", ownerKey).
+					ExpectStatus(http.StatusOK).
+					ExpectBody(&resp)
+
+				require.NotNil(t, resp.Result)
+				assert.Equal(t, "bundle1", resp.Result.BundleName)
+				assert.Equal(t, "rev2", resp.Result.Revision)
+				assert.Equal(t, "push", resp.Result.Phase)
+				assert.Equal(t, "completed", resp.Result.Status)
+			})
+
+			t.Run("bundle not found", func(t *testing.T) {
+				ts.Request("GET", "/v1/bundles/nonexistent/status/latest", "", ownerKey).
+					ExpectStatus(http.StatusNotFound)
+			})
+
+			t.Run("unauthorized", func(t *testing.T) {
+				ts.Request("GET", "/v1/bundles/bundle1/status/latest", "", "").
+					ExpectStatus(http.StatusUnauthorized)
+			})
+		})
+	}
+}
+
+func TestV1BundleStatusList(t *testing.T) {
+	ctx := t.Context()
+	for databaseType, databaseConfig := range dbs.Configs(t) {
+		t.Run(databaseType, func(t *testing.T) {
+			t.Parallel()
+
+			var ctr testcontainers.Container
+			if databaseConfig.Setup != nil {
+				ctr = databaseConfig.Setup(t)
+				if databaseConfig.Cleanup != nil {
+					t.Cleanup(databaseConfig.Cleanup(t, ctr))
+				}
+			}
+
+			db := initTestDB(t, databaseConfig.Database(t, ctr).Database)
+			ts := initTestServer(t, db)
+			defer ts.Close()
+
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
+				t.Fatal(err)
+			}
+
+			const ownerKey = "test-owner-key"
+			if err := db.UpsertToken(ctx, "internal", "default", &config.Token{
+				Name:   "testowner",
+				APIKey: ownerKey,
+				Scopes: []config.Scope{{Role: "viewer"}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := db.UpsertBundle(ctx, principal.Id, principal.Tenant, &config.Bundle{Name: "bundle1"}); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := db.UpsertBundleStatus(ctx, principal.Tenant, "bundle1", "rev1", "sync", "in_progress", ""); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.UpsertBundleStatus(ctx, principal.Tenant, "bundle1", "rev1", "build", "in_progress", ""); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.UpsertBundleStatus(ctx, principal.Tenant, "bundle1", "rev2", "push", "failed", "push failed"); err != nil {
+				t.Fatal(err)
+			}
+
+			t.Run("success", func(t *testing.T) {
+				var resp types.BundleStatusListResponseV1
+				ts.Request("GET", "/v1/bundles/bundle1/status", "", ownerKey).
+					ExpectStatus(http.StatusOK).
+					ExpectBody(&resp)
+
+				assert.Len(t, resp.Result, 2) // For a given tenant+bundle+revision combination, only one record exists.
+				assert.Equal(t, "rev2", resp.Result[0].Revision)
+				assert.Equal(t, "rev1", resp.Result[1].Revision)
+			})
+
+			t.Run("filter by revision", func(t *testing.T) {
+				var resp types.BundleStatusListResponseV1
+				ts.Request("GET", "/v1/bundles/bundle1/status?revision=rev1", "", ownerKey).
+					ExpectStatus(http.StatusOK).
+					ExpectBody(&resp)
+
+				assert.Len(t, resp.Result, 1)
+				assert.Equal(t, "rev1", resp.Result[0].Revision)
+				assert.Equal(t, "build", resp.Result[0].Phase)
+				assert.Equal(t, "in_progress", resp.Result[0].Status)
+			})
+
+			t.Run("with limit", func(t *testing.T) {
+				var resp types.BundleStatusListResponseV1
+				ts.Request("GET", "/v1/bundles/bundle1/status?limit=1", "", ownerKey).
+					ExpectStatus(http.StatusOK).
+					ExpectBody(&resp)
+
+				assert.Len(t, resp.Result, 1)
+				assert.Equal(t, "rev2", resp.Result[0].Revision)
+				assert.Equal(t, "push", resp.Result[0].Phase)
+				assert.Equal(t, "failed", resp.Result[0].Status)
+				assert.Equal(t, "push failed", *resp.Result[0].ErrorMessage)
+			})
+
+			t.Run("invalid limit", func(t *testing.T) {
+				ts.Request("GET", "/v1/bundles/bundle1/status?limit=abc", "", ownerKey).
+					ExpectStatus(http.StatusBadRequest)
+			})
+
+			t.Run("empty result for unknown bundle", func(t *testing.T) {
+				var resp types.BundleStatusListResponseV1
+				ts.Request("GET", "/v1/bundles/nonexistent/status", "", ownerKey).
+					ExpectStatus(http.StatusOK).
+					ExpectBody(&resp)
+
+				assert.Empty(t, resp.Result)
+			})
+
+			t.Run("unauthorized", func(t *testing.T) {
+				ts.Request("GET", "/v1/bundles/bundle1/status", "", "").
+					ExpectStatus(http.StatusUnauthorized)
+			})
+
+			const otherPrincipal = "other-internal"
+			const otherTenant = "other-tenant"
+			if _, err := db.DB().ExecContext(ctx, "INSERT INTO tenants (name) VALUES ('"+otherTenant+"')"); err != nil {
+				t.Fatal(err)
+			}
+			p2 := principal
+			p2.Id = otherPrincipal
+			p2.Tenant = otherTenant
+			if err := db.UpsertPrincipal(ctx, p2); err != nil {
+				t.Fatal(err)
+			}
+
+			const otherOwnerKey = "other-test-owner-key"
+			if err := db.UpsertToken(ctx, otherPrincipal, otherTenant, &config.Token{
+				Name:   "othertestowner",
+				APIKey: otherOwnerKey,
+				Scopes: []config.Scope{{Role: "viewer"}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			t.Run("other tenant unauthorized", func(t *testing.T) {
+
+				ts.Request("GET", "/v1/bundles/bundle1/status", "", otherOwnerKey).
+					ExpectStatus(http.StatusForbidden)
+			})
+		})
+	}
 }

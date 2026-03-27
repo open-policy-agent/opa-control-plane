@@ -66,6 +66,8 @@ func (s *Server) Init() *Server {
 	setup("GET", "/v1/bundles/{bundle}", s.v1BundlesGet)
 	setup("PUT", "/v1/bundles/{bundle}", s.v1BundlesPut)
 	setup("DELETE", "/v1/bundles/{bundle}", s.v1BundlesDelete)
+	setup("GET", "/v1/bundles/{bundle}/status/latest", s.v1BundleStatusLatestGet)
+	setup("GET", "/v1/bundles/{bundle}/status", s.v1BundleStatusList)
 
 	setup("GET", "/v1/stacks", s.v1StacksList)
 	setup("GET", "/v1/stacks/{stack}", s.v1StacksGet)
@@ -227,6 +229,61 @@ func (s *Server) v1BundlesDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := types.SourcesDeleteResponseV1{}
+	JSONOK(w, resp, pretty(r))
+}
+
+func (s *Server) v1BundleStatusLatestGet(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	name, err := url.PathUnescape(r.PathValue("bundle"))
+	if err != nil {
+		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	principal, tenant := s.auth(r)
+	status, err := s.db.GetLatestBundleStatus(ctx, principal, tenant, name)
+	if err != nil {
+		errorAuto(w, err)
+		return
+	}
+
+	resp := types.BundleStatusGetResponseV1{Result: status}
+	JSONOK(w, resp, pretty(r))
+}
+
+func (s *Server) v1BundleStatusList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	name, err := url.PathUnescape(r.PathValue("bundle"))
+	if err != nil {
+		ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+		return
+	}
+
+	principal, tenant := s.auth(r)
+
+	q := r.URL.Query()
+	revision := q.Get("revision")
+
+	// Limit validation is skipped at the API layer; the database layer
+	// applies defaults and caps the value
+	var limit int
+	if v := q.Get("limit"); v != "" {
+		limit, err = strconv.Atoi(v)
+		if err != nil {
+			ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
+			return
+		}
+	}
+
+	statuses, err := s.db.ListBundleStatuses(ctx, principal, tenant, name, revision, limit)
+	if err != nil {
+		errorAuto(w, err)
+		return
+	}
+
+	resp := types.BundleStatusListResponseV1{Result: statuses}
 	JSONOK(w, resp, pretty(r))
 }
 

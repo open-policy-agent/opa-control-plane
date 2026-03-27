@@ -23,6 +23,7 @@ import (
 // to continue using the short names (e.g. config.Bundle) while the canonical
 // definitions live in the public package.
 type (
+	BundleStatus      = extconfig.BundleStatus
 	Bundle            = extconfig.Bundle
 	Source            = extconfig.Source
 	Sources           = extconfig.Sources
