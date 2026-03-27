@@ -214,6 +214,10 @@ func (b *Builder) WithRevisionFunc(fn func(fs.FS) (string, error)) *Builder {
 	return b
 }
 
+func (b *Builder) Revision() string {
+	return b.revision
+}
+
 type PackageConflictErr struct {
 	Requirement *Source
 	Package     *ast.Package

@@ -43,6 +43,7 @@ func Migrations(dialect string) (fs.FS, error) {
 		addBundlesRevision(23, dialect),
 		addDatasourcesCredentialsName(24, dialect),
 		addSourcesGitCredentialsName(25, dialect),
+		addBundlesStatuses(26, dialect),
 	), nil
 }
 

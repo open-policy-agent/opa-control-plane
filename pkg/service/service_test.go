@@ -10,11 +10,13 @@ import (
 	"path/filepath"
 	"testing"
 	"text/template"
+	"time"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/pkg/service"
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestUnconfiguredSecretHandling(t *testing.T) {
@@ -124,6 +126,204 @@ func TestRequirementsWithOverrides(t *testing.T) {
 	}
 	if string(foo) != initialContent {
 		t.Fatal("unexpected file content")
+	}
+}
+
+func TestBundleStatusPushSuccess(t *testing.T) {
+
+	tempDir := t.TempDir()
+
+	tmpl := `{
+		bundles: {
+			test_bundle: {
+				object_storage: {
+					filesystem: {
+						path: "{{ printf "%s/%s" .Path "bundles.tar.gz" }}",
+					}
+				},
+				requirements: [
+					{source: test_src, git: {commit: "{{ .GitHash }}"}},
+				],
+				revision: "{{ .Revision }}",
+			},
+		},
+		sources: {
+			test_src: {
+				git: {
+					repo: "{{ printf "%s/%s" .Path "remotegit" }}",
+					reference: refs/heads/master,
+				},
+			},
+		},
+	}`
+
+	const initialContent = `package foo
+
+		p := 7`
+
+	h := writeGitRepo(t, filepath.Join(tempDir, "remotegit"), map[string]string{
+		"foo.rego": initialContent,
+	}, nil)
+
+	writeGitFiles(t, filepath.Join(tempDir, "remotegit"), map[string]string{
+		"foo.rego": `package foo
+
+		p := 8`,
+	})
+
+	bs := render(t, tmpl, struct {
+		Path     string
+		GitHash  string
+		Revision string
+	}{
+		Path:     tempDir,
+		GitHash:  h.String(),
+		Revision: "time.now_ns()",
+	})
+
+	log := logging.NewLogger(logging.Config{Level: logging.LevelDebug})
+
+	cfg, err := config.Parse(bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc := service.New().
+		WithConfig(cfg).
+		WithPersistenceDir(filepath.Join(tempDir, "data")).
+		WithMigrateDB(true).
+		WithLogger(log)
+
+	var g errgroup.Group
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	stopped := make(chan struct{})
+	g.Go(func() error {
+		defer close(stopped)
+		return svc.Run(ctx)
+	})
+
+	time.Sleep(time.Millisecond * 500)
+
+	status, err := svc.Database().GetLatestBundleStatus(t.Context(), "internal", "default", "test_bundle")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if status == nil {
+		t.Fatal("expected status to be present")
+	}
+
+	cancel()
+	<-stopped
+
+	if status.Phase != service.BuildPhasePush.String() {
+		t.Fatalf("expected bundle phase %v but got %v", service.BuildPhasePush.String(), status.Phase)
+	}
+
+	if status.Status != service.BuildStateSuccess.String() {
+		t.Fatalf("expected bundle status %v but got %v", service.BuildStateSuccess.String(), status.Status)
+	}
+}
+
+func TestBundleStatusPushFailed(t *testing.T) {
+
+	tempDir := t.TempDir()
+
+	tmpl := `{
+		bundles: {
+			test_bundle: {
+				object_storage: {
+					aws: {
+						bucket: "{{ printf "%s" "no_such_bucket" }}",
+                        key: "{{ printf "%s" "no_such_key" }}",
+                        region: "{{ printf "%s" "no_such_region" }}",
+					}
+				},
+				requirements: [
+					{source: test_src, git: {commit: "{{ .GitHash }}"}},
+				],
+				revision: "{{ .Revision }}",
+			},
+		},
+		sources: {
+			test_src: {
+				git: {
+					repo: "{{ printf "%s/%s" .Path "remotegit" }}",
+					reference: refs/heads/master,
+				},
+			},
+		},
+	}`
+
+	const initialContent = `package foo
+
+		p := 7`
+
+	h := writeGitRepo(t, filepath.Join(tempDir, "remotegit"), map[string]string{
+		"foo.rego": initialContent,
+	}, nil)
+
+	writeGitFiles(t, filepath.Join(tempDir, "remotegit"), map[string]string{
+		"foo.rego": `package foo
+
+		p := 8`,
+	})
+
+	bs := render(t, tmpl, struct {
+		Path     string
+		GitHash  string
+		Revision string
+	}{
+		Path:     tempDir,
+		GitHash:  h.String(),
+		Revision: "time.now_ns()",
+	})
+
+	log := logging.NewLogger(logging.Config{Level: logging.LevelDebug})
+
+	cfg, err := config.Parse(bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc := service.New().
+		WithConfig(cfg).
+		WithPersistenceDir(filepath.Join(tempDir, "data")).
+		WithMigrateDB(true).
+		WithLogger(log)
+
+	var g errgroup.Group
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	stopped := make(chan struct{})
+	g.Go(func() error {
+		defer close(stopped)
+		return svc.Run(ctx)
+	})
+
+	time.Sleep(time.Millisecond * 500)
+
+	status, err := svc.Database().GetLatestBundleStatus(t.Context(), "internal", "default", "test_bundle")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if status == nil {
+		t.Fatal("expected status to be present")
+	}
+
+	cancel()
+	<-stopped
+
+	if status.Phase != service.BuildPhasePush.String() {
+		t.Fatalf("expected bundle phase %v but got %v", service.BuildPhasePush.String(), status.Phase)
+	}
+
+	if status.Status != service.BuildStatePushFailed.String() {
+		t.Fatalf("expected bundle status %v but got %v", service.BuildStatePushFailed.String(), status.Status)
 	}
 }
 

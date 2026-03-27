@@ -43,6 +43,14 @@ type BundlesGetResponseV1 struct {
 	Result *config.Bundle `json:"result,omitempty"`
 }
 
+type BundleStatusListResponseV1 struct {
+	Result []*config.BundleStatus `json:"result,omitempty"`
+}
+
+type BundleStatusGetResponseV1 struct {
+	Result *config.BundleStatus `json:"result,omitempty"`
+}
+
 type BundlesPutResponseV1 struct{}
 
 type BundlesDeleteResponseV1 struct{}

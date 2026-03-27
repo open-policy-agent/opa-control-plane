@@ -75,6 +75,7 @@ type Report struct {
 }
 
 type BuildState int
+type BuildPhase int
 
 const (
 	BuildStateInternalError BuildState = iota
@@ -84,6 +85,11 @@ const (
 	BuildStateTransformFailed
 	BuildStateBuildFailed
 	BuildStatePushFailed
+)
+
+const (
+	BuildPhaseBuild BuildPhase = iota
+	BuildPhasePush
 )
 
 func (s BuildState) String() string {
@@ -102,6 +108,17 @@ func (s BuildState) String() string {
 		return "PUSH_FAILED"
 	case BuildStateInternalError:
 		fallthrough
+	default:
+		return "INTERNAL_ERROR"
+	}
+}
+
+func (s BuildPhase) String() string {
+	switch s {
+	case BuildPhaseBuild:
+		return "BUILD"
+	case BuildPhasePush:
+		return "PUSH"
 	default:
 		return "INTERNAL_ERROR"
 	}
@@ -439,7 +456,9 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				WithSources(sources).
 				WithSynchronizers(syncs).
 				WithInterval(b.Interval).
-				WithSingleShot(s.singleShot)
+				WithSingleShot(s.singleShot).
+				WithDatabase(s.Database()).
+				WithTenant(defaultTenant)
 
 			if s.storage != nil {
 				w.WithStorage(s.storage)
