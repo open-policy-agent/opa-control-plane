@@ -171,7 +171,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 
 	buffer := bytes.NewBuffer(nil)
 
-	_, needsBundleHash, _ := ExtractRevisionRefs(w.bundleConfig.Revision)
+	_, needsBundleHash, _ := extractRevisionRefs(w.bundleConfig.Revision)
 
 	var resolvedRevision string
 	b := builder.New().
@@ -188,7 +188,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 					return "", err
 				}
 			}
-			rev, err := ResolveRevision(ctx, w.bundleConfig.Revision, sourceMetadata, bundleHash)
+			rev, err := resolveRevision(ctx, w.bundleConfig.Revision, sourceMetadata, bundleHash)
 			if err != nil {
 				return "", err
 			}

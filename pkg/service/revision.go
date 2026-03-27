@@ -19,7 +19,7 @@ type ReferencedSource struct {
 	Fields     []string // e.g., ["hashsum"], ["commit"]
 }
 
-func ExtractRevisionRefs(revision string) ([]ReferencedSource, bool, error) {
+func extractRevisionRefs(revision string) ([]ReferencedSource, bool, error) {
 	if revision == "" {
 		return nil, false, nil
 	}
@@ -74,9 +74,9 @@ func ExtractRevisionRefs(revision string) ([]ReferencedSource, bool, error) {
 	return result, needsBundleHash, nil
 }
 
-// ResolveRevision evaluates a Rego revision expression with the given source metadata
+// resolveRevision evaluates a Rego revision expression with the given source metadata
 // and returns the final revision string.
-func ResolveRevision(ctx context.Context, revision string, sourceMetadata map[string]map[string]any, bundleHash string) (string, error) {
+func resolveRevision(ctx context.Context, revision string, sourceMetadata map[string]map[string]any, bundleHash string) (string, error) {
 	if revision == "" {
 		return "", nil
 	}
