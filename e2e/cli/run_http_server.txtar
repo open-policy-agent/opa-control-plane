@@ -1,0 +1,63 @@
+! exec $OPACTL run --addr ./ocp.sock --config config.d/bundle.yml --data-dir tmp &opactl&
+
+exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/health
+
+# Wait for bundle to be built and download it
+retry curl -f --unix-socket ocp.sock -H 'Authorization: Bearer test-token' http://localhost/v1/external/bundles/hello-world/bundle.tar.gz -o bundle.tar.gz
+
+# Verify the bundle is a valid tarball with expected contents
+exec tar tf bundle.tar.gz
+cmp stdout exp/tarball
+
+# Verify ETag header is returned
+exec curl -f -D headers.txt --unix-socket ocp.sock -H 'Authorization: Bearer test-token' http://localhost/v1/external/bundles/hello-world/bundle.tar.gz -o /dev/null
+exec grep Etag headers.txt
+
+# Verify unauthenticated request is rejected
+! exec curl -f --unix-socket ocp.sock http://localhost/v1/external/bundles/hello-world/bundle.tar.gz
+
+# Verify bad token is rejected
+! exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer wrong-token' http://localhost/v1/external/bundles/hello-world/bundle.tar.gz
+
+# Verify downloader-only token can download bundles
+exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer dl-token' http://localhost/v1/external/bundles/hello-world/bundle.tar.gz -o /dev/null
+
+# Verify downloader-only token cannot access the API
+! exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer dl-token' http://localhost/v1/bundles/hello-world
+
+# Verify unknown bundle path returns 404
+! exec curl -f --unix-socket ocp.sock -H 'Authorization: Bearer test-token' http://localhost/v1/external/bundles/nonexistent/bundle.tar.gz
+
+kill opactl
+wait opactl
+
+-- files/sources/hello-world/rules/rules.rego --
+package rules
+import rego.v1
+result if input.yay
+-- config.d/bundle.yml --
+tokens:
+  test:
+    api_key: test-token
+    scopes:
+    - role: viewer
+  downloader:
+    api_key: dl-token
+    scopes:
+    - role: downloader
+bundles:
+  hello-world:
+    object_storage:
+      http_server:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: hello-world
+sources:
+  hello-world:
+    directory: files/sources/hello-world
+    paths:
+    - rules/rules.rego
+-- exp/tarball --
+/data.json
+/hello-world/rules/rules.rego
+/.manifest

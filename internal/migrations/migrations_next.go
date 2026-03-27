@@ -23,6 +23,20 @@ func addBundlesRevision(offset int, dialect string) fs.FS {
 	})
 }
 
+func addBundlesHTTPServerPath(offset int, dialect string) fs.FS {
+	var stmt string
+	switch dialect {
+	case "sqlite", "postgresql", "cockroachdb":
+		stmt = `ALTER TABLE bundles ADD http_server_path TEXT`
+	case "mysql":
+		stmt = `ALTER TABLE bundles ADD http_server_path VARCHAR(255)`
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_bundles_http_server_path.up.sql", offset): stmt,
+	})
+}
+
 func addSourcesGitCredentialsName(offset int, dialect string) fs.FS {
 	var stmt string
 	switch dialect {

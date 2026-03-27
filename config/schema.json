@@ -220,6 +220,14 @@
       },
       "type": "object"
     },
+    "ConfigHTTPServer": {
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "ConfigLabels": {
       "additionalProperties": {
         "type": "string"
@@ -251,6 +259,9 @@
         },
         "gcp": {
           "$ref": "#/definitions/ConfigGCPCloudStorage"
+        },
+        "http_server": {
+          "$ref": "#/definitions/ConfigHTTPServer"
         }
       },
       "type": "object"
@@ -345,7 +356,8 @@
             "administrator",
             "viewer",
             "owner",
-            "stack_owner"
+            "stack_owner",
+            "downloader"
           ],
           "type": "string"
         }

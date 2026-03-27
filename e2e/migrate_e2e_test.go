@@ -28,6 +28,7 @@ import (
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
+	objectstore "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 	"github.com/open-policy-agent/opa-control-plane/pkg/service"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/tempfs"
 	"github.com/open-policy-agent/opa-control-plane/libraries"
@@ -653,7 +654,12 @@ func TestMigration(t *testing.T) {
 						t.Fatal(err)
 					}
 
-					r, err := s.Download(ctx)
+					d, ok := s.(objectstore.Downloader)
+					if !ok {
+						t.Fatal("object storage does not support download")
+					}
+
+					r, err := d.Download(ctx)
 					if err != nil {
 						t.Fatal(err)
 					}

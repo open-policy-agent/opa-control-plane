@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -69,7 +70,7 @@ func TestS3(t *testing.T) {
 		t.Fatalf("expected object contents to be 'bundle content', got '%s'", contents)
 	}
 
-	reader, err := storage.Download(ctx)
+	reader, err := storage.(*AmazonS3).Download(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,5 +211,100 @@ func TestS3WithoutRevision(t *testing.T) {
 	// Verify revision metadata is NOT present when revision is empty
 	if _, exists := output.Metadata["revision"]; exists {
 		t.Errorf("expected revision metadata to not be present, but got %q", output.Metadata["revision"])
+	}
+}
+
+func TestInMemoryStorage(t *testing.T) {
+	ms := NewInMemoryStorage()
+
+	// Upload content.
+	content := []byte("test bundle data")
+	err := ms.Upload(t.Context(), bytes.NewReader(content), "mybundle", "rev1", int64(len(content)))
+	if err != nil {
+		t.Fatalf("unexpected upload error: %v", err)
+	}
+
+	// Verify via HTTP handler.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/bundles/mybundle", nil)
+	ms.ServeHTTP(rec, req)
+	if !bytes.Equal(rec.Body.Bytes(), content) {
+		t.Fatalf("expected %q, got %q", content, rec.Body.Bytes())
+	}
+
+	// Upload new content replaces old.
+	content2 := []byte("updated bundle")
+	if err := ms.Upload(t.Context(), bytes.NewReader(content2), "mybundle", "rev2", int64(len(content2))); err != nil {
+		t.Fatalf("unexpected upload error: %v", err)
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/bundles/mybundle", nil)
+	ms.ServeHTTP(rec, req)
+	if !bytes.Equal(rec.Body.Bytes(), content2) {
+		t.Fatalf("expected %q, got %q", content2, rec.Body.Bytes())
+	}
+}
+
+func TestInMemoryStorageServeHTTP(t *testing.T) {
+	ms := NewInMemoryStorage()
+
+	// Serve before upload should return 404.
+	req := httptest.NewRequest(http.MethodGet, "/bundles/test", nil)
+	rec := httptest.NewRecorder()
+	ms.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+
+	// Upload content.
+	content := []byte("gzipped bundle content")
+	if err := ms.Upload(t.Context(), bytes.NewReader(content), "test", "rev1", int64(len(content))); err != nil {
+		t.Fatal(err)
+	}
+
+	// Serve should return content with correct headers.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/bundles/test", nil)
+	ms.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/gzip" {
+		t.Fatalf("expected Content-Type application/gzip, got %q", ct)
+	}
+	etag := rec.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("expected ETag header")
+	}
+
+	hash := sha256.Sum256(content)
+	expectedETag := hex.EncodeToString(hash[:])
+	if etag != expectedETag {
+		t.Fatalf("expected ETag %q, got %q", expectedETag, etag)
+	}
+	if rev := rec.Header().Get("X-OPA-Revision"); rev != "rev1" {
+		t.Fatalf("expected X-OPA-Revision rev1, got %q", rev)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), content) {
+		t.Fatal("body mismatch")
+	}
+
+	// If-None-Match with matching ETag should return 304.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/bundles/test", nil)
+	req.Header.Set("If-None-Match", etag)
+	ms.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotModified {
+		t.Fatalf("expected 304, got %d", rec.Code)
+	}
+
+	// If-None-Match with non-matching ETag should return 200.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/bundles/test", nil)
+	req.Header.Set("If-None-Match", "stale-etag")
+	ms.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }

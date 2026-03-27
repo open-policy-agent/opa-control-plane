@@ -25,6 +25,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
+	objectstore "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
 
 var log *logging.Logger
@@ -214,7 +215,11 @@ func compareSystem(ctx context.Context, client *das.Client, v1 *das.V1System, sy
 	if err != nil {
 		return nil, err
 	}
-	r, err := s.Download(ctx)
+	d, ok := s.(objectstore.Downloader)
+	if !ok {
+		return nil, fmt.Errorf("object storage for %q does not support download", system.Name)
+	}
+	r, err := d.Download(ctx)
 	if err != nil {
 		return nil, err
 	}

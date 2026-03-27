@@ -646,6 +646,20 @@ func (d *Database) GetBundle(ctx context.Context, principal, tenant, name string
 	return bundles[0], nil
 }
 
+func (d *Database) CheckBundleDownload(ctx context.Context, principal, tenant, name string) error {
+	return tx1(ctx, d, func(tx *sql.Tx) error {
+		if err := d.resourceExists(ctx, tx, tenant, "bundles", name); err != nil {
+			return err
+		}
+
+		ad := d.accessFactory().WithPrincipal(principal).WithTenant(tenant).WithResource("bundles").WithPermission("bundles.download").WithName(name)
+		if !d.authorizer.Check(ctx, tx, d.arg, ad) {
+			return ErrNotAuthorized
+		}
+		return nil
+	})
+}
+
 func (d *Database) DeleteBundle(ctx context.Context, principal, tenant, name string) error {
 	return tx1(ctx, d, func(tx *sql.Tx) error {
 		if err := d.prepareDelete(ctx, tx, principal, tenant, "bundles", name, "bundles.manage"); err != nil {
@@ -698,6 +712,7 @@ func (d *Database) ListBundles(ctx context.Context, principal, tenant string, op
 		bundles.azure_container,
 		bundles.azure_path,
 		bundles.filepath,
+		bundles.http_server_path,
 		bundles.excluded,
 		bundles.rebuild_interval,
 		bundles.options
@@ -756,6 +771,7 @@ LEFT JOIN
 			gcpProject, gcpObject                      *string // GCP object storage
 			azureAccountURL, azureContainer, azurePath *string // Azure object storage
 			filepath                                   *string // File system storage
+			httpServerPath                             *string // HTTP server storage
 			excluded                                   *string
 			interval                                   *string
 			options                                    *string
@@ -775,6 +791,7 @@ LEFT JOIN
 				&row.gcpProject, &row.gcpObject, // GCP
 				&row.azureAccountURL, &row.azureContainer, &row.azurePath, // Azure
 				&row.filepath,
+				&row.httpServerPath,
 				&row.excluded,
 				&row.interval,
 				&row.options,
@@ -856,6 +873,10 @@ LEFT JOIN
 				} else if row.filepath != nil {
 					bundle.ObjectStorage.FileSystemStorage = &config.FileSystemStorage{
 						Path: *row.filepath,
+					}
+				} else if row.httpServerPath != nil {
+					bundle.ObjectStorage.HTTPServer = &config.HTTPServer{
+						Path: *row.httpServerPath,
 					}
 				}
 
@@ -1549,7 +1570,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 			return err
 		}
 
-		var s3url, s3region, s3bucket, s3key, gcpProject, gcpObject, azureAccountURL, azureContainer, azurePath, filepath *string
+		var s3url, s3region, s3bucket, s3key, gcpProject, gcpObject, azureAccountURL, azureContainer, azurePath, filepath, httpServerPath *string
 		if bundle.ObjectStorage.AmazonS3 != nil {
 			s3url = &bundle.ObjectStorage.AmazonS3.URL
 			s3region = &bundle.ObjectStorage.AmazonS3.Region
@@ -1568,6 +1589,9 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 		}
 		if bundle.ObjectStorage.FileSystemStorage != nil {
 			filepath = &bundle.ObjectStorage.FileSystemStorage.Path
+		}
+		if bundle.ObjectStorage.HTTPServer != nil {
+			httpServerPath = &bundle.ObjectStorage.HTTPServer.Path
 		}
 
 		labels, err := json.Marshal(bundle.Labels)
@@ -1591,13 +1615,13 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 			"s3url", "s3region", "s3bucket", "s3key",
 			"gcp_project", "gcp_object",
 			"azure_account_url", "azure_container", "azure_path",
-			"filepath", "excluded",
+			"filepath", "http_server_path", "excluded",
 			"rebuild_interval", "options"}, []string{"name"},
 			bundle.Name, string(labels), bundle.Revision,
 			s3url, s3region, s3bucket, s3key,
 			gcpProject, gcpObject,
 			azureAccountURL, azureContainer, azurePath,
-			filepath, string(excluded), bundle.Interval.String(),
+			filepath, httpServerPath, string(excluded), bundle.Interval.String(),
 			options)
 		if err != nil {
 			return err

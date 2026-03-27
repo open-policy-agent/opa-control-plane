@@ -21,15 +21,17 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/chain"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/types"
+	"github.com/open-policy-agent/opa-control-plane/pkg/service"
 )
 
 const defaultTenant = "default"
 
 type Server struct {
-	router    *http.ServeMux
-	db        *database.Database
-	readyFn   func(context.Context) error
-	apiPrefix string
+	router         *http.ServeMux
+	db             *database.Database
+	readyFn        func(context.Context) error
+	apiPrefix      string
+	bundleStorages []service.BundleStorage
 }
 
 func New() *Server {
@@ -77,6 +79,22 @@ func (s *Server) Init() *Server {
 	setup("PUT", "/v1/secrets/{secret}", s.v1SecretsPut)
 	setup("DELETE", "/v1/secrets/{secret}", s.v1SecretsDelete)
 
+	if len(s.bundleStorages) > 0 {
+		for _, bs := range s.bundleStorages {
+			urlPath := "/v1/external/" + path.Clean(bs.Path)
+			h := bs.Handler       // capture for closure
+			name := bs.BundleName // capture for closure
+			s.router.Handle("GET "+apiPrefix+urlPath, append(base, metrics.InstrumentHandler(apiPrefix+urlPath)).ThenFunc(func(w http.ResponseWriter, r *http.Request) {
+				principal, tenant := s.auth(r)
+				if err := s.db.CheckBundleDownload(r.Context(), principal, tenant, name); err != nil {
+					errorAuto(w, err)
+					return
+				}
+				h.ServeHTTP(w, r)
+			}))
+		}
+	}
+
 	return s
 }
 
@@ -96,8 +114,8 @@ func (s *Server) WithReadiness(fn func(context.Context) error) *Server {
 }
 
 func (s *Server) ListenAndServe(addr string) error {
-	if strings.HasPrefix(addr, "unix://") {
-		socketPath := strings.TrimPrefix(addr, "unix://")
+	if after, ok := strings.CutPrefix(addr, "unix://"); ok {
+		socketPath := after
 		return s.listenAndServeUnix(socketPath)
 	}
 	if strings.HasPrefix(addr, "/") || strings.HasPrefix(addr, "./") {
@@ -128,6 +146,11 @@ func (s *Server) WithConfig(config *config.Service) *Server {
 	if config != nil {
 		s.apiPrefix = config.ApiPrefix
 	}
+	return s
+}
+
+func (s *Server) WithBundleStorages(storages []service.BundleStorage) *Server {
+	s.bundleStorages = storages
 	return s
 }
 

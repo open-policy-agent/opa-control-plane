@@ -14,6 +14,7 @@ test_admin_can_do_anything if {
 
 read_permissions := {
 	"bundles.view",
+	"bundles.download",
 	"sources.view",
 	"stacks.view",
 	"secrets.view",
@@ -128,4 +129,37 @@ test_explicit_permission_grant if {
 		with input.name as "testsource"
 		with input.resource as "sources"
 		with input.tenant as "ten10"
+}
+
+test_downloader_can_download_bundles if {
+	data.authz.allow with input.principal as "testuser"
+		with data.principals.id as "testuser"
+		with data.principals.role as "downloader"
+		with data.principals.tenant_id as 10
+		with data.tenants.id as 10
+		with data.tenants.name as "ten10"
+		with input.tenant as "ten10"
+		with input.permission as "bundles.download"
+}
+
+test_downloader_cannot_view_bundles if {
+	not data.authz.allow with input.principal as "testuser"
+		with data.principals.id as "testuser"
+		with data.principals.role as "downloader"
+		with data.principals.tenant_id as 10
+		with data.tenants.id as 10
+		with data.tenants.name as "ten10"
+		with input.tenant as "ten10"
+		with input.permission as "bundles.view"
+}
+
+test_downloader_cannot_view_sources if {
+	not data.authz.allow with input.principal as "testuser"
+		with data.principals.id as "testuser"
+		with data.principals.role as "downloader"
+		with data.principals.tenant_id as 10
+		with data.tenants.id as 10
+		with data.tenants.name as "ten10"
+		with input.tenant as "ten10"
+		with input.permission as "sources.view"
 }
