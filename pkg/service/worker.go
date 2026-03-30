@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"io/fs"
 	"time"
 
@@ -208,6 +209,10 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	if w.storage != nil {
 		reader := bytes.NewReader(buffer.Bytes())
 		if err := w.storage.Upload(ctx, reader, w.bundleConfig.Name, resolvedRevision, reader.Size()); err != nil {
+			if errors.Is(err, ext_os.ErrNotModified) {
+				w.log.Debugf("Bundle %q built, not modified.", w.bundleConfig.Name)
+				return w.report(ctx, BuildStateSuccess, startTime, nil)
+			}
 			w.log.Warnf("failed to upload bundle %q: %v", w.bundleConfig.Name, err)
 			return w.report(ctx, BuildStatePushFailed, startTime, err)
 		}

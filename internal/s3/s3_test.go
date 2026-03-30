@@ -5,14 +5,18 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
 
 func TestS3(t *testing.T) {
@@ -210,5 +214,88 @@ func TestS3WithoutRevision(t *testing.T) {
 	// Verify revision metadata is NOT present when revision is empty
 	if _, exists := output.Metadata["revision"]; exists {
 		t.Errorf("expected revision metadata to not be present, but got %q", output.Metadata["revision"])
+	}
+}
+
+func TestS3NotModified(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "mock-access-key")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "mock-secret-key")
+	t.Setenv("AWS_REGION", "us-east-1")
+
+	mock := s3mem.New()
+	if err := mock.CreateBucket("test"); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(gofakes3.New(mock).Server())
+	defer ts.Close()
+
+	ctx := context.Background()
+
+	storage, err := New(ctx, config.ObjectStorage{
+		AmazonS3: &config.AmazonS3{
+			Bucket: "test",
+			Key:    "not-modified",
+			URL:    ts.URL,
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create storage: %v", err)
+	}
+
+	content := []byte("same content")
+
+	// First upload should succeed.
+	r := bytes.NewReader(content)
+	if err := storage.Upload(ctx, r, "b", "", r.Size()); err != nil {
+		t.Fatalf("first upload: %v", err)
+	}
+
+	// Second upload with identical content should return ErrNotModified.
+	r = bytes.NewReader(content)
+	if err := storage.Upload(ctx, r, "b", "", r.Size()); !errors.Is(err, ext_os.ErrNotModified) {
+		t.Fatalf("second upload: got %v, want ErrNotModified", err)
+	}
+
+	// Upload with different content should succeed.
+	r2 := bytes.NewReader([]byte("different content"))
+	if err := storage.Upload(ctx, r2, "b", "", r2.Size()); err != nil {
+		t.Fatalf("third upload: %v", err)
+	}
+}
+
+func TestFileSystemNotModified(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bundle.tar.gz")
+
+	ctx := context.Background()
+
+	storage, err := New(ctx, config.ObjectStorage{
+		FileSystemStorage: &config.FileSystemStorage{Path: path},
+	})
+	if err != nil {
+		t.Fatalf("failed to create storage: %v", err)
+	}
+
+	content := []byte("same content")
+
+	// First upload should write the file.
+	r := bytes.NewReader(content)
+	if err := storage.Upload(ctx, r, "b", "", r.Size()); err != nil {
+		t.Fatalf("first upload: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("bundle file not created: %v", err)
+	}
+
+	// Second upload with identical content should return ErrNotModified.
+	r = bytes.NewReader(content)
+	if err := storage.Upload(ctx, r, "b", "", r.Size()); !errors.Is(err, ext_os.ErrNotModified) {
+		t.Fatalf("second upload: got %v, want ErrNotModified", err)
+	}
+
+	// Upload with different content should succeed.
+	r2 := bytes.NewReader([]byte("different content"))
+	if err := storage.Upload(ctx, r2, "b", "", r2.Size()); err != nil {
+		t.Fatalf("third upload: %v", err)
 	}
 }
