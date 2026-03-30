@@ -126,27 +126,12 @@ package pkg
 
 import rego.v1
 
-# METADATA
-# entrypoint: true
-
-# METADATA
-# entrypoint: true
-
-# Helper rules that should be optimized
-
 valid_actions := ["read", "write", "delete"]
 -- exp/rules-level-2.rego --
 package pkg
 
 import rego.v1
 
-# METADATA
-# entrypoint: true
-
-# METADATA
-# entrypoint: true
-
-# Helper rules that should be optimized
 is_admin if input.user == "admin"
 valid_actions := ["read", "write", "delete"]
 has_permission(action) if action in valid_actions
