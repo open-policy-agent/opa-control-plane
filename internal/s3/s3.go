@@ -209,8 +209,11 @@ func (e *Error) Error() string {
 func (s *AmazonS3) Upload(ctx context.Context, body io.ReadSeeker, _ string, revision string, _ int64) error {
 
 	digest, equal, err := s.check(ctx, body)
-	if equal || err != nil {
+	if err != nil {
 		return err
+	}
+	if equal {
+		return ext_os.ErrNotModified
 	}
 
 	_, err = body.Seek(0, io.SeekStart)
@@ -311,8 +314,11 @@ func (*AzureBlobStorage) Download(context.Context) (io.Reader, error) {
 
 func (s *FileSystemStorage) Upload(ctx context.Context, body io.ReadSeeker, _ string, _ string, _ int64) error {
 	digest, equal, err := s.check(ctx, body)
-	if equal || err != nil {
+	if err != nil {
 		return err
+	}
+	if equal {
+		return ext_os.ErrNotModified
 	}
 
 	_, err = body.Seek(0, io.SeekStart)
