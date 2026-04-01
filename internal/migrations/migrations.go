@@ -24,6 +24,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
 )
 
 const (
@@ -46,9 +47,10 @@ func Migrations(dialect string) (fs.FS, error) {
 }
 
 type Migrator struct {
-	config  *config.Database
-	log     *logging.Logger
-	migrate bool
+	config     *config.Database
+	log        *logging.Logger
+	migrate    bool
+	authorizer ext_authz.Authorizer
 }
 
 func New() *Migrator {
@@ -72,8 +74,16 @@ func (m *Migrator) WithLogger(log *logging.Logger) *Migrator {
 	return m
 }
 
+func (m *Migrator) WithAuthorizer(a ext_authz.Authorizer) *Migrator {
+	m.authorizer = a
+	return m
+}
+
 func (m *Migrator) Run(ctx context.Context) (*database.Database, error) {
 	db := database.New().WithConfig(m.config).WithLogger(m.log)
+	if m.authorizer != nil {
+		db = db.WithAuthorizer(m.authorizer)
+	}
 	if err := db.InitDB(ctx); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
