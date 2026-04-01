@@ -1,0 +1,33 @@
+# Test that a directory source with no files alongside a source with rego
+# files produces a placeholder root from the prefix.
+exec mkdir empty_src
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --non-interactive
+! stderr .
+! stdout .
+
+exec tar xf bundles/hello-world/bundle.tar.gz
+cmp .manifest exp/.manifest
+
+-- policy/rules.rego --
+package rules
+import rego.v1
+allow if input.admin
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: policy
+    - source: empty-data
+      prefix: ext
+sources:
+  policy:
+    directory: policy
+    paths:
+    - '*.rego'
+  empty-data:
+    directory: empty_src
+-- exp/.manifest --
+{"revision":"","roots":["rules","ext"],"rego_version":0}

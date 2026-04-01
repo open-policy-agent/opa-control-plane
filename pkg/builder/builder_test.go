@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -30,6 +31,7 @@ func TestBuilder(t *testing.T) {
 	type sourceMock struct {
 		name          string
 		files         map[string]string
+		hasDir        bool // create an (empty) directory even without files
 		requirements  []reqMock
 		includedFiles []string
 		excludedFiles []string
@@ -632,6 +634,97 @@ func TestBuilder(t *testing.T) {
 			expRoots: []string{"x", "lib/y"},
 		},
 		{
+			note: "empty source with prefix alongside source with files",
+			sources: []sourceMock{
+				{
+					name:  "primary",
+					files: map[string]string{"/x.rego": "package x\np := true"},
+					requirements: []reqMock{
+						{name: "empty_src", prefix: "abc"},
+					},
+				},
+				{
+					name:  "empty_src",
+					files: map[string]string{},
+				},
+			},
+			exp: map[string]string{
+				"/primary/x.rego": "package x\np := true",
+			},
+			expRoots: []string{"x", "abc"},
+		},
+		{
+			note: "empty source with prefix produces prefix root",
+			sources: []sourceMock{
+				{
+					name:         "primary",
+					files:        map[string]string{},
+					requirements: []reqMock{{name: "empty_src", prefix: "abc"}},
+				},
+				{
+					name:  "empty_src",
+					files: map[string]string{},
+				},
+			},
+			expRoots: []string{"abc"},
+		},
+		{
+			note: "empty directory source with prefix produces prefix root",
+			sources: []sourceMock{
+				{
+					name:         "primary",
+					files:        map[string]string{},
+					requirements: []reqMock{{name: "empty_dir", prefix: "abc"}},
+				},
+				{
+					name:   "empty_dir",
+					hasDir: true,
+					files:  map[string]string{},
+				},
+			},
+			expRoots: []string{"abc"},
+		},
+		{
+			note: "empty source with transitive prefix chain",
+			sources: []sourceMock{
+				{
+					name:         "primary",
+					files:        map[string]string{},
+					requirements: []reqMock{{name: "middle", prefix: "top"}},
+				},
+				{
+					name:         "middle",
+					files:        map[string]string{},
+					requirements: []reqMock{{name: "leaf", prefix: "inner"}},
+				},
+				{
+					name:  "leaf",
+					files: map[string]string{},
+				},
+			},
+			expRoots: []string{"top/inner"},
+		},
+		{
+			note: "empty source with path and prefix that cancel out",
+			sources: []sourceMock{
+				{
+					name:         "primary",
+					files:        map[string]string{},
+					requirements: []reqMock{{name: "middle", path: "data.x"}}, // removes x
+				},
+				{
+					name:         "middle",
+					files:        map[string]string{},
+					requirements: []reqMock{{name: "leaf", prefix: "data.x.y"}}, // prepends data.x.y
+				},
+				{
+					name:  "leaf",
+					files: map[string]string{},
+				},
+			},
+			expRoots: []string{"y"}, // "y" stays around, only "x" is cancelled out
+		},
+		{
 			note: "roots inferred from directory structure for data files",
 			sources: []sourceMock{
 				{
@@ -660,6 +753,16 @@ func TestBuilder(t *testing.T) {
 
 			tempfs.WithTempFS(t, allFiles, func(t *testing.T, root string) {
 
+				// Create empty directories for hasDir sources that have
+				// no files, matching what the SQL sync does in production.
+				for i, src := range tc.sources {
+					if src.hasDir && len(src.files) == 0 {
+						if err := os.MkdirAll(fmt.Sprintf("%v/src%d", root, i), 0o755); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+
 				buf := bytes.NewBuffer(nil)
 
 				var srcs []*builder.Source
@@ -674,7 +777,7 @@ func TestBuilder(t *testing.T) {
 					}
 					s := builder.NewSource(src.name)
 					s.Requirements = rs
-					if len(src.files) > 0 {
+					if len(src.files) > 0 || src.hasDir {
 						_ = s.AddDir(builder.Dir{
 							Path:          fmt.Sprintf("%v/src%d", root, i),
 							IncludedFiles: src.includedFiles,
