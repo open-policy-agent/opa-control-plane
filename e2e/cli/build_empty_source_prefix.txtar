@@ -1,0 +1,58 @@
+# Test that an empty SQL source with a prefix produces a root for that prefix,
+# and that pushing data updates the roots correctly.
+! exec $OPACTL run --config config.d/bundle.yml --data-dir tmp --addr ./ocp.sock &opactl&
+
+exec curl --retry 5 --retry-all-errors --unix-socket ocp.sock http://localhost/health
+
+# Wait for initial build with empty source
+retry tar tf bundles/hello-world/bundle.tar.gz
+
+# Verify the empty source produced "abc" as root, not [""]
+exec tar xf bundles/hello-world/bundle.tar.gz
+cmp .manifest exp/manifest-empty
+cmp data.json exp/empty-data.json
+exec rm bundles/hello-world/bundle.tar.gz
+
+# Push data to the source (prefix mount will place it under abc/)
+exec curl --unix-socket ocp.sock -X PUT http://localhost/v1/sources/sql-source/data/users -H 'Authorization: Bearer test-key' -d '{"alice":{"role":"admin"}}'
+
+# Wait for rebuild cycle
+retry tar tf bundles/hello-world/bundle.tar.gz
+
+kill opactl
+wait opactl
+
+# Verify the roots now reflect the actual data under the prefix
+exec tar xf bundles/hello-world/bundle.tar.gz
+cmp .manifest exp/manifest-with-data
+cmp data.json exp/data.json
+
+-- config.d/bundle.yml --
+database:
+  sql:
+    driver: sqlite
+    dsn: sqlite.db
+tokens:
+  test-token:
+    api_key: test-key
+    scopes:
+    - role: administrator
+bundles:
+  hello-world:
+    rebuild_interval: 1s
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: sql-source
+      prefix: abc
+sources:
+  sql-source: {}
+-- exp/manifest-empty --
+{"revision":"","roots":["abc"],"rego_version":0}
+-- exp/empty-data.json --
+{}
+-- exp/manifest-with-data --
+{"revision":"","roots":["abc/users"],"rego_version":0}
+-- exp/data.json --
+{"abc":{"users":{"alice":{"role":"admin"}}}}
