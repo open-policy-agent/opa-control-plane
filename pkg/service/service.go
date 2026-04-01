@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"path"
 	"path/filepath"
@@ -32,6 +33,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
 	"github.com/open-policy-agent/opa-control-plane/internal/sqlsync"
+	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
 	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
 	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
@@ -65,6 +67,7 @@ type Service struct {
 	initialized    bool
 	storage        ext_os.ObjectStorage
 	secretFactory  pkgsync.SecretProviderFactory
+	authorizer     ext_authz.Authorizer
 }
 
 type Report struct {
@@ -124,6 +127,12 @@ func (s *Service) WithPersistenceDir(d string) *Service {
 	return s
 }
 
+func (s *Service) WithAuthorizer(a ext_authz.Authorizer) *Service {
+	s.authorizer = a
+	s.database = *s.database.WithAuthorizer(a)
+	return s
+}
+
 func (s *Service) WithConfig(config *config.Root) *Service {
 	s.config = config
 	s.database = *s.database.WithConfig(config.Database)
@@ -153,6 +162,14 @@ func (s *Service) Database() *database.Database {
 func (s *Service) WithLogger(logger *logging.Logger) *Service {
 	s.log = logger
 	s.database = *s.database.WithLogger(logger)
+	return s
+}
+
+// WithSlogLogger sets the service logger from a standard *slog.Logger.
+func (s *Service) WithSlogLogger(logger *slog.Logger) *Service {
+	l := logging.FromSlog(logger)
+	s.log = l
+	s.database = *s.database.WithLogger(l)
 	return s
 }
 
@@ -261,6 +278,7 @@ func (s *Service) initDB(ctx context.Context) error {
 		WithConfig(s.config.Database).
 		WithLogger(s.log).
 		WithMigrate(s.migrateDB).
+		WithAuthorizer(s.authorizer).
 		Run(ctx)
 	if err != nil {
 		return err

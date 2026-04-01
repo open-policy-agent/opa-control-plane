@@ -37,6 +37,14 @@ func NewLogger(config Config) *Logger {
 	}
 }
 
+// FromSlog wraps a standard *slog.Logger into an internal Logger.
+func FromSlog(l *slog.Logger) *Logger {
+	if l == nil {
+		return nil
+	}
+	return &Logger{l: l}
+}
+
 func (l *Logger) Debug(msg string, args ...any) {
 	if l == nil || !l.l.Enabled(context.Background(), slog.LevelDebug) {
 		return
