@@ -159,7 +159,6 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/swaggest/refl v1.4.0 // indirect
 	github.com/tchap/go-patricia/v2 v2.3.3 // indirect
@@ -176,14 +175,14 @@ require (
 	go.opentelemetry.io/contrib/detectors/gcp v1.39.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.65.0 // indirect
-	go.opentelemetry.io/otel v1.42.0 // indirect
+	go.opentelemetry.io/otel v1.43.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.41.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.40.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.41.0 // indirect
-	go.opentelemetry.io/otel/metric v1.42.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.42.0 // indirect
-	go.opentelemetry.io/otel/sdk/metric v1.42.0 // indirect
-	go.opentelemetry.io/otel/trace v1.42.0 // indirect
+	go.opentelemetry.io/otel/metric v1.43.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.43.0 // indirect
+	go.opentelemetry.io/otel/sdk/metric v1.43.0 // indirect
+	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go.shabbyrobe.org/gocovmerge v0.0.0-20230507111327-fa4f82cfbf4d // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
@@ -242,6 +241,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/spf13/pflag v1.0.10
+	github.com/stretchr/testify v1.11.1
 	github.com/swaggest/jsonschema-go v0.3.79
 	github.com/testcontainers/testcontainers-go v0.41.0
 	github.com/testcontainers/testcontainers-go/modules/cockroachdb v0.41.0
