@@ -439,6 +439,38 @@ func TestBuilder(t *testing.T) {
 			expRoots: []string{"authz", "x"},
 		},
 		{
+			// Note: Regression test for proper formatted modules after refactoring move
+			note: "requirements mounts: formatting regression test",
+			sources: []sourceMock{
+				{
+					name: "system",
+					files: map[string]string{
+						"x.rego": `package x
+						p := data.authz.p`,
+					},
+					requirements: []reqMock{{
+						name: "lib1",
+						path: "data.lib1",
+					}},
+				},
+				{
+					name: "lib1",
+					files: map[string]string{
+						"lib1.rego": `package lib1.authz
+						p := [(to_number(x) / 50) | x := "100"]`,
+					},
+				},
+			},
+			excluded: []string{"x/z/data.json"},
+			exp: map[string]string{
+				"/system/x.rego": `package x
+				p := data.authz.p`,
+				"/lib1/lib1.rego": ` package authz
+				p := [(to_number(x) / 50) | x := "100"]`, // formatting retains parenthesis wrapping comprehension term
+			},
+			expRoots: []string{"authz", "x"},
+		},
+		{
 			note: "package conflict: prefix",
 			sources: []sourceMock{
 				{
