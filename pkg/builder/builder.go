@@ -648,7 +648,6 @@ func extractAndTransformRego(fsys fs.FS, mnts []mount) (fs.FS, error) {
 			return nil, fmt.Errorf("failed to format module %s, %w", p, err)
 		}
 		rendered[p] = string(r)
-		//rendered[p] = m.String()
 	}
 
 	return ocp_fs.MapFS(rendered), nil
