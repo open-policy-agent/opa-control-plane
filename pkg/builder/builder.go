@@ -21,8 +21,8 @@ import (
 	"github.com/open-policy-agent/opa/ast"     // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle"  // nolint:staticcheck
 	"github.com/open-policy-agent/opa/compile" // nolint:staticcheck
+	"github.com/open-policy-agent/opa/format"  // nolint:staticcheck
 	"github.com/open-policy-agent/opa/rego"    // nolint:staticcheck
-	"github.com/open-policy-agent/opa/v1/format"
 	"github.com/open-policy-agent/opa/v1/refactor"
 	"github.com/open-policy-agent/opa/v1/topdown"
 
@@ -648,6 +648,7 @@ func extractAndTransformRego(fsys fs.FS, mnts []mount) (fs.FS, error) {
 			return nil, fmt.Errorf("failed to format module %s, %w", p, err)
 		}
 		rendered[p] = string(r)
+		//rendered[p] = m.String()
 	}
 
 	return ocp_fs.MapFS(rendered), nil
