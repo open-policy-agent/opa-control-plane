@@ -13,7 +13,6 @@ builds:
       - arm64
     ldflags:
       - -s
-      - -X github.com/open-policy-agent/opa-control-plane/cmd/version.Version=v{{.Version}}
 
 archives:
   - id: binary
