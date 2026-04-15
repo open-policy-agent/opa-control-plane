@@ -204,16 +204,10 @@ func TestBundleStatusPushSuccess(t *testing.T) {
 		return svc.Run(ctx)
 	})
 
-	time.Sleep(time.Millisecond * 500)
+	pollCtx, pollCancel := context.WithDeadline(t.Context(), time.Now().Add(10*time.Second))
+	defer pollCancel()
 
-	status, err := svc.Database().GetLatestBundleStatus(t.Context(), "internal", "default", "test_bundle")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if status == nil {
-		t.Fatal("expected status to be present")
-	}
+	status := awaitBundleStatus(pollCtx, t, svc, "test_bundle")
 
 	cancel()
 	<-stopped
@@ -304,16 +298,10 @@ func TestBundleStatusPushFailed(t *testing.T) {
 		return svc.Run(ctx)
 	})
 
-	time.Sleep(time.Millisecond * 500)
+	pollCtx, pollCancel := context.WithDeadline(t.Context(), time.Now().Add(10*time.Second))
+	defer pollCancel()
 
-	status, err := svc.Database().GetLatestBundleStatus(t.Context(), "internal", "default", "test_bundle")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if status == nil {
-		t.Fatal("expected status to be present")
-	}
+	status := awaitBundleStatus(pollCtx, t, svc, "test_bundle")
 
 	cancel()
 	<-stopped
@@ -771,5 +759,24 @@ func TestSecretProviderFactoryWithGitSync(t *testing.T) {
 	}
 	if string(content) != "package foo\np := 1" {
 		t.Fatalf("unexpected content: %s", content)
+	}
+}
+
+// awaitBundleStatus polls the database until a bundle status record appears
+// for the given bundle, or the context expires.
+func awaitBundleStatus(ctx context.Context, t *testing.T, svc *service.Service, bundle string) *config.BundleStatus {
+	t.Helper()
+	for {
+		if svc.Ready(ctx) == nil {
+			status, err := svc.Database().GetLatestBundleStatus(ctx, "internal", "default", bundle)
+			if err == nil && status != nil {
+				return status
+			}
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("timed out waiting for bundle status")
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 }
