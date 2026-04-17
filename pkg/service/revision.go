@@ -19,20 +19,27 @@ type ReferencedSource struct {
 	Fields     []string // e.g., ["hashsum"], ["commit"]
 }
 
-func ExtractRevisionRefs(revision string) ([]ReferencedSource, error) {
+func extractRevisionRefs(revision string) ([]ReferencedSource, bool, error) {
 	if revision == "" {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	query, err := ast.ParseExpr(revision)
 	if err != nil {
-		return nil, fmt.Errorf("invalid rego query: %w", err)
+		return nil, false, fmt.Errorf("invalid rego query: %w", err)
 	}
 
 	sourcesRef := ast.InputRootRef.Append(ast.StringTerm("sources"))
+	bundleRef := ast.InputRootRef.Append(ast.StringTerm("bundle"))
 	references := make(map[string]map[string]bool)
+	needsBundleHash := false
 
 	ast.WalkRefs(query, func(ref ast.Ref) bool {
+		if ref.HasPrefix(bundleRef) {
+			needsBundleHash = true
+			return false
+		}
+
 		if !ref.HasPrefix(sourcesRef) || len(ref) < 4 {
 			return false
 		}
@@ -64,12 +71,12 @@ func ExtractRevisionRefs(revision string) ([]ReferencedSource, error) {
 		})
 	}
 
-	return result, nil
+	return result, needsBundleHash, nil
 }
 
-// ResolveRevision evaluates a Rego revision expression with the given source metadata
+// resolveRevision evaluates a Rego revision expression with the given source metadata
 // and returns the final revision string.
-func ResolveRevision(ctx context.Context, revision string, sourceMetadata map[string]map[string]any) (string, error) {
+func resolveRevision(ctx context.Context, revision string, sourceMetadata map[string]map[string]any, bundleHash string) (string, error) {
 	if revision == "" {
 		return "", nil
 	}
@@ -77,23 +84,35 @@ func ResolveRevision(ctx context.Context, revision string, sourceMetadata map[st
 	input := map[string]any{
 		"sources": sourceMetadata,
 	}
+	if bundleHash != "" {
+		input["bundle"] = map[string]any{
+			"hash": bundleHash,
+		}
+	}
 
 	query, err := ast.ParseExpr(revision)
 	if err != nil {
 		return "", fmt.Errorf("invalid rego query: %w", err)
 	}
 
-	result, err := evaluateRego(ctx, query, input, sourceMetadata)
+	result, err := evaluateRego(ctx, query, input, sourceMetadata, bundleHash)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve revision: %w", err)
 	}
 	return result, nil
 }
 
-func buildInputSchema(sourceMetadata map[string]map[string]any) *ast.SchemaSet {
-	sourceSchema := map[string]any{
+func buildInputSchema(sourceMetadata map[string]map[string]any, bundleHash string) *ast.SchemaSet {
+	datasourceEntrySchema := map[string]any{
 		"type": "object",
 		"properties": map[string]any{
+			"hash": map[string]any{"type": "string"},
+		},
+	}
+
+	sourceProps := make(map[string]any, len(sourceMetadata))
+	for sourceName, types := range sourceMetadata {
+		props := map[string]any{
 			"git": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -106,42 +125,60 @@ func buildInputSchema(sourceMetadata map[string]map[string]any) *ast.SchemaSet {
 					"hash": map[string]any{"type": "string"},
 				},
 			},
-			"http": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"hash": map[string]any{"type": "string"},
-				},
-			},
-			"s3": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"hash": map[string]any{"type": "string"},
-				},
-			},
-		},
-	}
+		}
 
-	sourceProps := make(map[string]any, len(sourceMetadata))
-	for sourceName := range sourceMetadata {
-		sourceProps[sourceName] = sourceSchema
+		// For http and s3, build schema from actual datasource names in metadata
+		for _, sourceType := range []string{"http", "s3"} {
+			if typeData, ok := types[sourceType].(map[string]any); ok {
+				dsProps := make(map[string]any, len(typeData))
+				for dsName := range typeData {
+					dsProps[dsName] = datasourceEntrySchema
+				}
+				props[sourceType] = map[string]any{
+					"type":       "object",
+					"properties": dsProps,
+				}
+			}
+		}
+
+		sourceProps[sourceName] = map[string]any{
+			"type":       "object",
+			"properties": props,
+		}
 	}
 
 	schemas := ast.NewSchemaSet()
-	schemas.Put(ast.SchemaRootRef, map[string]any{
-		"$schema": "http://json-schema.org/draft-07/schema",
-		"type":    "object",
-		"properties": map[string]any{
-			"sources": map[string]any{
-				"type":       "object",
-				"properties": sourceProps,
-			},
+
+	properties := map[string]any{
+		"sources": map[string]any{
+			"type":       "object",
+			"properties": sourceProps,
 		},
-		"required": []string{"sources"},
+	}
+	if bundleHash != "" {
+		properties["bundle"] = map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"hash": map[string]any{"type": "string"},
+			},
+		}
+	}
+
+	required := []string{"sources"}
+	if bundleHash != "" {
+		required = append(required, "bundle")
+	}
+
+	schemas.Put(ast.SchemaRootRef, map[string]any{
+		"$schema":    "http://json-schema.org/draft-07/schema",
+		"type":       "object",
+		"properties": properties,
+		"required":   required,
 	})
 	return schemas
 }
 
-func evaluateRego(ctx context.Context, query *ast.Expr, input map[string]any, sourceMetadata map[string]map[string]any) (string, error) {
+func evaluateRego(ctx context.Context, query *ast.Expr, input map[string]any, sourceMetadata map[string]map[string]any, bundleHash string) (string, error) {
 	opts := []func(*rego.Rego){
 		rego.ParsedQuery([]*ast.Expr{query}),
 		rego.Strict(true),
@@ -152,8 +189,11 @@ func evaluateRego(ctx context.Context, query *ast.Expr, input map[string]any, so
 		opts = append(opts, rego.Input(input))
 	}
 
-	if sourceMetadata != nil {
-		opts = append(opts, rego.Schemas(buildInputSchema(sourceMetadata)))
+	if sourceMetadata != nil || bundleHash != "" {
+		if sourceMetadata == nil {
+			sourceMetadata = make(map[string]map[string]any)
+		}
+		opts = append(opts, rego.Schemas(buildInputSchema(sourceMetadata, bundleHash)))
 	}
 
 	rs, err := rego.New(opts...).Eval(ctx)

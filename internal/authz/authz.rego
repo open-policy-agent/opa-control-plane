@@ -19,6 +19,7 @@ allow if {
 		"stacks.view",
 		"tokens.view",
 		"sources.data.read",
+		"bundles.statuses.view",
 	]
 }
 

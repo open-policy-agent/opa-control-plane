@@ -130,6 +130,18 @@ func (d *Database) DeleteBundle(ctx context.Context, principal, tenant, name str
 	return d.db.DeleteBundle(ctx, principal, tenant, name)
 }
 
+// GetLatestBundleStatus returns the most recent status record for the given tenant and bundle
+// across all revisions.
+func (d *Database) GetLatestBundleStatus(ctx context.Context, principal, tenant, name string) (*config.BundleStatus, error) {
+	return d.db.GetLatestBundleStatus(ctx, principal, tenant, name)
+}
+
+// ListBundleStatuses returns bundle status records for the given tenant and bundle,
+// ordered by bundle status id DESC.
+func (d *Database) ListBundleStatuses(ctx context.Context, principal, tenant, name, revision string, limit int) ([]*config.BundleStatus, error) {
+	return d.db.ListBundleStatuses(ctx, principal, tenant, name, revision, limit)
+}
+
 // Source CRUD
 
 // GetSource retrieves a source by name.

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"path"
 	"path/filepath"
@@ -32,6 +33,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
 	"github.com/open-policy-agent/opa-control-plane/internal/sqlsync"
+	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
 	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
 	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
@@ -64,7 +66,8 @@ type Service struct {
 	migrateDB      bool
 	initialized    bool
 	storage        ext_os.ObjectStorage
-	secretProvider pkgsync.SecretProvider
+	secretFactory  pkgsync.SecretProviderFactory
+	authorizer     ext_authz.Authorizer
 }
 
 type Report struct {
@@ -72,6 +75,7 @@ type Report struct {
 }
 
 type BuildState int
+type BuildPhase int
 
 const (
 	BuildStateInternalError BuildState = iota
@@ -81,6 +85,11 @@ const (
 	BuildStateTransformFailed
 	BuildStateBuildFailed
 	BuildStatePushFailed
+)
+
+const (
+	BuildPhaseBuild BuildPhase = iota
+	BuildPhasePush
 )
 
 func (s BuildState) String() string {
@@ -104,6 +113,17 @@ func (s BuildState) String() string {
 	}
 }
 
+func (s BuildPhase) String() string {
+	switch s {
+	case BuildPhaseBuild:
+		return "BUILD"
+	case BuildPhasePush:
+		return "PUSH"
+	default:
+		return "INTERNAL_ERROR"
+	}
+}
+
 type Status struct {
 	State   BuildState
 	Message string
@@ -121,6 +141,12 @@ func New() *Service {
 
 func (s *Service) WithPersistenceDir(d string) *Service {
 	s.persistenceDir = d
+	return s
+}
+
+func (s *Service) WithAuthorizer(a ext_authz.Authorizer) *Service {
+	s.authorizer = a
+	s.database = *s.database.WithAuthorizer(a)
 	return s
 }
 
@@ -156,6 +182,14 @@ func (s *Service) WithLogger(logger *logging.Logger) *Service {
 	return s
 }
 
+// WithSlogLogger sets the service logger from a standard *slog.Logger.
+func (s *Service) WithSlogLogger(logger *slog.Logger) *Service {
+	l := logging.FromSlog(logger)
+	s.log = l
+	s.database = *s.database.WithLogger(l)
+	return s
+}
+
 func (s *Service) WithNoninteractive(yes bool) *Service {
 	s.noninteractive = yes
 	return s
@@ -171,8 +205,8 @@ func (s *Service) WithStorage(storage ext_os.ObjectStorage) *Service {
 	return s
 }
 
-func (s *Service) WithSecretProvider(provider pkgsync.SecretProvider) *Service {
-	s.secretProvider = provider
+func (s *Service) WithSecretProviderFactory(factory pkgsync.SecretProviderFactory) *Service {
+	s.secretFactory = factory
 	return s
 }
 
@@ -261,6 +295,7 @@ func (s *Service) initDB(ctx context.Context) error {
 		WithConfig(s.config.Database).
 		WithLogger(s.log).
 		WithMigrate(s.migrateDB).
+		WithAuthorizer(s.authorizer).
 		Run(ctx)
 	if err != nil {
 		return err
@@ -388,7 +423,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			// Analyze revision to determine which metadata fields are needed per source
 			metadataFields := make(map[string][]string)
 			if b.Revision != "" {
-				refs, err := ExtractRevisionRefs(b.Revision)
+				refs, _, err := extractRevisionRefs(b.Revision)
 				if err != nil {
 					s.log.Debugf("failed to analyze revision references for bundle %q, computing all metadata: %v", b.Name, err)
 				} else {
@@ -401,6 +436,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			syncs := []sourceSynchronizer{}
 			sources := []*builder.Source{&root.Source}
 			bundleDir := join(s.persistenceDir, md5sum(bName))
+			tenantProvider := s.secretProviderForTenant(ctx, tenant)
 
 			for _, dep := range deps {
 				// NB(sr): dep.Name could contain a `:` which cause build errors in OPA's bundle build machinery
@@ -409,8 +445,8 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				src := newSource(dep.Name).
 					SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
 					SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database"), metadataFields[dep.Name]).
-					SyncDatasources(&syncs, dep.Name, dep.Datasources, join(srcDir, "datasources"), s.secretProvider, metadataFields[dep.Name]).
-					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name], s.secretProvider).
+					SyncDatasources(&syncs, dep.Name, dep.Datasources, join(srcDir, "datasources"), tenantProvider, metadataFields[dep.Name]).
+					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name], tenantProvider).
 					AddRequirements(dep.Requirements)
 
 				sources = append(sources, &src.Source)
@@ -420,7 +456,9 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				WithSources(sources).
 				WithSynchronizers(syncs).
 				WithInterval(b.Interval).
-				WithSingleShot(s.singleShot)
+				WithSingleShot(s.singleShot).
+				WithDatabase(s.Database()).
+				WithTenant(defaultTenant)
 
 			if s.storage != nil {
 				w.WithStorage(s.storage)
@@ -441,6 +479,18 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 		s.failures = failures
 	}
+}
+
+func (s *Service) secretProviderForTenant(ctx context.Context, tenant string) pkgsync.SecretProvider {
+	if s.secretFactory != nil {
+		provider, err := s.secretFactory.SecretProviderForTenant(ctx, tenant)
+		if err != nil {
+			s.log.Warnf("secret provider factory error for tenant %q: %v", tenant, err)
+			return nil
+		}
+		return provider
+	}
+	return nil
 }
 
 func (s *Service) allWorkersDone() bool {
@@ -557,9 +607,10 @@ func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName strin
 			body, _ := datasource.Config["body"].(string)
 			headers, _ := datasource.Config["headers"].(map[string]any)
 			*syncs = append(*syncs, sourceSynchronizer{
-				sync:       httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials, opts...).WithSecretProvider(provider),
-				sourceName: sourceName,
-				sourceType: "http",
+				sync:           httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials, opts...).WithSecretProvider(provider),
+				sourceName:     sourceName,
+				sourceType:     "http",
+				datasourceName: datasource.Name,
 			})
 		case "s3":
 			bucket, _ := datasource.Config["bucket"].(string)
@@ -577,9 +628,10 @@ func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName strin
 			}
 
 			*syncs = append(*syncs, sourceSynchronizer{
-				sync:       httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials, opts...),
-				sourceName: sourceName,
-				sourceType: "s3",
+				sync:           httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials, opts...),
+				sourceName:     sourceName,
+				sourceType:     "s3",
+				datasourceName: datasource.Name,
 			})
 		}
 

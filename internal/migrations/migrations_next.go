@@ -71,6 +71,38 @@ func addRequirementsOptions(offset int, dialect string) fs.FS {
 	})
 }
 
+func addBundlesStatuses(offset int, dialect string) fs.FS {
+	var kind int
+	switch dialect {
+	case "postgresql":
+		kind = postgres
+	case "mysql":
+		kind = mysql
+	case "sqlite":
+		kind = sqlite
+	case "cockroachdb":
+		kind = cockroachdb
+	}
+
+	tbl := createSQLTable("bundles_statuses").
+		WithIteration("ocp_v2").
+		IntegerPrimaryKeyAutoincrementColumn("id").
+		IntegerNonNullColumn("tenant_id").
+		IntegerNonNullColumn("bundle_id").
+		VarCharNonNullColumn("revision").
+		TextNonNullColumn("phase").
+		TextNonNullColumn("status").
+		TextColumn("error_message").
+		Unique("tenant_id", "bundle_id", "revision").
+		TimestampDefaultCurrentTimeColumn("created_at").
+		ForeignKeyOnDeleteCascade("tenant_id", "tenants(id)").
+		ForeignKeyOnDeleteCascade("bundle_id", "bundles(id)")
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_bundles_statuses.up.sql", offset): tbl.SQL(kind),
+	})
+}
+
 // NOTE(sr): We create new tables to drop constraints. It's hard to predict constraint names
 // across MySQL and Postgres if they have not been set up at creation time.
 // NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,

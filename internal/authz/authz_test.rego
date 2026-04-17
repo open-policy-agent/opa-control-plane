@@ -19,6 +19,7 @@ read_permissions := {
 	"secrets.view",
 	"tokens.view",
 	"sources.data.read",
+	"bundles.statuses.view",
 }
 
 test_viewer_can_view_anything if {

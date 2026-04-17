@@ -21,6 +21,7 @@ import (
 	"github.com/open-policy-agent/opa/ast"     // nolint:staticcheck
 	"github.com/open-policy-agent/opa/bundle"  // nolint:staticcheck
 	"github.com/open-policy-agent/opa/compile" // nolint:staticcheck
+	"github.com/open-policy-agent/opa/format"  // nolint:staticcheck
 	"github.com/open-policy-agent/opa/rego"    // nolint:staticcheck
 	"github.com/open-policy-agent/opa/v1/refactor"
 	"github.com/open-policy-agent/opa/v1/topdown"
@@ -170,6 +171,7 @@ type Builder struct {
 	target            string
 	optimizationLevel int
 	revision          string
+	revisionFunc      func(fs.FS) (string, error)
 }
 
 func New() *Builder {
@@ -204,6 +206,17 @@ func (b *Builder) WithOptimizationLevel(level int) *Builder {
 func (b *Builder) WithRevision(revision string) *Builder {
 	b.revision = revision
 	return b
+}
+
+// WithRevisionFunc sets a function to compute the revision from the assembled
+// bundle filesystem. It is called after FS assembly and before compilation.
+func (b *Builder) WithRevisionFunc(fn func(fs.FS) (string, error)) *Builder {
+	b.revisionFunc = fn
+	return b
+}
+
+func (b *Builder) Revision() string {
+	return b.revision
 }
 
 type PackageConflictErr struct {
@@ -294,6 +307,8 @@ func (b *Builder) Build(ctx context.Context) error {
 	alreadyProcessed := []mntSrc{}
 	rootMap := map[string]*Source{}
 
+	var emptyMntSrcs []mntSrc
+
 	for len(toProcess) > 0 {
 		var next mntSrc
 		next, toProcess = toProcess[0], toProcess[1:]
@@ -340,6 +355,13 @@ func (b *Builder) Build(ctx context.Context) error {
 			newRoots.add(rs...)
 		}
 
+		hasSourceReqs := slices.ContainsFunc(next.src.Requirements, func(r ext_config.Requirement) bool {
+			return r.Source != nil
+		})
+		if len(newRoots.refs) == 0 && len(next.mounts) > 0 && !hasSourceReqs {
+			emptyMntSrcs = append(emptyMntSrcs, next)
+		}
+
 		for _, root := range newRoots.refs {
 			if overlap := rootsOverlap(existingRoots, root); len(overlap) > 0 {
 				return &PackageConflictErr{
@@ -375,6 +397,29 @@ func (b *Builder) Build(ctx context.Context) error {
 		}
 	}
 
+	// For empty sources with mount prefixes, derive roots so the bundle
+	// claims the configured namespaces instead of letting OPA default to
+	// roots:[""] (which conflicts with every other bundle). This mirrors
+	// applyDataMounts: each mount in the chain applies Sub(path) then
+	// Mount(prefix). For an empty source, a non-trivial path selects a
+	// subtree that doesn't exist, collapsing the chain to nothing.
+	for _, ms := range emptyMntSrcs {
+		root := mountRoot(ms.mounts)
+		if root == nil {
+			continue
+		}
+		if overlap := rootsOverlap(existingRoots, root); len(overlap) > 0 {
+			return &PackageConflictErr{
+				Requirement: ms.src,
+				Package:     &ast.Package{Path: root},
+				rootMap:     rootMap,
+				overlap:     overlap,
+			}
+		}
+		rootMap[root.String()] = ms.src
+		existingRoots = append(existingRoots, root)
+	}
+
 	roots := make([]string, 0, len(existingRoots))
 	for _, root := range existingRoots {
 		r, _ := root.Ptr()
@@ -383,6 +428,14 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	fsBuild := mountfs.New(buildSources.fs())
 	paths := slices.Collect(maps.Keys(fsBuild))
+
+	if b.revisionFunc != nil {
+		revision, err := b.revisionFunc(fsBuild)
+		if err != nil {
+			return fmt.Errorf("revision: %w", err)
+		}
+		b.revision = revision
+	}
 
 	target := cmp.Or(b.target, "rego")
 	if target == "ir" { // fix naming convention
@@ -590,7 +643,11 @@ func extractAndTransformRego(fsys fs.FS, mnts []mount) (fs.FS, error) {
 
 	rendered := make(map[string]string, len(modules))
 	for p, m := range modules {
-		rendered[p] = m.String()
+		r, err := format.Ast(m)
+		if err != nil {
+			return nil, fmt.Errorf("failed to format module %s, %w", p, err)
+		}
+		rendered[p] = string(r)
 	}
 
 	return ocp_fs.MapFS(rendered), nil
@@ -643,6 +700,53 @@ func applyDataMounts(fsys fs.FS, mnts []mount) (fs.FS, error) {
 		fs1 = sub
 	}
 	return fs1, nil
+}
+
+// mountRoot simulates the mount chain on an empty source to determine the
+// effective root namespace. It mirrors applyDataMounts: each mount applies
+// Sub(path) then Mount(prefix). For an empty source the "data space" is just
+// the root (data). A non-trivial path selects a subtree that doesn't exist,
+// collapsing the result to nil.
+func mountRoot(mnts []mount) ast.Ref {
+	cur := ast.DefaultRootRef.Copy() // [data]
+	for _, mnt := range mnts {
+		subRef := toRef(mnt.path)
+		prefRef := toRef(mnt.prefix)
+		if subRef == nil || prefRef == nil {
+			return nil
+		}
+
+		// Sub: selecting a subtree from an empty source yields nothing
+		// unless the virtual cursor is already at or below the sub path.
+		// When cur equals DefaultRootRef, a deeper subRef selects content
+		// that doesn't exist in an empty source.
+		if !cur.HasPrefix(subRef) {
+			return nil
+		}
+		cur = ast.DefaultRootRef.Concat(cur[len(subRef):])
+
+		// Mount: place cur under prefRef.
+		cur = prefRef.Concat(cur[1:]) // [1:] drops "data" head from cur
+	}
+
+	if cur.Equal(ast.DefaultRootRef) {
+		return nil // no effective prefix — would default to root
+	}
+	return cur
+}
+
+// toRef parses a mount path or prefix (e.g. "data.x.y" or "") into an ast.Ref.
+// Returns DefaultRootRef for empty/root values.
+func toRef(d string) ast.Ref {
+	d = toRefString(d)
+	r, err := ast.ParseRef(d)
+	if err != nil {
+		return nil
+	}
+	if !r.HasPrefix(ast.DefaultRootRef) {
+		return nil
+	}
+	return r
 }
 
 var offlineCaps = offlineCapabilities()

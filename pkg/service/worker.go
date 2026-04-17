@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
+	"io/fs"
 	"time"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/database"
+	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
@@ -39,6 +43,8 @@ type BundleWorker struct {
 	bar           *progress.Bar
 	status        Status
 	interval      time.Duration
+	database      *database.Database
+	tenant        string
 }
 
 type Synchronizer interface {
@@ -47,9 +53,10 @@ type Synchronizer interface {
 }
 
 type sourceSynchronizer struct {
-	sync       Synchronizer
-	sourceName string
-	sourceType string // "git", "sql", "http", "s3"
+	sync           Synchronizer
+	sourceName     string
+	sourceType     string // "git", "sql", "http", "s3"
+	datasourceName string // For http/s3: the datasource name used as key in metadata
 }
 
 func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Source, stacks []*config.Stack, logger *logging.Logger, bar *progress.Bar) *BundleWorker {
@@ -87,6 +94,16 @@ func (worker *BundleWorker) WithSingleShot(singleShot bool) *BundleWorker {
 
 func (worker *BundleWorker) WithInterval(d config.Duration) *BundleWorker {
 	worker.interval = cmp.Or(time.Duration(d), defaultInterval)
+	return worker
+}
+
+func (worker *BundleWorker) WithDatabase(database *database.Database) *BundleWorker {
+	worker.database = database
+	return worker
+}
+
+func (worker *BundleWorker) WithTenant(tenant string) *BundleWorker {
+	worker.tenant = tenant
 	return worker
 }
 
@@ -136,19 +153,23 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 			return w.report(ctx, BuildStateSyncFailed, startTime, err)
 		}
 		if metadata != nil {
-			// Structure metadata by source type (git, sql, http, s3)
 			if sourceMetadata[ss.sourceName] == nil {
 				sourceMetadata[ss.sourceName] = make(map[string]any)
 			}
-			sourceMetadata[ss.sourceName][ss.sourceType] = metadata
+			// For datasource types (http, s3), nest metadata under datasource name
+			// to support multiple datasources of the same type per source:
+			//   input.sources["src"].http["ds-name"].hash
+			if ss.datasourceName != "" {
+				typeMap, ok := sourceMetadata[ss.sourceName][ss.sourceType].(map[string]any)
+				if !ok {
+					typeMap = make(map[string]any)
+					sourceMetadata[ss.sourceName][ss.sourceType] = typeMap
+				}
+				typeMap[ss.datasourceName] = metadata
+			} else {
+				sourceMetadata[ss.sourceName][ss.sourceType] = metadata
+			}
 		}
-	}
-
-	// Resolve revision string using source metadata
-	resolvedRevision, err := ResolveRevision(ctx, w.bundleConfig.Revision, sourceMetadata)
-	if err != nil {
-		w.log.Warnf("failed to resolve revision for bundle %q: %v", w.bundleConfig.Name, err)
-		return w.report(ctx, BuildStateBuildFailed, startTime, err)
 	}
 
 	for _, src := range w.sources {
@@ -164,30 +185,80 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 
 	buffer := bytes.NewBuffer(nil)
 
+	_, needsBundleHash, _ := extractRevisionRefs(w.bundleConfig.Revision)
+
+	var resolvedRevision string
 	b := builder.New().
 		WithSources(w.sources).
 		WithExcluded(w.bundleConfig.ExcludedFiles).
 		WithTarget(w.bundleConfig.Options.Target).
-		WithRevision(resolvedRevision).
-		WithOutput(buffer)
+		WithOutput(buffer).
+		WithRevisionFunc(func(fsys fs.FS) (string, error) {
+			var bundleHash string
+			if needsBundleHash {
+				var err error
+				bundleHash, err = ocp_fs.HashFS(fsys)
+				if err != nil {
+					return "", err
+				}
+			}
+			rev, err := resolveRevision(ctx, w.bundleConfig.Revision, sourceMetadata, bundleHash)
+			if err != nil {
+				return "", err
+			}
+			resolvedRevision = rev
+			return rev, nil
+		})
 
 	if w.bundleConfig.Options.Optimization != nil {
 		b = b.WithOptimizationLevel(w.bundleConfig.Options.Optimization.Level)
 	}
 
-	if err = b.Build(ctx); err != nil {
+	if err := b.Build(ctx); err != nil {
 		w.log.Warnf("failed to build a bundle %q: %v", w.bundleConfig.Name, err)
+
+		if b.Revision() != "" {
+			_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhaseBuild.String(), BuildStateBuildFailed.String(), err.Error())
+			if err != nil {
+				w.log.Warnf("failed to track bundle build state %q: %v", w.bundleConfig.Name, err)
+			}
+		}
 		return w.report(ctx, BuildStateBuildFailed, startTime, err)
+	}
+
+	if b.Revision() != "" {
+		_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhaseBuild.String(), BuildStateSuccess.String(), "")
+		if err != nil {
+			w.log.Warnf("failed to track bundle build state %q: %v", w.bundleConfig.Name, err)
+		}
 	}
 
 	if w.storage != nil {
 		reader := bytes.NewReader(buffer.Bytes())
 		if err := w.storage.Upload(ctx, reader, w.bundleConfig.Name, resolvedRevision, reader.Size()); err != nil {
+			if errors.Is(err, ext_os.ErrNotModified) {
+				w.log.Debugf("Bundle %q built, not modified.", w.bundleConfig.Name)
+				return w.report(ctx, BuildStateSuccess, startTime, nil)
+			}
 			w.log.Warnf("failed to upload bundle %q: %v", w.bundleConfig.Name, err)
+
+			if b.Revision() != "" {
+				_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhasePush.String(), BuildStatePushFailed.String(), err.Error())
+				if err != nil {
+					w.log.Warnf("failed to track bundle upload state %q: %v", w.bundleConfig.Name, err)
+				}
+			}
 			return w.report(ctx, BuildStatePushFailed, startTime, err)
 		}
 
 		w.log.Debugf("Bundle %q built and uploaded.", w.bundleConfig.Name)
+
+		if b.Revision() != "" {
+			_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhasePush.String(), BuildStateSuccess.String(), "")
+			if err != nil {
+				w.log.Warnf("failed to track bundle upload state %q: %v", w.bundleConfig.Name, err)
+			}
+		}
 		return w.report(ctx, BuildStateSuccess, startTime, nil)
 	}
 
