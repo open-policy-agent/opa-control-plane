@@ -219,3 +219,9 @@ func (d *Database) UpsertPrincipal(ctx context.Context, id, role, tenant string)
 		Tenant: tenant,
 	})
 }
+
+// UpsertTenantWithPrincipal creates a tenant and its associated principal in a
+// single transaction. Both inserts are idempotent.
+func (d *Database) UpsertTenantWithPrincipal(ctx context.Context, tenantName, principalID, role string) error {
+	return d.db.UpsertTenantWithPrincipal(ctx, tenantName, principalID, role)
+}
