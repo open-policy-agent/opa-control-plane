@@ -474,6 +474,16 @@ func TestResolveRevision(t *testing.T) {
 			wantErr:         true,
 			wantErrContains: "undefined ref",
 		},
+		{
+			name:     "revision exceeding max length",
+			revision: `$"{input.sources.policies.git.commit}-{input.sources.data.sql.hash}"`,
+			sourceMetadata: map[string]map[string]any{
+				"policies": {"git": map[string]any{"commit": strings.Repeat("a", 200)}},
+				"data":     {"sql": map[string]any{"hash": strings.Repeat("b", 200)}},
+			},
+			wantErr:         true,
+			wantErrContains: "resolved revision exceeds maximum length",
+		},
 	}
 
 	for _, tt := range tests {
