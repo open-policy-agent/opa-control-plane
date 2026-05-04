@@ -13,6 +13,10 @@ import (
 	"github.com/open-policy-agent/opa/v1/rego"
 )
 
+// MaxRevisionLength is the maximum allowed length for a resolved revision string.
+// This matches the VARCHAR(255) column size used for revisions in MySQL and PostgreSQL.
+const MaxRevisionLength = 255
+
 // ReferencedSource represents a source that is referenced in the revision expression
 type ReferencedSource struct {
 	SourceName string
@@ -99,6 +103,11 @@ func resolveRevision(ctx context.Context, revision string, sourceMetadata map[st
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve revision: %w", err)
 	}
+
+	if len(result) > MaxRevisionLength {
+		return "", fmt.Errorf("resolved revision exceeds maximum length of %d characters (got %d)", MaxRevisionLength, len(result))
+	}
+
 	return result, nil
 }
 
