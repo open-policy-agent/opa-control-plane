@@ -235,7 +235,12 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 
 	if w.storage != nil {
 		reader := bytes.NewReader(buffer.Bytes())
-		if err := w.storage.Upload(ctx, reader, w.bundleConfig.Name, resolvedRevision, reader.Size()); err != nil {
+		if err := w.storage.Upload(ctx, reader, ext_os.UploadOptions{
+			Tenant:    w.tenant,
+			Name:      w.bundleConfig.Name,
+			Revision:  resolvedRevision,
+			TotalSize: reader.Size(),
+		}); err != nil {
 			if errors.Is(err, ext_os.ErrNotModified) {
 				w.log.Debugf("Bundle %q built, not modified.", w.bundleConfig.Name)
 				return w.report(ctx, BuildStateSuccess, startTime, nil)
