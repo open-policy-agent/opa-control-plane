@@ -52,7 +52,7 @@ func TestS3(t *testing.T) {
 	}
 
 	bundle := bytes.NewReader([]byte("bundle content"))
-	err = storage.Upload(ctx, bundle, "testbundle", "", bundle.Size())
+	err = storage.Upload(ctx, bundle, ext_os.UploadOptions{})
 	if err != nil {
 		t.Fatalf("expected no error while uploading bundle: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestS3WithRevision(t *testing.T) {
 	bundleContent := []byte("bundle content with revision")
 	bundle := bytes.NewReader(bundleContent)
 	revision := "v1.2.3"
-	err = storage.Upload(ctx, bundle, "testbundle", revision, bundle.Size())
+	err = storage.Upload(ctx, bundle, ext_os.UploadOptions{Revision: revision})
 	if err != nil {
 		t.Fatalf("expected no error while uploading bundle: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestS3WithoutRevision(t *testing.T) {
 	// Upload a bundle without a revision
 	bundleContent := []byte("bundle content without revision")
 	bundle := bytes.NewReader(bundleContent)
-	err = storage.Upload(ctx, bundle, "testbundle", "", bundle.Size())
+	err = storage.Upload(ctx, bundle, ext_os.UploadOptions{})
 	if err != nil {
 		t.Fatalf("expected no error while uploading bundle: %v", err)
 	}
@@ -246,19 +246,19 @@ func TestS3NotModified(t *testing.T) {
 
 	// First upload should succeed.
 	r := bytes.NewReader(content)
-	if err := storage.Upload(ctx, r, "b", "", r.Size()); err != nil {
+	if err := storage.Upload(ctx, r, ext_os.UploadOptions{}); err != nil {
 		t.Fatalf("first upload: %v", err)
 	}
 
 	// Second upload with identical content should return ErrNotModified.
 	r = bytes.NewReader(content)
-	if err := storage.Upload(ctx, r, "b", "", r.Size()); !errors.Is(err, ext_os.ErrNotModified) {
+	if err := storage.Upload(ctx, r, ext_os.UploadOptions{}); !errors.Is(err, ext_os.ErrNotModified) {
 		t.Fatalf("second upload: got %v, want ErrNotModified", err)
 	}
 
 	// Upload with different content should succeed.
 	r2 := bytes.NewReader([]byte("different content"))
-	if err := storage.Upload(ctx, r2, "b", "", r2.Size()); err != nil {
+	if err := storage.Upload(ctx, r2, ext_os.UploadOptions{}); err != nil {
 		t.Fatalf("third upload: %v", err)
 	}
 }
@@ -280,7 +280,7 @@ func TestFileSystemNotModified(t *testing.T) {
 
 	// First upload should write the file.
 	r := bytes.NewReader(content)
-	if err := storage.Upload(ctx, r, "b", "", r.Size()); err != nil {
+	if err := storage.Upload(ctx, r, ext_os.UploadOptions{}); err != nil {
 		t.Fatalf("first upload: %v", err)
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -289,13 +289,13 @@ func TestFileSystemNotModified(t *testing.T) {
 
 	// Second upload with identical content should return ErrNotModified.
 	r = bytes.NewReader(content)
-	if err := storage.Upload(ctx, r, "b", "", r.Size()); !errors.Is(err, ext_os.ErrNotModified) {
+	if err := storage.Upload(ctx, r, ext_os.UploadOptions{}); !errors.Is(err, ext_os.ErrNotModified) {
 		t.Fatalf("second upload: got %v, want ErrNotModified", err)
 	}
 
 	// Upload with different content should succeed.
 	r2 := bytes.NewReader([]byte("different content"))
-	if err := storage.Upload(ctx, r2, "b", "", r2.Size()); err != nil {
+	if err := storage.Upload(ctx, r2, ext_os.UploadOptions{}); err != nil {
 		t.Fatalf("third upload: %v", err)
 	}
 }

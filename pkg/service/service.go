@@ -458,7 +458,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				WithInterval(b.Interval).
 				WithSingleShot(s.singleShot).
 				WithDatabase(s.Database()).
-				WithTenant(defaultTenant)
+				WithTenant(tenant)
 
 			if s.storage != nil {
 				w.WithStorage(s.storage)
