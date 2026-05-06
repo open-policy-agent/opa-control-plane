@@ -207,6 +207,10 @@ func (e *Error) Error() string {
 // Relying on object ETag is not if the object is encrypted with SSE-C or SSE-KMS, as the ETag will not be the MD5 hash of the object.
 // With (part) checksums, only parallellizable, less reliable checksums (CRCs) are supported.
 func (s *AmazonS3) Upload(ctx context.Context, body io.ReadSeeker, _ string, revision string, _ int64) error {
+	_, err := body.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
 
 	digest, equal, err := s.check(ctx, body)
 	if err != nil {
@@ -313,6 +317,11 @@ func (*AzureBlobStorage) Download(context.Context) (io.Reader, error) {
 }
 
 func (s *FileSystemStorage) Upload(ctx context.Context, body io.ReadSeeker, _ string, _ string, _ int64) error {
+	_, err := body.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+
 	digest, equal, err := s.check(ctx, body)
 	if err != nil {
 		return err

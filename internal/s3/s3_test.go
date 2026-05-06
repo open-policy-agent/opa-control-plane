@@ -263,6 +263,71 @@ func TestS3NotModified(t *testing.T) {
 	}
 }
 
+func TestS3NotModifiedWithAdvancedReader(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "mock-access-key")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "mock-secret-key")
+	t.Setenv("AWS_REGION", "us-east-1")
+
+	mock := s3mem.New()
+	if err := mock.CreateBucket("test"); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(gofakes3.New(mock).Server())
+	defer ts.Close()
+
+	ctx := context.Background()
+
+	storage, err := New(ctx, config.ObjectStorage{
+		AmazonS3: &config.AmazonS3{
+			Bucket: "test",
+			Key:    "advanced-reader",
+			URL:    ts.URL,
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create storage: %v", err)
+	}
+
+	s3Storage, ok := storage.(*AmazonS3)
+	if !ok {
+		t.Fatal("expected storage to be of type *AmazonS3")
+	}
+
+	content := []byte("same content")
+
+	// First upload uses a reader that is intentionally advanced before upload.
+	r := bytes.NewReader(content)
+	if _, err := r.ReadByte(); err != nil {
+		t.Fatalf("failed to advance reader: %v", err)
+	}
+	if err := storage.Upload(ctx, r, "b", "", r.Size()); err != nil {
+		t.Fatalf("first upload: %v", err)
+	}
+
+	output, err := s3Storage.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: &s3Storage.bucket,
+		Key:    &s3Storage.key,
+	})
+	if err != nil {
+		t.Fatalf("head object after first upload: %v", err)
+	}
+
+	expectedHash := sha256.Sum256(content)
+	expectedHashStr := hex.EncodeToString(expectedHash[:])
+	if output.Metadata["sha256"] != expectedHashStr {
+		t.Fatalf("expected sha256 metadata to be %q, got %q", expectedHashStr, output.Metadata["sha256"])
+	}
+
+	// Second upload with same content should be treated as not modified.
+	r2 := bytes.NewReader(content)
+	if _, err := r2.ReadByte(); err != nil {
+		t.Fatalf("failed to advance second reader: %v", err)
+	}
+	if err := storage.Upload(ctx, r2, "b", "", r2.Size()); !errors.Is(err, ext_os.ErrNotModified) {
+		t.Fatalf("second upload: got %v, want ErrNotModified", err)
+	}
+}
+
 func TestFileSystemNotModified(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bundle.tar.gz")
