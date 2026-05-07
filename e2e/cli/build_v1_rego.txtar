@@ -1,0 +1,31 @@
+# Regression test: a source directory with a .manifest declaring rego_version:1
+# and v1 Rego syntax (partial rules using 'contains') but no 'import rego.v1'
+# should build successfully.
+exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --non-interactive
+stderr 'source manifest roots .* differ from computed roots .* using manifest roots'
+stderr 'source manifest revision "foobar" overrides WithRevisionFunc result; using manifest revision'
+
+exec tar xf bundles/my-policies/bundle.tar.gz
+exec jq -e '.rego_version == 1 and .revision == "foobar" and .roots == ["rules","foobar"]' .manifest
+
+-- files/sources/my-policies/.manifest --
+{"rego_version":1,"revision":"foobar","roots":["rules","foobar"]}
+-- files/sources/my-policies/rules/rules.rego --
+package rules
+
+rejection_reasons contains msg if {
+    msg := "test reason"
+}
+-- config.d/bundle.yml --
+bundles:
+  my-policies:
+    object_storage:
+      filesystem:
+        path: bundles/my-policies/bundle.tar.gz
+    requirements:
+    - source: my-policies
+sources:
+  my-policies:
+    directory: files/sources/my-policies
+    paths:
+    - rules/rules.rego
