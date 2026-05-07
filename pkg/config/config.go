@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -336,6 +337,14 @@ func (s *Source) Files() (map[string]string, error) {
 
 	if len(m) == len(s.EmbeddedFiles) {
 		return nil, fmt.Errorf("no files matched patterns for source %q", s.Name)
+	}
+
+	// If the source directory contains a .manifest, include it so that bundle
+	// metadata (e.g. rego_version) flows through to the builder.
+	if s.Directory != "" {
+		if content, err := os.ReadFile(filepath.Join(s.Directory, ".manifest")); err == nil {
+			m[".manifest"] = string(content)
+		}
 	}
 
 	return m, nil
