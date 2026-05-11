@@ -55,7 +55,7 @@ require (
 	github.com/containerd/platforms v1.0.0-rc.2 // indirect
 	github.com/containerd/typeurl/v2 v2.2.3 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
-	github.com/cyphar/filepath-securejoin v0.5.1 // indirect
+	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/dgraph-io/badger/v4 v4.9.1 // indirect
@@ -72,7 +72,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
-	github.com/go-git/go-billy/v5 v5.8.0 // indirect
+	github.com/go-git/go-billy/v5 v5.9.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -101,6 +101,7 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.4 // indirect
 	github.com/lestrrat-go/dsig v1.2.1 // indirect
@@ -134,7 +135,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/peterh/liner v1.2.2 // indirect
-	github.com/pjbgf/sha1cd v0.4.0 // indirect
+	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -190,11 +191,11 @@ require (
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.53.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/term v0.42.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/term v0.43.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.43.0 // indirect
+	golang.org/x/tools v0.44.0 // indirect
 	google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260427160629-7cedc36a6bc4 // indirect
@@ -219,13 +220,13 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/feature/rds/auth v1.6.23
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.100.1
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.101.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.18.0
 	github.com/cockroachdb/cockroach-go/v2 v2.4.3
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/gliderlabs/ssh v0.3.8
-	github.com/go-git/go-git/v5 v5.18.0
+	github.com/go-git/go-git/v5 v5.19.0
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gobwas/glob v0.2.3
@@ -250,9 +251,9 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	github.com/thediveo/enumflag/v2 v2.2.0
 	github.com/yalue/merged_fs v1.3.0
-	golang.org/x/crypto v0.50.0
+	golang.org/x/crypto v0.51.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.20.0
-	google.golang.org/api v0.277.0
+	google.golang.org/api v0.278.0
 	modernc.org/sqlite v1.50.0
 )
