@@ -8,8 +8,9 @@
 //
 //	db := database.New()
 //	db.WithAuthorizer(myAuthorizer)
-//	rawConfig := []byte(`{"database": {"sql": {"driver": "sqlite3", "dsn": "file::memory:?cache=shared"}}}`)
-//	if err := db.InitDB(ctx, rawConfig); err != nil {
+//	if err := db.InitDBWithConfig(ctx, &config.DatabaseConfig{
+//	    SQL: &config.SQLDatabaseConfig{Driver: "sqlite3", DSN: "file::memory:?cache=shared"},
+//	}); err != nil {
 //	    log.Fatal(err)
 //	}
 //	defer db.CloseDB()
@@ -33,6 +34,7 @@ import (
 
 	jp "github.com/evanphx/json-patch/v5"
 
+	internalconfig "github.com/open-policy-agent/opa-control-plane/internal/config"
 	internaldatabase "github.com/open-policy-agent/opa-control-plane/internal/database"
 	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
 	"github.com/open-policy-agent/opa-control-plane/pkg/config"
@@ -78,12 +80,15 @@ func (d *Database) WithAccessFactory(af ext_authz.AccessFactory) *Database {
 
 // InitDB initializes the database connection from a raw root configuration.
 //
-// The rawConfig must be a JSON (or YAML) document containing a "database" key.
-// Example:
-//
-//	{"database": {"sql": {"driver": "sqlite3", "dsn": "file::memory:?cache=shared"}}}
+// Deprecated: prefer InitDBWithConfig for type-safe configuration.
 func (d *Database) InitDB(ctx context.Context, rawConfig []byte) error {
 	d.db = d.db.WithRawRootConfig(rawConfig)
+	return d.db.InitDB(ctx)
+}
+
+// InitDBWithConfig initializes the database connection from a typed DatabaseConfig.
+func (d *Database) InitDBWithConfig(ctx context.Context, cfg *config.DatabaseConfig) error {
+	d.db = d.db.WithConfig(databaseConfigToInternal(cfg))
 	return d.db.InitDB(ctx)
 }
 
@@ -218,4 +223,29 @@ func (d *Database) UpsertPrincipal(ctx context.Context, id, role, tenant string)
 		Role:   role,
 		Tenant: tenant,
 	})
+}
+
+func databaseConfigToInternal(cfg *config.DatabaseConfig) *internalconfig.Database {
+	if cfg == nil {
+		return nil
+	}
+	result := &internalconfig.Database{}
+	if cfg.SQL != nil {
+		result.SQL = &internalconfig.SQLDatabase{
+			Driver: cfg.SQL.Driver,
+			DSN:    cfg.SQL.DSN,
+		}
+	}
+	if cfg.AWSRDS != nil {
+		result.AWSRDS = &internalconfig.AmazonRDS{
+			Region:           cfg.AWSRDS.Region,
+			Endpoint:         cfg.AWSRDS.Endpoint,
+			Driver:           cfg.AWSRDS.Driver,
+			DatabaseUser:     cfg.AWSRDS.DatabaseUser,
+			DatabaseName:     cfg.AWSRDS.DatabaseName,
+			DSN:              cfg.AWSRDS.DSN,
+			RootCertificates: cfg.AWSRDS.RootCertificates,
+		}
+	}
+	return result
 }

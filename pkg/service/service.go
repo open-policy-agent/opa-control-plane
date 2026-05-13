@@ -35,6 +35,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/sqlsync"
 	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
 	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
+	pkgconfig "github.com/open-policy-agent/opa-control-plane/pkg/config"
 	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
 
@@ -159,6 +160,13 @@ func (s *Service) WithConfig(config *config.Root) *Service {
 func (s *Service) WithRawConfig(rawConfig []byte) *Service {
 	s.rawConfig = rawConfig
 	s.database = *s.database.WithRawRootConfig(rawConfig)
+	return s
+}
+
+// WithDatabaseConfig sets the database configuration from a typed DatabaseConfig,
+// as a type-safe alternative to WithRawConfig for database-only configuration.
+func (s *Service) WithDatabaseConfig(cfg *pkgconfig.DatabaseConfig) *Service {
+	s.database = *s.database.WithConfig(databaseConfigToInternal(cfg))
 	return s
 }
 
@@ -694,4 +702,29 @@ func addPrefix(prefix ast.Ref, name string, existing string) string {
 		offset = 5
 	}
 	return pr + "." + existing[offset:]
+}
+
+func databaseConfigToInternal(cfg *pkgconfig.DatabaseConfig) *config.Database {
+	if cfg == nil {
+		return nil
+	}
+	result := &config.Database{}
+	if cfg.SQL != nil {
+		result.SQL = &config.SQLDatabase{
+			Driver: cfg.SQL.Driver,
+			DSN:    cfg.SQL.DSN,
+		}
+	}
+	if cfg.AWSRDS != nil {
+		result.AWSRDS = &config.AmazonRDS{
+			Region:           cfg.AWSRDS.Region,
+			Endpoint:         cfg.AWSRDS.Endpoint,
+			Driver:           cfg.AWSRDS.Driver,
+			DatabaseUser:     cfg.AWSRDS.DatabaseUser,
+			DatabaseName:     cfg.AWSRDS.DatabaseName,
+			DSN:              cfg.AWSRDS.DSN,
+			RootCertificates: cfg.AWSRDS.RootCertificates,
+		}
+	}
+	return result
 }
