@@ -682,11 +682,15 @@ func (*Server) listOptions(r *http.Request) database.ListOptions {
 }
 
 func errorAuto(w http.ResponseWriter, err error) {
-	switch err {
-	case database.ErrNotAuthorized:
+	switch {
+	case errors.Is(err, database.ErrNotAuthorized):
 		ErrorString(w, http.StatusForbidden, types.CodeNotAuthorized, err)
-	case database.ErrNotFound:
+	case errors.Is(err, database.ErrNotFound):
 		ErrorString(w, http.StatusNotFound, types.CodeNotFound, err)
+	case errors.Is(err, database.ErrAlreadyExists):
+		ErrorString(w, http.StatusConflict, types.CodeAlreadyExists, err)
+	case errors.Is(err, database.ErrConflict):
+		ErrorString(w, http.StatusConflict, types.CodeConflict, err)
 	default:
 		ErrorString(w, http.StatusInternalServerError, types.CodeInternal, err)
 	}

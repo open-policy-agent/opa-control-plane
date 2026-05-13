@@ -42,6 +42,8 @@ import (
 var (
 	ErrNotFound      = internaldatabase.ErrNotFound
 	ErrNotAuthorized = internaldatabase.ErrNotAuthorized
+	ErrAlreadyExists = internaldatabase.ErrAlreadyExists
+	ErrConflict      = internaldatabase.ErrConflict
 )
 
 // ErrInvalidJSON indicates the provided JSON could not be deserialized into the expected type.
