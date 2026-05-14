@@ -32,3 +32,24 @@ func (db *Database) GetPrincipalID(ctx context.Context, apiKey string) (string, 
 	var principalId string
 	return principalId, row.Scan(&principalId)
 }
+
+// UpsertTenantAndPrincipal creates a tenant and its principal in a single transaction.
+// Both operations use ON CONFLICT DO NOTHING / DO UPDATE, so retries are safe.
+func (db *Database) UpsertTenantAndPrincipal(ctx context.Context, tenantName, principalID, role string) error {
+	return tx1(ctx, db, func(tx *sql.Tx) error {
+		if err := db.upsertTenantTx(ctx, tx, tenantName); err != nil {
+			return fmt.Errorf("failed to upsert tenant: %w", err)
+		}
+		return db.UpsertPrincipalTx(ctx, tx, Principal{
+			Id:     principalID,
+			Role:   role,
+			Tenant: tenantName,
+		})
+	})
+}
+
+func (db *Database) upsertTenantTx(ctx context.Context, tx *sql.Tx, name string) error {
+	query := fmt.Sprintf("INSERT INTO tenants (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", db.arg(0))
+	_, err := tx.ExecContext(ctx, query, name)
+	return err
+}

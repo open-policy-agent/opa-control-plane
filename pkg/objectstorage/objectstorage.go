@@ -16,7 +16,7 @@ type ObjectStorage interface {
 	// Upload stores a bundle artifact in object storage.
 	// Implementations may return ErrNotModified to indicate that the upload
 	// was skipped because the content has not changed.
-	Upload(ctx context.Context, body io.ReadSeeker, name string, revision string, totalSize int64) error
+	Upload(ctx context.Context, body io.ReadSeeker, name string, tenant string, revision string, totalSize int64) error
 
 	// Download retrieves a bundle artifact from object storage.
 	Download(ctx context.Context) (io.Reader, error)
