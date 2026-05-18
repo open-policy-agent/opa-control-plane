@@ -35,6 +35,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/sqlsync"
 	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
 	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
+	pkgconfig "github.com/open-policy-agent/opa-control-plane/pkg/config"
 	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
 
@@ -159,6 +160,13 @@ func (s *Service) WithConfig(config *config.Root) *Service {
 func (s *Service) WithRawConfig(rawConfig []byte) *Service {
 	s.rawConfig = rawConfig
 	s.database = *s.database.WithRawRootConfig(rawConfig)
+	return s
+}
+
+// WithDatabaseConfig sets the database configuration from a typed DatabaseConfig,
+// as a type-safe alternative to WithRawConfig for database-only configuration.
+func (s *Service) WithDatabaseConfig(cfg *pkgconfig.DatabaseConfig) *Service {
+	s.database = *s.database.WithConfig(config.DatabaseFromPublic(cfg))
 	return s
 }
 

@@ -498,6 +498,32 @@ type Database struct {
 	_ struct{} `additionalProperties:"false"`
 }
 
+// DatabaseFromPublic converts the public DatabaseConfig to the internal Database config.
+func DatabaseFromPublic(cfg *extconfig.DatabaseConfig) *Database {
+	if cfg == nil {
+		return nil
+	}
+	result := &Database{}
+	if cfg.SQL != nil {
+		result.SQL = &SQLDatabase{
+			Driver: cfg.SQL.Driver,
+			DSN:    cfg.SQL.DSN,
+		}
+	}
+	if cfg.AWSRDS != nil {
+		result.AWSRDS = &AmazonRDS{
+			Region:           cfg.AWSRDS.Region,
+			Endpoint:         cfg.AWSRDS.Endpoint,
+			Driver:           cfg.AWSRDS.Driver,
+			DatabaseUser:     cfg.AWSRDS.DatabaseUser,
+			DatabaseName:     cfg.AWSRDS.DatabaseName,
+			DSN:              cfg.AWSRDS.DSN,
+			RootCertificates: cfg.AWSRDS.RootCertificates,
+		}
+	}
+	return result
+}
+
 type SQLDatabase struct {
 	Driver      string     `json:"driver"`
 	DSN         string     `json:"dsn"`
