@@ -59,7 +59,7 @@ func TestTranslateStoreError_MySQLForeignKey(t *testing.T) {
 }
 
 func TestTranslateStoreError_SQLiteUniqueConstraint(t *testing.T) {
-	sqliteErr := fmt.Errorf("UNIQUE constraint failed: bundles.name, bundles.tenant_id")
+	sqliteErr := errors.New("UNIQUE constraint failed: bundles.name, bundles.tenant_id")
 	err := translateStoreError(sqliteErr)
 	if !errors.Is(err, ErrAlreadyExists) {
 		t.Fatalf("expected ErrAlreadyExists, got %v", err)
@@ -67,7 +67,7 @@ func TestTranslateStoreError_SQLiteUniqueConstraint(t *testing.T) {
 }
 
 func TestTranslateStoreError_SQLiteForeignKey(t *testing.T) {
-	sqliteErr := fmt.Errorf("FOREIGN KEY constraint failed")
+	sqliteErr := errors.New("FOREIGN KEY constraint failed")
 	err := translateStoreError(sqliteErr)
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("expected ErrConflict, got %v", err)
