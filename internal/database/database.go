@@ -67,7 +67,7 @@ func New() *Database {
 }
 
 // NewFromDB creates a Database from an existing *sql.DB connection pool.
-// The driver must be one of: "sqlite3", "sqlite", "postgres", "pgx", "cockroachdb", "mysql".
+// The driver must be one of: "sqlite3", "sqlite", "postgres", "pgx", "postgresql", "cockroachdb", "mysql".
 // This allows sharing a single connection pool with external callers.
 func NewFromDB(db *sql.DB, driver string) (*Database, error) {
 	if db == nil {
@@ -82,7 +82,7 @@ func NewFromDB(db *sql.DB, driver string) (*Database, error) {
 	switch driver {
 	case "sqlite3", "sqlite":
 		d.kind = sqlite
-	case "postgres", "pgx":
+	case "postgres", "pgx", "postgresql":
 		d.kind = postgres
 	case "cockroachdb":
 		d.kind = cockroach
