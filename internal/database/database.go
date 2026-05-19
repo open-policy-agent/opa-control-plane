@@ -2014,7 +2014,7 @@ func (d *Database) upsertReturning(ctx context.Context, returning, returningLast
 		if d.kind == mysql { // MySQL has no "... RETURNING (cols)"
 			result, err := tx.ExecContext(ctx, query, values...)
 			if err != nil {
-				return 0, err
+				return 0, translateStoreError(err)
 			}
 
 			if returningLastInsertID {
@@ -2033,12 +2033,12 @@ func (d *Database) upsertReturning(ctx context.Context, returning, returningLast
 		var id int
 		query += " RETURNING id"
 		if err := tx.QueryRowContext(ctx, query, values...).Scan(&id); err != nil {
-			return 0, err
+			return 0, translateStoreError(err)
 		}
 		return id, nil
 	} else {
 		_, err := tx.ExecContext(ctx, query, values...)
-		return 0, err
+		return 0, translateStoreError(err)
 	}
 }
 
