@@ -66,6 +66,35 @@ func New() *Database {
 	}
 }
 
+// NewFromDB creates a Database from an existing *sql.DB connection pool.
+// The driver must be one of: "sqlite3", "sqlite", "postgres", "pgx", "postgresql", "cockroachdb", "mysql".
+// This allows sharing a single connection pool with external callers.
+func NewFromDB(db *sql.DB, driver string) (*Database, error) {
+	if db == nil {
+		return nil, errors.New("db must not be nil")
+	}
+	d := &Database{
+		db:            db,
+		executeTx:     executeTx,
+		authorizer:    &authz.OPAuthorizer{},
+		accessFactory: authz.NewAccess,
+	}
+	switch driver {
+	case "sqlite3", "sqlite":
+		d.kind = sqlite
+	case "postgres", "pgx", "postgresql":
+		d.kind = postgres
+	case "cockroachdb":
+		d.kind = cockroach
+		d.executeTx = crdb.ExecuteTx
+	case "mysql":
+		d.kind = mysql
+	default:
+		return nil, fmt.Errorf("unsupported driver: %s", driver)
+	}
+	return d, nil
+}
+
 func (d *Database) DB() *sql.DB {
 	return d.db
 }

@@ -68,6 +68,18 @@ func New() *Database {
 	return &Database{db: internaldatabase.New()}
 }
 
+// NewFromDB creates a Database that shares the given *sql.DB connection pool.
+// The driver parameter must match the underlying driver: "sqlite3", "sqlite",
+// "postgres", "pgx", "cockroachdb", or "mysql".
+// Use this to share a connection (and transactions) with an external caller.
+func NewFromDB(db *sql.DB, driver string) (*Database, error) {
+	idb, err := internaldatabase.NewFromDB(db, driver)
+	if err != nil {
+		return nil, err
+	}
+	return &Database{db: idb}, nil
+}
+
 // WithAuthorizer sets the authorizer for permission checks.
 func (d *Database) WithAuthorizer(a ext_authz.Authorizer) *Database {
 	d.db = d.db.WithAuthorizer(a)
@@ -231,4 +243,10 @@ func (d *Database) UpsertPrincipal(ctx context.Context, id, role, tenant string)
 // single transaction. Both inserts are idempotent.
 func (d *Database) UpsertTenantWithPrincipal(ctx context.Context, tenantName, principalID, role string) error {
 	return d.db.UpsertTenantWithPrincipal(ctx, tenantName, principalID, role)
+}
+
+// UpsertTenantWithPrincipalTx performs the tenant+principal upsert within an existing *sql.Tx.
+// Use this when you need the operation to participate in a transaction managed by the caller.
+func (d *Database) UpsertTenantWithPrincipalTx(ctx context.Context, tx *sql.Tx, tenantName, principalID, role string) error {
+	return d.db.UpsertTenantAndPrincipalTx(ctx, tx, tenantName, principalID, role)
 }

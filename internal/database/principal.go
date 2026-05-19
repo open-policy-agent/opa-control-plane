@@ -30,14 +30,19 @@ func (db *Database) UpsertPrincipalTx(ctx context.Context, tx *sql.Tx, principal
 // single transaction. Both inserts are idempotent.
 func (db *Database) UpsertTenantWithPrincipal(ctx context.Context, tenantName, principalID, role string) error {
 	return tx1(ctx, db, func(tx *sql.Tx) error {
-		if err := db.upsertTenantTx(ctx, tx, tenantName); err != nil {
-			return err
-		}
-		if err := db.UpsertPrincipalTx(ctx, tx, Principal{Id: principalID, Role: role, Tenant: tenantName}); err != nil {
-			return fmt.Errorf("failed to upsert principal %q for tenant %q: %w", principalID, tenantName, err)
-		}
-		return nil
+		return db.UpsertTenantAndPrincipalTx(ctx, tx, tenantName, principalID, role)
 	})
+}
+
+// UpsertTenantAndPrincipalTx performs the tenant+principal upsert within an existing transaction.
+func (db *Database) UpsertTenantAndPrincipalTx(ctx context.Context, tx *sql.Tx, tenantName, principalID, role string) error {
+	if err := db.upsertTenantTx(ctx, tx, tenantName); err != nil {
+		return err
+	}
+	if err := db.UpsertPrincipalTx(ctx, tx, Principal{Id: principalID, Role: role, Tenant: tenantName}); err != nil {
+		return fmt.Errorf("failed to upsert principal %q for tenant %q: %w", principalID, tenantName, err)
+	}
+	return nil
 }
 
 func (db *Database) upsertTenantTx(ctx context.Context, tx *sql.Tx, tenantName string) error {
