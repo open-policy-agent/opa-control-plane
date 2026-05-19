@@ -11,6 +11,8 @@ const (
 	CodeInternal         = "internal_error"
 	CodeNotAuthorized    = "not_authorized"
 	CodeNotFound         = "not_found"
+	CodeAlreadyExists    = "already_exists"
+	CodeConflict         = "conflict"
 	CodeInvalidParameter = "invalid_parameter"
 )
 

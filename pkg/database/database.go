@@ -8,8 +8,9 @@
 //
 //	db := database.New()
 //	db.WithAuthorizer(myAuthorizer)
-//	rawConfig := []byte(`{"database": {"sql": {"driver": "sqlite3", "dsn": "file::memory:?cache=shared"}}}`)
-//	if err := db.InitDB(ctx, rawConfig); err != nil {
+//	if err := db.InitDBWithConfig(ctx, &config.DatabaseConfig{
+//	    SQL: &config.SQLDatabaseConfig{Driver: "sqlite3", DSN: "file::memory:?cache=shared"},
+//	}); err != nil {
 //	    log.Fatal(err)
 //	}
 //	defer db.CloseDB()
@@ -33,6 +34,7 @@ import (
 
 	jp "github.com/evanphx/json-patch/v5"
 
+	internalconfig "github.com/open-policy-agent/opa-control-plane/internal/config"
 	internaldatabase "github.com/open-policy-agent/opa-control-plane/internal/database"
 	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
 	"github.com/open-policy-agent/opa-control-plane/pkg/config"
@@ -42,6 +44,8 @@ import (
 var (
 	ErrNotFound      = internaldatabase.ErrNotFound
 	ErrNotAuthorized = internaldatabase.ErrNotAuthorized
+	ErrAlreadyExists = internaldatabase.ErrAlreadyExists
+	ErrConflict      = internaldatabase.ErrConflict
 )
 
 // ErrInvalidJSON indicates the provided JSON could not be deserialized into the expected type.
@@ -90,12 +94,15 @@ func (d *Database) WithAccessFactory(af ext_authz.AccessFactory) *Database {
 
 // InitDB initializes the database connection from a raw root configuration.
 //
-// The rawConfig must be a JSON (or YAML) document containing a "database" key.
-// Example:
-//
-//	{"database": {"sql": {"driver": "sqlite3", "dsn": "file::memory:?cache=shared"}}}
+// Deprecated: prefer InitDBWithConfig for type-safe configuration.
 func (d *Database) InitDB(ctx context.Context, rawConfig []byte) error {
 	d.db = d.db.WithRawRootConfig(rawConfig)
+	return d.db.InitDB(ctx)
+}
+
+// InitDBWithConfig initializes the database connection from a typed DatabaseConfig.
+func (d *Database) InitDBWithConfig(ctx context.Context, cfg *config.DatabaseConfig) error {
+	d.db = d.db.WithConfig(internalconfig.DatabaseFromPublic(cfg))
 	return d.db.InitDB(ctx)
 }
 
