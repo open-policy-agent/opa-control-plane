@@ -11,6 +11,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/server"
 	"github.com/open-policy-agent/opa-control-plane/libraries"
 	"github.com/open-policy-agent/opa-control-plane/pkg/service"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 )
 
@@ -75,7 +76,7 @@ func init() {
 					WithDatabase(svc.Database()).
 					WithReadiness(svc.Ready).
 					WithConfig(config).
-					Init().
+					Init(prometheus.DefaultRegisterer).
 					ListenAndServe(params.addr); err != nil {
 					log.Fatalf("failed to start server: %v", err)
 				}

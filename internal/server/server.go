@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/server/writer"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
@@ -37,12 +38,12 @@ func New() *Server {
 	return &Server{}
 }
 
-func (s *Server) Init() *Server {
+func (s *Server) Init(p prometheus.Registerer) *Server {
 	if s.router == nil {
 		s.router = http.NewServeMux()
 	}
 
-	metrics.Init(s.metricsConfig)
+	metrics.Init(s.metricsConfig, p)
 
 	apiPrefix := s.apiPrefix
 

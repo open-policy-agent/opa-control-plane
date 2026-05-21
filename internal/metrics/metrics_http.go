@@ -27,7 +27,7 @@ var (
 	}
 )
 
-func initHTTPMetrics(cfg *config.MetricsConfig) {
+func initHTTPMetrics(cfg *config.MetricsConfig, prometheusRegisterer prometheus.Registerer) {
 	if cfg != nil && cfg.HTTP != nil && !isEnabled(cfg.HTTP.Enabled) {
 		return
 	}
@@ -41,7 +41,7 @@ func initHTTPMetrics(cfg *config.MetricsConfig) {
 		return
 	}
 
-	durationHistogram = promauto.NewHistogramVec(
+	durationHistogram = promauto.With(prometheusRegisterer).NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "http_request_duration_seconds",
 			Help:    "A histogram of duration for requests.",

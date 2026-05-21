@@ -16,7 +16,7 @@ var (
 	defaultGitSyncBuckets = []float64{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.5, 2, 5, 10, 30, 60}
 )
 
-func initGitSyncMetrics(cfg *config.MetricsConfig) {
+func initGitSyncMetrics(cfg *config.MetricsConfig, prometheusRegisterer prometheus.Registerer) {
 	var gcfg *config.GitSyncMetrics
 	if cfg != nil {
 		gcfg = cfg.GitSync
@@ -27,7 +27,7 @@ func initGitSyncMetrics(cfg *config.MetricsConfig) {
 	}
 
 	if gcfg == nil || isEnabled(gcfg.GetCountEnabled()) {
-		gitSyncCount = promauto.NewCounterVec(
+		gitSyncCount = promauto.With(prometheusRegisterer).NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "ocp_git_sync_count_total",
 				Help: "Number of times a git sync has been performed and its state",
@@ -45,7 +45,7 @@ func initGitSyncMetrics(cfg *config.MetricsConfig) {
 		return
 	}
 
-	gitSyncDuration = promauto.NewHistogramVec(
+	gitSyncDuration = promauto.With(prometheusRegisterer).NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ocp_git_sync_duration_seconds",
 			Help:    "Git sync duration in seconds",

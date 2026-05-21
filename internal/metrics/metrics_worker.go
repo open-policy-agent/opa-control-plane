@@ -16,7 +16,7 @@ var (
 	defaultWorkerBuckets = []float64{0.1, 0.2, 0.5, 1, 1.5, 2, 5, 10, 30, 60}
 )
 
-func initWorkerMetrics(cfg *config.MetricsConfig) {
+func initWorkerMetrics(cfg *config.MetricsConfig, prometheusRegisterer prometheus.Registerer) {
 	var wcfg *config.WorkerMetrics
 	if cfg != nil {
 		wcfg = cfg.Worker
@@ -27,7 +27,7 @@ func initWorkerMetrics(cfg *config.MetricsConfig) {
 	}
 
 	if wcfg == nil || isEnabled(wcfg.GetCountEnabled()) {
-		bundleBuildCount = promauto.NewCounterVec(
+		bundleBuildCount = promauto.With(prometheusRegisterer).NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "ocp_bundle_build_count_total",
 				Help: "Number of times a bundle build has been performed and its state",
@@ -45,7 +45,7 @@ func initWorkerMetrics(cfg *config.MetricsConfig) {
 		return
 	}
 
-	bundleBuildDuration = promauto.NewHistogramVec(
+	bundleBuildDuration = promauto.With(prometheusRegisterer).NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ocp_bundle_build_duration_seconds",
 			Help:    "Bundle build duration in seconds",

@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 
+	prom "github.com/prometheus/client_golang/prometheus"
+
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
@@ -1111,7 +1113,7 @@ func initTestServer(t *testing.T, db *database.Database) *testServer {
 	ts.t = t
 	ts.router = http.NewServeMux()
 	ts.srv = New().WithDatabase(db).WithRouter(ts.router)
-	ts.srv.Init()
+	ts.srv.Init(prom.NewRegistry())
 	ts.s = httptest.NewServer(ts.router)
 	return &ts
 }

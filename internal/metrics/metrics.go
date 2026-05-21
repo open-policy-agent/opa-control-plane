@@ -7,5 +7,8 @@ import (
 )
 
 func Handler() http.Handler {
+	if metricsGatherer != nil {
+		return promhttp.HandlerFor(metricsGatherer, promhttp.HandlerOpts{})
+	}
 	return promhttp.Handler()
 }

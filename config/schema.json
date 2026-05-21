@@ -235,6 +235,12 @@
     "ConfigGitSyncMetrics": {
       "additionalProperties": false,
       "properties": {
+        "enabled": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        },
         "git_sync_count": {
           "$ref": "#/definitions/ConfigCounterConfig"
         },
@@ -247,6 +253,12 @@
     "ConfigHTTPMetrics": {
       "additionalProperties": false,
       "properties": {
+        "enabled": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        },
         "request_duration": {
           "$ref": "#/definitions/ConfigHistogramConfig"
         }
@@ -292,6 +304,12 @@
     "ConfigMetricsConfig": {
       "additionalProperties": false,
       "properties": {
+        "enabled": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        },
         "gitsync": {
           "$ref": "#/definitions/ConfigGitSyncMetrics"
         },
@@ -525,6 +543,12 @@
         },
         "bundle_build_duration": {
           "$ref": "#/definitions/ConfigHistogramConfig"
+        },
+        "enabled": {
+          "type": [
+            "null",
+            "boolean"
+          ]
         }
       },
       "type": "object"
