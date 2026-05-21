@@ -76,3 +76,50 @@ func TestMetricsConfigDefaults(t *testing.T) {
 		t.Fatal("Metrics should be nil with empty config")
 	}
 }
+
+func TestMetricsGlobalDisable(t *testing.T) {
+	input := `
+metrics:
+  enabled: false
+`
+	cfg, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("Error parsing config: %v", err)
+	}
+
+	if cfg.Metrics == nil {
+		t.Fatal("Metrics config is nil")
+	}
+	if cfg.Metrics.Enabled == nil || *cfg.Metrics.Enabled {
+		t.Fatal("Metrics should be globally disabled")
+	}
+}
+
+func TestMetricsPackageDisable(t *testing.T) {
+	input := `
+metrics:
+  http:
+    enabled: false
+  gitsync:
+    enabled: false
+  worker:
+    enabled: false
+`
+	cfg, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("Error parsing config: %v", err)
+	}
+
+	if cfg.Metrics == nil {
+		t.Fatal("Metrics config is nil")
+	}
+	if cfg.Metrics.HTTP == nil || cfg.Metrics.HTTP.Enabled == nil || *cfg.Metrics.HTTP.Enabled {
+		t.Fatal("HTTP metrics should be disabled")
+	}
+	if cfg.Metrics.GitSync == nil || cfg.Metrics.GitSync.Enabled == nil || *cfg.Metrics.GitSync.Enabled {
+		t.Fatal("GitSync metrics should be disabled")
+	}
+	if cfg.Metrics.Worker == nil || cfg.Metrics.Worker.Enabled == nil || *cfg.Metrics.Worker.Enabled {
+		t.Fatal("Worker metrics should be disabled")
+	}
+}

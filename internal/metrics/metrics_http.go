@@ -28,6 +28,10 @@ var (
 )
 
 func initHTTPMetrics(cfg *config.MetricsConfig) {
+	if cfg != nil && cfg.HTTP != nil && !isEnabled(cfg.HTTP.Enabled) {
+		return
+	}
+
 	var hcfg *config.HistogramConfig
 	if cfg != nil && cfg.HTTP != nil {
 		hcfg = cfg.HTTP.RequestDuration

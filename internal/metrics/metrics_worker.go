@@ -22,6 +22,10 @@ func initWorkerMetrics(cfg *config.MetricsConfig) {
 		wcfg = cfg.Worker
 	}
 
+	if wcfg != nil && !isEnabled(wcfg.Enabled) {
+		return
+	}
+
 	if wcfg == nil || isEnabled(wcfg.GetCountEnabled()) {
 		bundleBuildCount = promauto.NewCounterVec(
 			prometheus.CounterOpts{

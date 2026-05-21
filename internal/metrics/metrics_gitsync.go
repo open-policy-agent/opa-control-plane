@@ -22,6 +22,10 @@ func initGitSyncMetrics(cfg *config.MetricsConfig) {
 		gcfg = cfg.GitSync
 	}
 
+	if gcfg != nil && !isEnabled(gcfg.Enabled) {
+		return
+	}
+
 	if gcfg == nil || isEnabled(gcfg.GetCountEnabled()) {
 		gitSyncCount = promauto.NewCounterVec(
 			prometheus.CounterOpts{

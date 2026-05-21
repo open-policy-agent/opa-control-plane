@@ -7,6 +7,9 @@ import (
 // Init initializes all metrics collectors with the given configuration.
 // Must be called once before any metrics are recorded.
 func Init(cfg *config.MetricsConfig) {
+	if cfg != nil && !isEnabled(cfg.Enabled) {
+		return
+	}
 	initHTTPMetrics(cfg)
 	initGitSyncMetrics(cfg)
 	initWorkerMetrics(cfg)

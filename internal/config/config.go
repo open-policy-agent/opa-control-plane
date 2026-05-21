@@ -574,6 +574,7 @@ type CounterConfig struct {
 
 // HTTPMetrics configures HTTP request metrics.
 type HTTPMetrics struct {
+	Enabled         *bool            `json:"enabled,omitempty"`
 	RequestDuration *HistogramConfig `json:"request_duration,omitempty"`
 
 	_ struct{} `additionalProperties:"false"`
@@ -581,6 +582,7 @@ type HTTPMetrics struct {
 
 // GitSyncMetrics configures git synchronization metrics.
 type GitSyncMetrics struct {
+	Enabled         *bool            `json:"enabled,omitempty"`
 	GitSyncDuration *HistogramConfig `json:"git_sync_duration,omitempty"`
 	GitSyncCount    *CounterConfig   `json:"git_sync_count,omitempty"`
 
@@ -589,6 +591,7 @@ type GitSyncMetrics struct {
 
 // WorkerMetrics configures bundle build metrics.
 type WorkerMetrics struct {
+	Enabled             *bool            `json:"enabled,omitempty"`
 	BundleBuildDuration *HistogramConfig `json:"bundle_build_duration,omitempty"`
 	BundleBuildCount    *CounterConfig   `json:"bundle_build_count,omitempty"`
 
@@ -597,6 +600,7 @@ type WorkerMetrics struct {
 
 // MetricsConfig configures Prometheus metrics collection.
 type MetricsConfig struct {
+	Enabled *bool           `json:"enabled,omitempty"`
 	HTTP    *HTTPMetrics    `json:"http,omitempty"`
 	GitSync *GitSyncMetrics `json:"gitsync,omitempty"`
 	Worker  *WorkerMetrics  `json:"worker,omitempty"`
