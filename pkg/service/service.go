@@ -163,10 +163,14 @@ func (s *Service) WithRawConfig(rawConfig []byte) *Service {
 	return s
 }
 
-// WithDatabaseConfig sets the database configuration from a typed DatabaseConfig,
-// as a type-safe alternative to WithRawConfig for database-only configuration.
+// WithDatabaseConfig configures the database connection from a typed struct
+// instead of raw JSON/YAML bytes.
 func (s *Service) WithDatabaseConfig(cfg *pkgconfig.DatabaseConfig) *Service {
-	s.database = *s.database.WithConfig(config.DatabaseFromPublic(cfg))
+	if s.config == nil {
+		s.config = &config.Root{}
+	}
+	s.config.Database = config.DatabaseFromPublic(cfg)
+	s.database = *s.database.WithConfig(s.config.Database)
 	return s
 }
 
