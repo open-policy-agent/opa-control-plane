@@ -32,18 +32,19 @@ type Server struct {
 	readyFn       func(context.Context) error
 	apiPrefix     string
 	metricsConfig *config.MetricsConfig
+	prometheusReg prometheus.Registerer
 }
 
 func New() *Server {
 	return &Server{}
 }
 
-func (s *Server) Init(p prometheus.Registerer) *Server {
+func (s *Server) Init() *Server {
 	if s.router == nil {
 		s.router = http.NewServeMux()
 	}
 
-	metrics.Init(s.metricsConfig, p)
+	metrics.Init(s.metricsConfig, s.prometheusReg)
 
 	apiPrefix := s.apiPrefix
 
@@ -109,6 +110,11 @@ func (s *Server) WithConfig(cfg *config.Root) *Server {
 	return s
 }
 
+func (s *Server) WithPrometheusRegisterer(reg prometheus.Registerer) *Server {
+	s.prometheusReg = reg
+	return s
+}
+
 func (s *Server) ListenAndServe(addr string) error {
 	if strings.HasPrefix(addr, "unix://") {
 		socketPath := strings.TrimPrefix(addr, "unix://")
@@ -151,7 +157,6 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) v1BundlesList(w http.ResponseWriter, r *http.Request) {
-
 	ctx := r.Context()
 	opts := s.listOptions(r)
 	principal, tenant := s.auth(r)

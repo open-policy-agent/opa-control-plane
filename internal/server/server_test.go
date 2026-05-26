@@ -1112,8 +1112,8 @@ func initTestServer(t *testing.T, db *database.Database) *testServer {
 	var ts testServer
 	ts.t = t
 	ts.router = http.NewServeMux()
-	ts.srv = New().WithDatabase(db).WithRouter(ts.router)
-	ts.srv.Init(prom.NewRegistry())
+	ts.srv = New().WithDatabase(db).WithRouter(ts.router).WithPrometheusRegisterer(prom.NewRegistry())
+	ts.srv.Init()
 	ts.s = httptest.NewServer(ts.router)
 	return &ts
 }

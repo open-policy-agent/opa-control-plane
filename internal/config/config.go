@@ -277,7 +277,12 @@ func Validate(data []byte) error {
 		return err
 	}
 
-	return rootSchema.Validate(config)
+	err := rootSchema.Validate(config)
+	if err != nil {
+		return fmt.Errorf("configuration validation error: %w. Schema: %v", err, rootSchema)
+	}
+
+	return nil
 }
 
 // Stack defines the configuration for an OPA Control Plane Stack.

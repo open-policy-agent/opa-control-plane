@@ -76,7 +76,8 @@ func init() {
 					WithDatabase(svc.Database()).
 					WithReadiness(svc.Ready).
 					WithConfig(config).
-					Init(prometheus.DefaultRegisterer).
+					WithPrometheusRegisterer(prometheus.DefaultRegisterer).
+					Init().
 					ListenAndServe(params.addr); err != nil {
 					log.Fatalf("failed to start server: %v", err)
 				}
