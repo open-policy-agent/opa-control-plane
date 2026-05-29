@@ -103,6 +103,7 @@ type Synchronizer struct {
 	gh             github
 	sourceName     string
 	secretProvider pkgsync.SecretProvider
+	metrics        *metrics.Metrics
 }
 
 // New creates a new Synchronizer instance. It is expected the threadpooling is outside of this package.
@@ -120,6 +121,12 @@ func (s *Synchronizer) WithSecretProvider(provider pkgsync.SecretProvider) *Sync
 	return s
 }
 
+// WithMetrics configures the synchronizer to record git sync metrics.
+func (s *Synchronizer) WithMetrics(m *metrics.Metrics) *Synchronizer {
+	s.metrics = m
+	return s
+}
+
 // Execute performs the synchronization of the configured Git repository. If the repository does not exist
 // on disk, clone it. If it does exist, pull the latest changes and rebase the local branch onto the remote branch.
 // Returns metadata about the synchronized repository, including the current commit hash.
@@ -128,11 +135,11 @@ func (s *Synchronizer) Execute(ctx context.Context) (map[string]any, error) {
 
 	done, hash, err := s.execute(ctx)
 	if err != nil {
-		metrics.GitSyncFailed(s.sourceName, s.config.Repo)
+		s.metrics.GitSyncFailed(s.sourceName, s.config.Repo)
 		return nil, fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
 	}
 	if done {
-		metrics.GitSyncSucceeded(s.sourceName, s.config.Repo, startTime)
+		s.metrics.GitSyncSucceeded(s.sourceName, s.config.Repo, startTime)
 	}
 
 	return map[string]any{

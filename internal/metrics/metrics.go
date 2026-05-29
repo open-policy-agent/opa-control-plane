@@ -6,9 +6,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-func Handler() http.Handler {
-	if metricsGatherer != nil {
-		return promhttp.HandlerFor(metricsGatherer, promhttp.HandlerOpts{})
+func (m *Metrics) Handler() http.Handler {
+	if m != nil && m.gatherer != nil {
+		return promhttp.HandlerFor(m.gatherer, promhttp.HandlerOpts{})
 	}
 	return promhttp.Handler()
 }

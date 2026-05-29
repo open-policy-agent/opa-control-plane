@@ -33,6 +33,7 @@ type Server struct {
 	apiPrefix     string
 	metricsConfig *config.MetricsConfig
 	prometheusReg prometheus.Registerer
+	metrics       *metrics.Metrics
 }
 
 func New() *Server {
@@ -44,16 +45,18 @@ func (s *Server) Init() *Server {
 		s.router = http.NewServeMux()
 	}
 
-	metrics.Init(s.metricsConfig, s.prometheusReg)
+	if s.metrics == nil {
+		s.metrics = metrics.Init(s.metricsConfig, s.prometheusReg)
+	}
 
 	apiPrefix := s.apiPrefix
 
-	s.router.Handle(apiPrefix+"/metrics", metrics.Handler())
+	s.router.Handle(apiPrefix+"/metrics", s.metrics.Handler())
 	s.router.HandleFunc("GET "+apiPrefix+"/health", s.health)
 
 	base := chain.New(authenticationMiddleware(s.db))
 	setup := func(method, pattern string, hndl http.HandlerFunc) {
-		s.router.Handle(method+" "+apiPrefix+pattern, append(base, metrics.InstrumentHandler(apiPrefix+pattern)).ThenFunc(hndl))
+		s.router.Handle(method+" "+apiPrefix+pattern, append(base, s.metrics.InstrumentHandler(apiPrefix+pattern)).ThenFunc(hndl))
 	}
 
 	setup("GET", "/v1/sources/{source}/data/{path...}", s.v1SourcesDataGet)
@@ -112,6 +115,11 @@ func (s *Server) WithConfig(cfg *config.Root) *Server {
 
 func (s *Server) WithPrometheusRegisterer(reg prometheus.Registerer) *Server {
 	s.prometheusReg = reg
+	return s
+}
+
+func (s *Server) WithMetrics(m *metrics.Metrics) *Server {
+	s.metrics = m
 	return s
 }
 
