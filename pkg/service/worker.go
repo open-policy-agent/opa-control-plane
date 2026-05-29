@@ -45,6 +45,7 @@ type BundleWorker struct {
 	interval      time.Duration
 	database      *database.Database
 	tenant        string
+	metrics       *metrics.Metrics
 }
 
 type Synchronizer interface {
@@ -104,6 +105,11 @@ func (worker *BundleWorker) WithDatabase(database *database.Database) *BundleWor
 
 func (worker *BundleWorker) WithTenant(tenant string) *BundleWorker {
 	worker.tenant = tenant
+	return worker
+}
+
+func (worker *BundleWorker) WithMetrics(m *metrics.Metrics) *BundleWorker {
+	worker.metrics = m
 	return worker
 }
 
@@ -280,9 +286,9 @@ func (w *BundleWorker) report(ctx context.Context, state BuildState, startTime t
 	}
 
 	if state == BuildStateSuccess {
-		metrics.BundleBuildSucceeded(w.bundleConfig.Name, state.String(), startTime)
+		w.metrics.BundleBuildSucceeded(w.bundleConfig.Name, state.String(), startTime)
 	} else {
-		metrics.BundleBuildFailed(w.bundleConfig.Name, state.String())
+		w.metrics.BundleBuildFailed(w.bundleConfig.Name, state.String())
 	}
 
 	if w.singleShot {

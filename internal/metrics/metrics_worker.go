@@ -9,14 +9,9 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 )
 
-var (
-	bundleBuildCount    *prometheus.CounterVec
-	bundleBuildDuration *prometheus.HistogramVec
+var defaultWorkerBuckets = []float64{0.1, 0.2, 0.5, 1, 1.5, 2, 5, 10, 30, 60}
 
-	defaultWorkerBuckets = []float64{0.1, 0.2, 0.5, 1, 1.5, 2, 5, 10, 30, 60}
-)
-
-func initWorkerMetrics(cfg *config.MetricsConfig, prometheusRegisterer prometheus.Registerer) {
+func initWorkerMetrics(m *Metrics, cfg *config.MetricsConfig, prometheusRegisterer prometheus.Registerer) {
 	var wcfg *config.WorkerMetrics
 	if cfg != nil {
 		wcfg = cfg.Worker
@@ -27,7 +22,7 @@ func initWorkerMetrics(cfg *config.MetricsConfig, prometheusRegisterer prometheu
 	}
 
 	if wcfg == nil || isEnabled(wcfg.GetCountEnabled()) {
-		bundleBuildCount = promauto.With(prometheusRegisterer).NewCounterVec(
+		m.bundleBuildCount = promauto.With(prometheusRegisterer).NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "ocp_bundle_build_count_total",
 				Help: "Number of times a bundle build has been performed and its state",
@@ -45,7 +40,7 @@ func initWorkerMetrics(cfg *config.MetricsConfig, prometheusRegisterer prometheu
 		return
 	}
 
-	bundleBuildDuration = promauto.With(prometheusRegisterer).NewHistogramVec(
+	m.bundleBuildDuration = promauto.With(prometheusRegisterer).NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ocp_bundle_build_duration_seconds",
 			Help:    "Bundle build duration in seconds",
@@ -55,17 +50,19 @@ func initWorkerMetrics(cfg *config.MetricsConfig, prometheusRegisterer prometheu
 	)
 }
 
-func BundleBuildFailed(bundle string, state string) {
-	if bundleBuildCount != nil {
-		bundleBuildCount.WithLabelValues(bundle, state).Inc()
+func (m *Metrics) BundleBuildFailed(bundle string, state string) {
+	if m == nil || m.bundleBuildCount == nil {
+		return
 	}
+	m.bundleBuildCount.WithLabelValues(bundle, state).Inc()
 }
 
-func BundleBuildSucceeded(bundle string, state string, startTime time.Time) {
-	if bundleBuildCount != nil {
-		bundleBuildCount.WithLabelValues(bundle, state).Inc()
+func (m *Metrics) BundleBuildSucceeded(bundle string, state string, startTime time.Time) {
+	if m == nil || m.bundleBuildCount == nil {
+		return
 	}
-	if bundleBuildDuration != nil {
-		bundleBuildDuration.WithLabelValues(bundle).Observe(float64(time.Since(startTime).Seconds()))
+	m.bundleBuildCount.WithLabelValues(bundle, state).Inc()
+	if m.bundleBuildDuration != nil {
+		m.bundleBuildDuration.WithLabelValues(bundle).Observe(float64(time.Since(startTime).Seconds()))
 	}
 }
