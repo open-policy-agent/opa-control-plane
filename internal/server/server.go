@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/server/writer"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
@@ -26,10 +27,12 @@ import (
 const defaultTenant = "default"
 
 type Server struct {
-	router    *http.ServeMux
-	db        *database.Database
-	readyFn   func(context.Context) error
-	apiPrefix string
+	router        *http.ServeMux
+	db            *database.Database
+	readyFn       func(context.Context) error
+	apiPrefix     string
+	metricsConfig *config.MetricsConfig
+	prometheusReg prometheus.Registerer
 }
 
 func New() *Server {
@@ -40,6 +43,8 @@ func (s *Server) Init() *Server {
 	if s.router == nil {
 		s.router = http.NewServeMux()
 	}
+
+	metrics.Init(s.metricsConfig, s.prometheusReg)
 
 	apiPrefix := s.apiPrefix
 
@@ -97,6 +102,19 @@ func (s *Server) WithReadiness(fn func(context.Context) error) *Server {
 	return s
 }
 
+func (s *Server) WithConfig(cfg *config.Root) *Server {
+	if cfg != nil && cfg.Service != nil {
+		s.apiPrefix = cfg.Service.ApiPrefix
+	}
+	s.metricsConfig = cfg.Metrics
+	return s
+}
+
+func (s *Server) WithPrometheusRegisterer(reg prometheus.Registerer) *Server {
+	s.prometheusReg = reg
+	return s
+}
+
 func (s *Server) ListenAndServe(addr string) error {
 	if strings.HasPrefix(addr, "unix://") {
 		socketPath := strings.TrimPrefix(addr, "unix://")
@@ -126,13 +144,6 @@ func (s *Server) listenAndServeUnix(socketPath string) error {
 	return http.Serve(listener, s.router)
 }
 
-func (s *Server) WithConfig(config *config.Service) *Server {
-	if config != nil {
-		s.apiPrefix = config.ApiPrefix
-	}
-	return s
-}
-
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 	err := s.readyFn(r.Context())
@@ -146,7 +157,6 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) v1BundlesList(w http.ResponseWriter, r *http.Request) {
-
 	ctx := r.Context()
 	opts := s.listOptions(r)
 	principal, tenant := s.auth(r)

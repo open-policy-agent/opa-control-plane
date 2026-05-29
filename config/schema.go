@@ -1,4 +1,5 @@
 //go:generate go run ../build/gen-config-schema.go schema.json
+//go:generate go run ../build/gen-config-schema.go ../schema.json
 
 package config
 
