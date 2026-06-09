@@ -18,10 +18,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"google.golang.org/api/option"
+
 	internal_aws "github.com/open-policy-agent/opa-control-plane/internal/aws"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
-	"google.golang.org/api/option"
 )
 
 var (
@@ -279,13 +280,26 @@ func (s *AmazonS3) check(ctx context.Context, body io.Reader) ([]byte, bool, err
 }
 
 func (s *GCPCloudStorage) Upload(ctx context.Context, body io.ReadSeeker, opts ext_os.UploadOptions) error {
+	digest, equal, err := s.check(ctx, body)
+	if err != nil {
+		return err
+	}
+	if equal {
+		return ext_os.ErrNotModified
+	}
+
+	if _, err := body.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
 	w := s.client.Bucket(s.bucket).Object(s.object).NewWriter(ctx)
-	if w.Metadata == nil {
-		w.Metadata = make(map[string]string)
+	w.Metadata = map[string]string{
+		"sha256": hex.EncodeToString(digest),
 	}
 	if opts.Revision != "" {
 		w.Metadata["revision"] = opts.Revision
 	}
+
 	if _, err := io.Copy(w, body); err != nil {
 		return err
 	}
@@ -295,6 +309,26 @@ func (s *GCPCloudStorage) Upload(ctx context.Context, body io.ReadSeeker, opts e
 
 func (*GCPCloudStorage) Download(context.Context) (io.Reader, error) {
 	return nil, errors.New("not implemented")
+}
+
+func (s *GCPCloudStorage) check(ctx context.Context, body io.Reader) ([]byte, bool, error) {
+	d := sha256.New()
+	_, err := io.Copy(d, body)
+	if err != nil {
+		return nil, false, err
+	}
+
+	digest := d.Sum(nil)
+
+	attrs, err := s.client.Bucket(s.bucket).Object(s.object).Attrs(ctx)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	return digest, attrs.Metadata["sha256"] == hex.EncodeToString(digest), nil
 }
 
 func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker, opts ext_os.UploadOptions) error {
