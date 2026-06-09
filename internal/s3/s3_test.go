@@ -13,8 +13,10 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/fsouza/fake-gcs-server/fakestorage"
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
+
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
@@ -296,6 +298,43 @@ func TestFileSystemNotModified(t *testing.T) {
 	// Upload with different content should succeed.
 	r2 := bytes.NewReader([]byte("different content"))
 	if err := storage.Upload(ctx, r2, ext_os.UploadOptions{}); err != nil {
+		t.Fatalf("third upload: %v", err)
+	}
+}
+
+func TestGCSNotModified(t *testing.T) {
+	mock := fakestorage.NewServer(nil)
+	defer mock.Stop()
+
+	mock.CreateBucketWithOpts(fakestorage.CreateBucketOpts{
+		Name: "test",
+	})
+
+	// fake-gcs-server requires its own pre-configured client (using a custom
+	// HTTP transport), we can't nicely pass this into the New constructor as we do with S3.
+	gcsStorage := &GCPCloudStorage{
+		bucket: "test",
+		object: "not-modified",
+		client: mock.Client(),
+	}
+
+	content := []byte("same content")
+
+	// First upload should write the file.
+	r := bytes.NewReader(content)
+	if err := gcsStorage.Upload(t.Context(), r, ext_os.UploadOptions{}); err != nil {
+		t.Fatalf("first upload: %v", err)
+	}
+
+	// Second upload with identical content should return ErrNotModified.
+	r = bytes.NewReader(content)
+	if err := gcsStorage.Upload(t.Context(), r, ext_os.UploadOptions{}); !errors.Is(err, ext_os.ErrNotModified) {
+		t.Fatalf("second upload: got %v, want ErrNotModified", err)
+	}
+
+	// Upload with different content should succeed.
+	r2 := bytes.NewReader([]byte("different content"))
+	if err := gcsStorage.Upload(t.Context(), r2, ext_os.UploadOptions{}); err != nil {
 		t.Fatalf("third upload: %v", err)
 	}
 }

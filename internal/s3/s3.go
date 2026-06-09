@@ -323,7 +323,7 @@ func (s *GCPCloudStorage) check(ctx context.Context, body io.Reader) ([]byte, bo
 	attrs, err := s.client.Bucket(s.bucket).Object(s.object).Attrs(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotExist) {
-			return nil, false, nil
+			return digest, false, nil
 		}
 		return nil, false, err
 	}
