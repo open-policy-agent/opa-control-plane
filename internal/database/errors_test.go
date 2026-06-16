@@ -1,12 +1,15 @@
 package database
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"testing"
 
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgconn"
+	_ "modernc.org/sqlite"
 )
 
 func TestTranslateStoreError_Nil(t *testing.T) {
@@ -88,5 +91,52 @@ func TestTranslateStoreError_WrappedPgError(t *testing.T) {
 	err := translateStoreError(wrapped)
 	if !errors.Is(err, ErrAlreadyExists) {
 		t.Fatalf("expected ErrAlreadyExists from wrapped pgErr, got %v", err)
+	}
+}
+
+// TestLookupRequiredID_MissingRowReturnsErrConflict verifies that looking up a
+// row that does not exist surfaces as ErrConflict (consistent with the
+// foreign-key-violation case), rather than leaking the raw sql.ErrNoRows.
+func TestLookupRequiredID_MissingRowReturnsErrConflict(t *testing.T) {
+	ctx := context.Background()
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	for _, stmt := range []string{
+		`CREATE TABLE tenants (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE)`,
+		`CREATE TABLE sources (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, tenant_id INTEGER)`,
+		`INSERT INTO tenants (name) VALUES ('t1')`,
+	} {
+		if _, err := sqlDB.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("setup %q: %v", stmt, err)
+		}
+	}
+
+	d, err := NewFromDB(sqlDB, "sqlite")
+	if err != nil {
+		t.Fatalf("NewFromDB: %v", err)
+	}
+
+	tx, err := sqlDB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() })
+
+	// Sanity check: raw lookupID returns sql.ErrNoRows for a missing row.
+	if _, err := d.lookupID(ctx, tx, "t1", "sources", "missing"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("lookupID: expected sql.ErrNoRows, got %v", err)
+	}
+
+	// lookupRequiredID must translate the missing row to ErrConflict.
+	_, err = d.lookupRequiredID(ctx, tx, "t1", "sources", "missing")
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("lookupRequiredID: expected ErrConflict, got %v", err)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("lookupRequiredID: must not surface sql.ErrNoRows, got %v", err)
 	}
 }

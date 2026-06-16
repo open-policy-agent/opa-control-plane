@@ -1677,7 +1677,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 		sources := make([]int, 0, len(bundle.Requirements))
 		for _, req := range bundle.Requirements {
 			if req.Source != nil {
-				reqID, err := d.lookupID(ctx, tx, tenant, "sources", *req.Source)
+				reqID, err := d.lookupRequiredID(ctx, tx, tenant, "sources", *req.Source)
 				if err != nil {
 					return fmt.Errorf("lookup id of requirement source %s: %w", *req.Source, err)
 				}
@@ -1794,7 +1794,7 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 		var sources []int
 		for _, r := range source.Requirements {
 			if r.Source != nil {
-				reqID, err := d.lookupID(ctx, tx, tenant, "sources", *r.Source)
+				reqID, err := d.lookupRequiredID(ctx, tx, tenant, "sources", *r.Source)
 				if err != nil {
 					return fmt.Errorf("lookup id of requirement source %s: %w", *r.Source, err)
 				}
@@ -1878,7 +1878,7 @@ func (d *Database) UpsertStack(ctx context.Context, principal, tenant string, st
 
 		for _, r := range stack.Requirements {
 			if r.Source != nil {
-				sourceID, err := d.lookupID(ctx, tx, tenant, "sources", *r.Source)
+				sourceID, err := d.lookupRequiredID(ctx, tx, tenant, "sources", *r.Source)
 				if err != nil {
 					return fmt.Errorf("lookup source %s: %w", *r.Source, err)
 				}
@@ -1974,6 +1974,19 @@ func (d *Database) lookupID(ctx context.Context, tx *sql.Tx, tenant, table, name
 	var id int
 	query := fmt.Sprintf("SELECT id FROM %s WHERE (name = %s AND tenant_id = (SELECT id FROM tenants WHERE name = %s))", table, d.arg(0), d.arg(1))
 	return id, tx.QueryRowContext(ctx, query, name, tenant).Scan(&id)
+}
+
+// lookupRequiredID is like lookupID but reports a missing row as ErrConflict
+// rather than the raw sql.ErrNoRows. Use it when the caller's input must
+// reference an existing row (e.g. a bundle requirement naming an existing
+// source); a missing row is then equivalent to a foreign-key violation,
+// which translateStoreError also maps to ErrConflict.
+func (d *Database) lookupRequiredID(ctx context.Context, tx *sql.Tx, tenant, table, name string) (int, error) {
+	id, err := d.lookupID(ctx, tx, tenant, table, name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("%w: %s %q does not exist", ErrConflict, table, name)
+	}
+	return id, err
 }
 
 func (d *Database) upsert(ctx context.Context, tx *sql.Tx, tenant, table string, columns []string, primaryKey []string, values ...any) (int, error) {
