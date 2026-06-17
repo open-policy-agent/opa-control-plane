@@ -69,6 +69,7 @@ type Root struct {
 	Tokens   map[string]*Token  `json:"tokens,omitempty"`
 	Database *Database          `json:"database,omitempty"`
 	Service  *Service           `json:"service,omitempty"`
+	Metrics  *MetricsConfig     `json:"metrics,omitempty"`
 
 	_ struct{} `additionalProperties:"false"`
 }
@@ -276,7 +277,12 @@ func Validate(data []byte) error {
 		return err
 	}
 
-	return rootSchema.Validate(config)
+	err := rootSchema.Validate(config)
+	if err != nil {
+		return fmt.Errorf("configuration validation error: %w. Schema: %v", err, rootSchema)
+	}
+
+	return nil
 }
 
 // Stack defines the configuration for an OPA Control Plane Stack.
@@ -554,4 +560,79 @@ type Service struct {
 	ApiPrefix string `json:"api_prefix,omitempty" pattern:"^/([^/].*[^/])?$"`
 
 	_ struct{} `additionalProperties:"false"`
+}
+
+// HistogramConfig configures a Prometheus histogram metric.
+type HistogramConfig struct {
+	BucketsSeconds []float64 `json:"buckets_seconds,omitempty"`
+	Enabled        *bool     `json:"enabled,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
+}
+
+// CounterConfig configures a Prometheus counter metric.
+type CounterConfig struct {
+	Enabled *bool `json:"enabled,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
+}
+
+// HTTPMetrics configures HTTP request metrics.
+type HTTPMetrics struct {
+	Enabled         *bool            `json:"enabled,omitempty"`
+	RequestDuration *HistogramConfig `json:"request_duration,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
+}
+
+// GitSyncMetrics configures git synchronization metrics.
+type GitSyncMetrics struct {
+	Enabled         *bool            `json:"enabled,omitempty"`
+	GitSyncDuration *HistogramConfig `json:"git_sync_duration,omitempty"`
+	GitSyncCount    *CounterConfig   `json:"git_sync_count,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
+}
+
+// WorkerMetrics configures bundle build metrics.
+type WorkerMetrics struct {
+	Enabled             *bool            `json:"enabled,omitempty"`
+	BundleBuildDuration *HistogramConfig `json:"bundle_build_duration,omitempty"`
+	BundleBuildCount    *CounterConfig   `json:"bundle_build_count,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
+}
+
+// MetricsConfig configures Prometheus metrics collection.
+type MetricsConfig struct {
+	Enabled *bool           `json:"enabled,omitempty"`
+	HTTP    *HTTPMetrics    `json:"http,omitempty"`
+	GitSync *GitSyncMetrics `json:"gitsync,omitempty"`
+	Worker  *WorkerMetrics  `json:"worker,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
+}
+
+// GetBuckets returns the configured buckets, or nil if the receiver is nil.
+func (h *HistogramConfig) GetBuckets() []float64 {
+	if h == nil {
+		return nil
+	}
+	return h.BucketsSeconds
+}
+
+// GetCountEnabled returns the Enabled pointer from the counter config, or nil if the receiver is nil.
+func (g *GitSyncMetrics) GetCountEnabled() *bool {
+	if g == nil || g.GitSyncCount == nil {
+		return nil
+	}
+	return g.GitSyncCount.Enabled
+}
+
+// GetCountEnabled returns the Enabled pointer from the counter config, or nil if the receiver is nil.
+func (w *WorkerMetrics) GetCountEnabled() *bool {
+	if w == nil || w.BundleBuildCount == nil {
+		return nil
+	}
+	return w.BundleBuildCount.Enabled
 }

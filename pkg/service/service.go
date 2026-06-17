@@ -28,6 +28,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/gitsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/httpsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
 	"github.com/open-policy-agent/opa-control-plane/internal/pool"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
@@ -69,6 +70,7 @@ type Service struct {
 	storage        ext_os.ObjectStorage
 	secretFactory  pkgsync.SecretProviderFactory
 	authorizer     ext_authz.Authorizer
+	metrics        *metrics.Metrics
 }
 
 type Report struct {
@@ -151,6 +153,11 @@ func (s *Service) WithAuthorizer(a ext_authz.Authorizer) *Service {
 	return s
 }
 
+func (s *Service) WithMetrics(m *metrics.Metrics) *Service {
+	s.metrics = m
+	return s
+}
+
 func (s *Service) WithConfig(config *config.Root) *Service {
 	s.config = config
 	s.database = *s.database.WithConfig(config.Database)
@@ -163,10 +170,14 @@ func (s *Service) WithRawConfig(rawConfig []byte) *Service {
 	return s
 }
 
-// WithDatabaseConfig sets the database configuration from a typed DatabaseConfig,
-// as a type-safe alternative to WithRawConfig for database-only configuration.
+// WithDatabaseConfig configures the database connection from a typed struct
+// instead of raw JSON/YAML bytes.
 func (s *Service) WithDatabaseConfig(cfg *pkgconfig.DatabaseConfig) *Service {
-	s.database = *s.database.WithConfig(config.DatabaseFromPublic(cfg))
+	if s.config == nil {
+		s.config = &config.Root{}
+	}
+	s.config.Database = config.DatabaseFromPublic(cfg)
+	s.database = *s.database.WithConfig(s.config.Database)
 	return s
 }
 
@@ -454,7 +465,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 					SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
 					SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database"), metadataFields[dep.Name]).
 					SyncDatasources(&syncs, dep.Name, dep.Datasources, join(srcDir, "datasources"), tenantProvider, metadataFields[dep.Name]).
-					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name], tenantProvider).
+					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name], tenantProvider, s.metrics).
 					AddRequirements(dep.Requirements)
 
 				sources = append(sources, &src.Source)
@@ -466,7 +477,8 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				WithInterval(b.Interval).
 				WithSingleShot(s.singleShot).
 				WithDatabase(s.Database()).
-				WithTenant(tenant)
+				WithTenant(tenant).
+				WithMetrics(s.metrics)
 
 			if s.storage != nil {
 				w.WithStorage(s.storage)
@@ -570,7 +582,7 @@ func (src *source) addFS(fsys fs.FS) {
 	src.Source.AddFS(fsys)
 }
 
-func (src *source) SyncGit(syncs *[]sourceSynchronizer, sourceName string, git config.Git, repoDir string, reqCommit string, provider pkgsync.SecretProvider) *source {
+func (src *source) SyncGit(syncs *[]sourceSynchronizer, sourceName string, git config.Git, repoDir string, reqCommit string, provider pkgsync.SecretProvider, m *metrics.Metrics) *source {
 	if git.Repo != "" {
 		srcDir := repoDir
 		if git.Path != nil {
@@ -581,7 +593,7 @@ func (src *source) SyncGit(syncs *[]sourceSynchronizer, sourceName string, git c
 			git.Commit = &reqCommit
 		}
 		*syncs = append(*syncs, sourceSynchronizer{
-			sync:       gitsync.New(repoDir, git, sourceName).WithSecretProvider(provider),
+			sync:       gitsync.New(repoDir, git, sourceName).WithSecretProvider(provider).WithMetrics(m),
 			sourceName: sourceName,
 			sourceType: "git",
 		})
