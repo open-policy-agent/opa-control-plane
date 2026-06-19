@@ -509,18 +509,30 @@ type refSet struct {
 	refs []ast.Ref
 }
 
+// add inserts each ref into the set while keeping it minimal: no ref in the
+// set is a prefix of another. Adding a ref already covered by (a prefix of) an
+// existing ref is a no-op; adding a ref that is a prefix of existing refs
+// replaces all of them.
 func (rs *refSet) add(ns ...ast.Ref) {
+next:
 	for _, n := range ns {
-		for i, r := range rs.refs {
-			switch {
-			case r.HasPrefix(n):
-				rs.refs[i] = n
-				return
-			case n.HasPrefix(r):
-				return
+		// If n is already covered by a shorter existing ref, there's nothing
+		// to do for this n.
+		for _, r := range rs.refs {
+			if n.HasPrefix(r) {
+				continue next
 			}
 		}
-		rs.refs = append(rs.refs, n)
+		// Otherwise keep every existing ref that n does not subsume, then add
+		// n. We must drop all refs n is a prefix of, not just the first:
+		// several siblings can be covered by the same shorter prefix.
+		kept := rs.refs[:0]
+		for _, r := range rs.refs {
+			if !r.HasPrefix(n) {
+				kept = append(kept, r)
+			}
+		}
+		rs.refs = append(kept, n)
 	}
 }
 

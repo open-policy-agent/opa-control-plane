@@ -29,8 +29,10 @@ func TestBuilder(t *testing.T) {
 	}
 
 	type sourceMock struct {
-		name          string
-		files         map[string]string
+		name  string
+		files map[string]string
+		// extraFiles are additional filesystems backing the same source.
+		extraFiles    []map[string]string
 		hasDir        bool // create an (empty) directory even without files
 		requirements  []reqMock
 		includedFiles []string
@@ -767,6 +769,73 @@ func TestBuilder(t *testing.T) {
 			exp:      map[string]string{"/data.json": `{"foo":{"bar":{"A":7}}}`},
 			expRoots: []string{"foo/bar"},
 		},
+		{
+			// roots sharing a common prefix must not cause later, unrelated roots to be dropped from the manifest.
+			note: "single source with prefixed and unrelated roots",
+			sources: []sourceMock{
+				{
+					name: "src",
+					files: map[string]string{
+						"/alpha/p.rego": `package alpha
+						p := 1`,
+						"/alpha/c1/p.rego": `package alpha.c1
+						p := 1`,
+						"/alpha/c2/p.rego": `package alpha.c2
+						p := 1`,
+						"/gamma/p.rego": `package gamma
+						p := 1`,
+					},
+				},
+			},
+			exp: map[string]string{
+				"/src/alpha/p.rego": `package alpha
+				p := 1`,
+				"/src/alpha/c1/p.rego": `package alpha.c1
+				p := 1`,
+				"/src/alpha/c2/p.rego": `package alpha.c2
+				p := 1`,
+				"/src/gamma/p.rego": `package gamma
+				p := 1`,
+			},
+			expRoots: []string{"alpha", "gamma"},
+		},
+		{
+			// A source spanning multiple filesystems must not produce
+			// overlapping roots: the second filesystem adds package alpha, a
+			// parent of alpha.c1/alpha.c2 from the first.
+			note: "single source spanning multiple filesystems",
+			sources: []sourceMock{
+				{
+					name: "src",
+					files: map[string]string{
+						"/alpha/c1/p.rego": `package alpha.c1
+						p := 1`,
+						"/alpha/c2/p.rego": `package alpha.c2
+						p := 1`,
+					},
+					extraFiles: []map[string]string{
+						{
+							"/alpha/p.rego": `package alpha
+							p := 1`,
+							"/gamma/p.rego": `package gamma
+							p := 1`,
+						},
+					},
+				},
+			},
+			exp: map[string]string{
+				"/src/alpha/c1/p.rego": `package alpha.c1
+				p := 1`,
+				"/src/alpha/c2/p.rego": `package alpha.c2
+				p := 1`,
+				// second filesystem mounts under src1
+				"/src1/alpha/p.rego": `package alpha
+				p := 1`,
+				"/src1/gamma/p.rego": `package gamma
+				p := 1`,
+			},
+			expRoots: []string{"alpha", "gamma"},
+		},
 	}
 
 	for _, tc := range cases {
@@ -776,6 +845,11 @@ func TestBuilder(t *testing.T) {
 			for i, src := range tc.sources {
 				for k, v := range src.files {
 					allFiles[fmt.Sprintf("src%d/%v", i, k)] = trimLeadingWhitespace(v)
+				}
+				for j, extra := range src.extraFiles {
+					for k, v := range extra {
+						allFiles[fmt.Sprintf("src%d_%d/%v", i, j, k)] = trimLeadingWhitespace(v)
+					}
 				}
 			}
 
@@ -815,6 +889,9 @@ func TestBuilder(t *testing.T) {
 							IncludedFiles: src.includedFiles,
 							ExcludedFiles: src.excludedFiles,
 						})
+					}
+					for j := range src.extraFiles {
+						_ = s.AddDir(builder.Dir{Path: fmt.Sprintf("%v/src%d_%d", root, i, j)})
 					}
 					srcs = append(srcs, s)
 				}
