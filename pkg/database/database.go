@@ -42,10 +42,11 @@ import (
 
 // Re-export sentinel errors.
 var (
-	ErrNotFound      = internaldatabase.ErrNotFound
-	ErrNotAuthorized = internaldatabase.ErrNotAuthorized
-	ErrAlreadyExists = internaldatabase.ErrAlreadyExists
-	ErrConflict      = internaldatabase.ErrConflict
+	ErrNotFound         = internaldatabase.ErrNotFound
+	ErrNotAuthorized    = internaldatabase.ErrNotAuthorized
+	ErrAlreadyExists    = internaldatabase.ErrAlreadyExists
+	ErrConflict         = internaldatabase.ErrConflict
+	ErrInvalidReference = internaldatabase.ErrInvalidReference
 )
 
 // ErrInvalidJSON indicates the provided JSON could not be deserialized into the expected type.
