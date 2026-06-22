@@ -19,6 +19,13 @@ var ErrAlreadyExists = errors.New("already exists")
 // (e.g. a foreign key constraint violation).
 var ErrConflict = errors.New("conflict")
 
+// ErrInvalidReference is returned when an operation references a row that does
+// not exist (e.g. a bundle requirement naming an unknown source). It is the
+// application-layer analogue of a foreign-key "no referenced row" violation
+// and is distinct from ErrConflict, which signals a state conflict such as a
+// row that cannot be deleted because it is still referenced.
+var ErrInvalidReference = errors.New("invalid reference")
+
 // translateStoreError maps database-driver-specific constraint errors to
 // sentinel errors so callers do not need to import driver packages.
 func translateStoreError(err error) error {

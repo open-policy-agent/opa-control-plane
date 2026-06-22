@@ -13,6 +13,7 @@ const (
 	CodeNotFound         = "not_found"
 	CodeAlreadyExists    = "already_exists"
 	CodeConflict         = "conflict"
+	CodeInvalidReference = "invalid_reference"
 	CodeInvalidParameter = "invalid_parameter"
 )
 

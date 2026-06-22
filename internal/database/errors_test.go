@@ -94,10 +94,10 @@ func TestTranslateStoreError_WrappedPgError(t *testing.T) {
 	}
 }
 
-// TestLookupRequiredID_MissingRowReturnsErrConflict verifies that looking up a
-// row that does not exist surfaces as ErrConflict (consistent with the
-// foreign-key-violation case), rather than leaking the raw sql.ErrNoRows.
-func TestLookupRequiredID_MissingRowReturnsErrConflict(t *testing.T) {
+// TestLookupRequiredID_MissingRowReturnsErrInvalidReference verifies that
+// looking up a row that does not exist surfaces as ErrInvalidReference rather
+// than leaking the raw sql.ErrNoRows.
+func TestLookupRequiredID_MissingRowReturnsErrInvalidReference(t *testing.T) {
 	ctx := context.Background()
 	sqlDB, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -131,10 +131,10 @@ func TestLookupRequiredID_MissingRowReturnsErrConflict(t *testing.T) {
 		t.Fatalf("lookupID: expected sql.ErrNoRows, got %v", err)
 	}
 
-	// lookupRequiredID must translate the missing row to ErrConflict.
+	// lookupRequiredID must translate the missing row to ErrInvalidReference.
 	_, err = d.lookupRequiredID(ctx, tx, "t1", "sources", "missing")
-	if !errors.Is(err, ErrConflict) {
-		t.Fatalf("lookupRequiredID: expected ErrConflict, got %v", err)
+	if !errors.Is(err, ErrInvalidReference) {
+		t.Fatalf("lookupRequiredID: expected ErrInvalidReference, got %v", err)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("lookupRequiredID: must not surface sql.ErrNoRows, got %v", err)

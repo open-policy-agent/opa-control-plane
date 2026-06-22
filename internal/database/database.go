@@ -1976,15 +1976,15 @@ func (d *Database) lookupID(ctx context.Context, tx *sql.Tx, tenant, table, name
 	return id, tx.QueryRowContext(ctx, query, name, tenant).Scan(&id)
 }
 
-// lookupRequiredID is like lookupID but reports a missing row as ErrConflict
-// rather than the raw sql.ErrNoRows. Use it when the caller's input must
-// reference an existing row (e.g. a bundle requirement naming an existing
-// source); a missing row is then equivalent to a foreign-key violation,
-// which translateStoreError also maps to ErrConflict.
+// lookupRequiredID is like lookupID but reports a missing row as
+// ErrInvalidReference rather than the raw sql.ErrNoRows. Use it when the
+// caller's input must reference an existing row (e.g. a bundle requirement
+// naming an existing source); a missing row is then equivalent to a
+// foreign-key "no referenced row" violation.
 func (d *Database) lookupRequiredID(ctx context.Context, tx *sql.Tx, tenant, table, name string) (int, error) {
 	id, err := d.lookupID(ctx, tx, tenant, table, name)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("%w: %s %q does not exist", ErrConflict, table, name)
+		return 0, fmt.Errorf("%w: %s %q does not exist", ErrInvalidReference, table, name)
 	}
 	return id, err
 }

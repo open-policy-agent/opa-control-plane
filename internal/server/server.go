@@ -709,6 +709,8 @@ func errorAuto(w http.ResponseWriter, err error) {
 		ErrorString(w, http.StatusConflict, types.CodeAlreadyExists, err)
 	case errors.Is(err, database.ErrConflict):
 		ErrorString(w, http.StatusConflict, types.CodeConflict, err)
+	case errors.Is(err, database.ErrInvalidReference):
+		ErrorString(w, http.StatusUnprocessableEntity, types.CodeInvalidReference, err)
 	default:
 		ErrorString(w, http.StatusInternalServerError, types.CodeInternal, err)
 	}
