@@ -219,6 +219,9 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	if w.bundleConfig.Options.Optimization != nil {
 		b = b.WithOptimizationLevel(w.bundleConfig.Options.Optimization.Level)
 	}
+	if w.bundleConfig.Options.NestedDataFiles {
+		b = b.WithNestedDataFiles(true)
+	}
 
 	if err := b.Build(ctx); err != nil {
 		w.log.Warnf("failed to build a bundle %q: %v", w.bundleConfig.Name, err)

@@ -739,6 +739,70 @@ func TestBundleOptionsOptimizationParsing(t *testing.T) {
 	}
 }
 
+func TestBundleOptionsNestedDataFilesParsing(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   string
+		expected bool
+	}{
+		{
+			name: "default (not specified) is false",
+			config: `{
+				bundles: {
+					test: {
+						options: {}
+					}
+				}
+			}`,
+			expected: false,
+		},
+		{
+			name: "explicitly false",
+			config: `{
+				bundles: {
+					test: {
+						options: {
+							nested_data_files: false
+						}
+					}
+				}
+			}`,
+			expected: false,
+		},
+		{
+			name: "explicitly true",
+			config: `{
+				bundles: {
+					test: {
+						options: {
+							nested_data_files: true
+						}
+					}
+				}
+			}`,
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Parse([]byte(tt.config))
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+
+			bundle := cfg.Bundles["test"]
+			if bundle == nil {
+				t.Fatal("Expected bundle 'test' to exist")
+			}
+
+			if bundle.Options.NestedDataFiles != tt.expected {
+				t.Errorf("Expected nested_data_files %v, got %v", tt.expected, bundle.Options.NestedDataFiles)
+			}
+		})
+	}
+}
+
 // TODO(sr): replace with new(i) when 1.26 is in go.mod
 func intPtr(i int) *int {
 	return &i

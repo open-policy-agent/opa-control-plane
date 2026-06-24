@@ -179,6 +179,7 @@ type Options struct {
 	NoDefaultStackMount bool          `json:"no_default_stack_mount"`
 	Optimization        *Optimization `json:"optimization,omitempty"`
 	Target              string        `json:"target,omitzero" enum:"rego,ir,plan,wasm"`
+	NestedDataFiles     bool          `json:"nested_data_files"`
 
 	_ struct{} `additionalProperties:"false"`
 }
