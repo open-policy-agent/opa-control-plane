@@ -1,10 +1,7 @@
 // Package syncerr defines error types for source synchronization.
 package syncerr
 
-import (
-	"errors"
-	"fmt"
-)
+import "errors"
 
 // UserError wraps a synchronization error that is caused by user
 // misconfiguration (e.g. invalid credentials, non-existent repository, bad
@@ -26,9 +23,4 @@ func (e UserError) Unwrap() error {
 func IsUserError(err error) bool {
 	var u UserError
 	return errors.As(err, &u)
-}
-
-// Userf wraps a formatted message as a UserError.
-func Userf(format string, args ...any) UserError {
-	return UserError{Cause: fmt.Errorf(format, args...)}
 }
