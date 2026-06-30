@@ -14,6 +14,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
+	"github.com/open-policy-agent/opa-control-plane/internal/syncerr"
 	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
 	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
@@ -156,7 +157,11 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		metadata, err := ss.sync.Execute(ctx)
 		if err != nil {
 			w.log.Warnf("failed to synchronize bundle %q: %v", w.bundleConfig.Name, err)
-			return w.report(ctx, BuildStateSyncFailed, startTime, err)
+			state := BuildStateSyncFailed
+			if syncerr.IsUserError(err) {
+				state = BuildStateUserError
+			}
+			return w.report(ctx, state, startTime, err)
 		}
 		if metadata != nil {
 			if sourceMetadata[ss.sourceName] == nil {
