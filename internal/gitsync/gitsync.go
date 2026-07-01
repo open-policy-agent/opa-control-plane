@@ -31,6 +31,7 @@ import (
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
+	"github.com/open-policy-agent/opa-control-plane/internal/syncerr"
 )
 
 // configFile is an internal config file used to track if a git repository
@@ -136,7 +137,11 @@ func (s *Synchronizer) Execute(ctx context.Context) (map[string]any, error) {
 	done, hash, err := s.execute(ctx)
 	if err != nil {
 		s.metrics.GitSyncFailed(s.sourceName, s.config.Repo)
-		return nil, fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
+		wrapped := fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
+		if isGitUserError(err) {
+			return nil, syncerr.UserError{Cause: wrapped}
+		}
+		return nil, wrapped
 	}
 	if done {
 		s.metrics.GitSyncSucceeded(s.sourceName, s.config.Repo, startTime)
@@ -498,4 +503,13 @@ func (a *tokenAuth) SetAuth(r *gohttp.Request) {
 	}
 
 	r.Header.Set("Authorization", "Bearer "+token)
+}
+
+// isGitUserError returns true for errors that indicate a user misconfiguration
+// (bad credentials, non-existent repo) rather than a transient service failure.
+func isGitUserError(err error) bool {
+	return errors.Is(err, transport.ErrRepositoryNotFound) ||
+		errors.Is(err, transport.ErrAuthorizationFailed) ||
+		errors.Is(err, transport.ErrAuthenticationRequired) ||
+		errors.Is(err, transport.ErrEmptyRemoteRepository)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	"github.com/open-policy-agent/opa-control-plane/internal/syncerr"
 )
 
 func TestHTTPDataSynchronizer(t *testing.T) {
@@ -72,13 +73,13 @@ func TestHTTPDataSynchronizer_Error_BadStatusCode(t *testing.T) {
 	}
 
 	synchronizer := New(file, ts.URL, "", "", nil, nil)
-	_, err = synchronizer.Execute(t.Context())
-	if err == nil {
+	_, syncErr := synchronizer.Execute(t.Context())
+	if syncErr == nil {
 		t.Fatalf("expected error, got nil")
 	}
 	expectedError := "unsuccessful status code 400"
-	if err.Error() != expectedError {
-		t.Fatalf("expected error %q, got %q", expectedError, err.Error())
+	if syncErr.Error() != expectedError {
+		t.Fatalf("expected error %q, got %q", expectedError, syncErr.Error())
 	}
 
 	data, err := os.ReadFile(file)
@@ -88,6 +89,31 @@ func TestHTTPDataSynchronizer_Error_BadStatusCode(t *testing.T) {
 
 	if len(data) != 0 {
 		t.Fatal("downloaded data should be empty after an error")
+	}
+
+	if !syncerr.IsUserError(syncErr) {
+		t.Fatalf("expected a syncerr.UserError for a 4xx response, got: %v", syncErr)
+	}
+}
+
+// TestHTTPDataSynchronizer_Error_ServerError verifies that a 5xx response is not
+// classified as a syncerr.UserError, since it indicates a transient service-side
+// failure rather than a user misconfiguration.
+func TestHTTPDataSynchronizer_Error_ServerError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	file := path.Join(t.TempDir(), "foo/test.json")
+	synchronizer := New(file, ts.URL, "", "", nil, nil)
+	_, err := synchronizer.Execute(t.Context())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+
+	if syncerr.IsUserError(err) {
+		t.Fatalf("expected a plain error for a 5xx response, got a syncerr.UserError: %v", err)
 	}
 }
 
@@ -475,5 +501,39 @@ func TestHTTPDataSynchronizer_WithS3(t *testing.T) {
 				t.Fatalf("expected data %q, got %q", tt.contents, string(data))
 			}
 		})
+	}
+}
+
+// TestHTTPDataSynchronizer_WithS3_UserError verifies that a 4xx response from S3
+// (e.g. fetching a key that does not exist) is classified as a syncerr.UserError.
+func TestHTTPDataSynchronizer_WithS3_UserError(t *testing.T) {
+	mock := s3mem.New()
+	ts := httptest.NewServer(gofakes3.New(mock).Server())
+	t.Cleanup(ts.Close)
+
+	if err := mock.CreateBucket("test-bucket"); err != nil {
+		t.Fatalf("failed to create bucket: %v", err)
+	}
+
+	secret := config.Secret{
+		Name: "awsAuth",
+		Value: map[string]any{
+			"type":              "aws_auth",
+			"access_key_id":     "AKIAIOSFODNN7EXAMPLE",
+			"secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+		},
+	}
+
+	file := path.Join(t.TempDir(), "data.json")
+	s3URL := ts.URL + "/test-bucket/no-such-key.json"
+
+	synchronizer := NewS3(file, s3URL, "us-east-1", ts.URL, secret.Ref())
+	_, err := synchronizer.Execute(t.Context())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+
+	if !syncerr.IsUserError(err) {
+		t.Fatalf("expected a syncerr.UserError for a 4xx S3 response, got: %v", err)
 	}
 }

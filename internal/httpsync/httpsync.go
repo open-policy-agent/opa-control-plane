@@ -2,6 +2,7 @@ package httpsync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,10 +12,12 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	internal_aws "github.com/open-policy-agent/opa-control-plane/internal/aws"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	internalfs "github.com/open-policy-agent/opa-control-plane/internal/fs"
+	"github.com/open-policy-agent/opa-control-plane/internal/syncerr"
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
 
@@ -139,7 +142,11 @@ func (s *HttpDataSynchronizer) executeHTTP(ctx context.Context) (io.ReadCloser, 
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		resp.Body.Close()
-		return nil, fmt.Errorf("unsuccessful status code %d", resp.StatusCode)
+		err := fmt.Errorf("unsuccessful status code %d", resp.StatusCode)
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return nil, syncerr.UserError{Cause: err}
+		}
+		return nil, err
 	}
 
 	return resp.Body, nil
@@ -160,6 +167,10 @@ func (s *HttpDataSynchronizer) executeS3(ctx context.Context) (io.ReadCloser, er
 		Key:    aws.String(key),
 	})
 	if err != nil {
+		var httpErr *awshttp.ResponseError
+		if errors.As(err, &httpErr) && httpErr.HTTPStatusCode() >= 400 && httpErr.HTTPStatusCode() < 500 {
+			return nil, syncerr.UserError{Cause: fmt.Errorf("S3 GetObject: %w", err)}
+		}
 		return nil, fmt.Errorf("S3 GetObject: %w", err)
 	}
 

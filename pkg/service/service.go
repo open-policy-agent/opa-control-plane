@@ -85,6 +85,7 @@ const (
 	BuildStateConfigError
 	BuildStateSuccess
 	BuildStateSyncFailed
+	BuildStateUserError
 	BuildStateTransformFailed
 	BuildStateBuildFailed
 	BuildStatePushFailed
@@ -103,6 +104,8 @@ func (s BuildState) String() string {
 		return "SUCCESS"
 	case BuildStateSyncFailed:
 		return "SYNC_FAILED"
+	case BuildStateUserError:
+		return "USER_ERROR"
 	case BuildStateTransformFailed:
 		return "TRANSFORM_FAILED"
 	case BuildStateBuildFailed:
