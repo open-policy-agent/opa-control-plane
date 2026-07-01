@@ -19,7 +19,7 @@ func (f *fakeSynchronizer) Execute(context.Context) (map[string]any, error) {
 	return nil, f.err
 }
 
-func (f *fakeSynchronizer) Close(context.Context) {}
+func (*fakeSynchronizer) Close(context.Context) {}
 
 // TestBundleWorkerExecute_SyncError verifies that a source synchronization failure is
 // reported as BuildStateUserError when the underlying error is a syncerr.UserError,
