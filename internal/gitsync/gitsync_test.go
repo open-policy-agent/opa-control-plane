@@ -18,6 +18,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/gitsync"
+	"github.com/open-policy-agent/opa-control-plane/internal/syncerr"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -112,6 +113,57 @@ func TestGitsyncLocal(t *testing.T) {
 	if string(data) != "second commit" {
 		t.Fatalf("expected file content to be 'second commit', got: %s", string(data))
 	}
+}
+
+// TestGitsyncUserError verifies that Execute classifies errors as syncerr.UserError
+// only when they indicate a user misconfiguration (e.g. a non-existent repository),
+// and leaves other errors (e.g. a non-existent reference) unclassified.
+func TestGitsyncUserError(t *testing.T) {
+	t.Run("repository not found", func(t *testing.T) {
+		ref := "refs/heads/master"
+		s := gitsync.New(t.TempDir()+"/dst", config.Git{
+			Repo:      t.TempDir() + "/does-not-exist",
+			Reference: &ref,
+		}, "test-source")
+
+		_, err := s.Execute(t.Context())
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if !syncerr.IsUserError(err) {
+			t.Fatalf("expected a syncerr.UserError, got: %v", err)
+		}
+	})
+
+	t.Run("reference not found", func(t *testing.T) {
+		testRepositoryPath := t.TempDir() + "/testing"
+		repository, err := git.PlainInit(testRepositoryPath, false)
+		if err != nil {
+			t.Fatalf("expected no error while initializing test repository: %v", err)
+		}
+
+		w, err := repository.Worktree()
+		if err != nil {
+			t.Fatalf("expected no error while getting worktree: %v", err)
+		}
+		if _, err := w.Commit("init", &git.CommitOptions{Author: &object.Signature{}, AllowEmptyCommits: true}); err != nil {
+			t.Fatalf("expected no error while committing changes: %v", err)
+		}
+
+		ref := "refs/heads/does-not-exist"
+		s := gitsync.New(t.TempDir()+"/dst", config.Git{
+			Repo:      testRepositoryPath,
+			Reference: &ref,
+		}, "test-source")
+
+		_, err = s.Execute(t.Context())
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if syncerr.IsUserError(err) {
+			t.Fatalf("expected a plain error, got a syncerr.UserError: %v", err)
+		}
+	})
 }
 
 // TestGitsyncSSH tests the functionality of the gitsync package with an SSH server.
