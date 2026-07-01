@@ -309,6 +309,9 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	var emptyMntSrcs []mntSrc
 
+	effectiveRegoVersion := ast.RegoV0
+	var sourceManifests []bundle.Manifest
+
 	for len(toProcess) > 0 {
 		var next mntSrc
 		next, toProcess = toProcess[0], toProcess[1:]
@@ -320,10 +323,21 @@ func (b *Builder) Build(ctx context.Context) error {
 				return err
 			}
 
+			regoVersion := ast.RegoV0
+			if m, ok := readManifest(fs0); ok {
+				sourceManifests = append(sourceManifests, m)
+				if m.RegoVersion != nil && *m.RegoVersion == 1 {
+					regoVersion = ast.RegoV1
+				}
+			}
+			if regoVersion == ast.RegoV1 {
+				effectiveRegoVersion = ast.RegoV1
+			}
+
 			if len(next.mounts) > 0 {
 				// rewrite policies to match mounts
 				// rego0 contains only rego files now
-				rego0, err := extractAndTransformRego(fs0, next.mounts)
+				rego0, err := extractAndTransformRego(fs0, next.mounts, regoVersion)
 				if err != nil {
 					return fmt.Errorf("source %s rego: %w", next.src.Name, err)
 				}
@@ -348,7 +362,7 @@ func (b *Builder) Build(ctx context.Context) error {
 
 			buildSources.add(next.src.Name, fs0)
 
-			rs, err := getRegoAndJSONRoots(fs0)
+			rs, err := getRegoAndJSONRoots(fs0, regoVersion)
 			if err != nil {
 				return fmt.Errorf("source %s find roots: %w", next.src.Name, err)
 			}
@@ -426,6 +440,22 @@ func (b *Builder) Build(ctx context.Context) error {
 		roots = append(roots, r)
 	}
 
+	// If any source manifest specifies roots, use those. Log if they differ from computed.
+	for _, m := range sourceManifests {
+		if m.Roots != nil {
+			manifestRoots := *m.Roots
+			sortedComputed := slices.Clone(roots)
+			slices.Sort(sortedComputed)
+			sortedManifest := slices.Clone(manifestRoots)
+			slices.Sort(sortedManifest)
+			if !slices.Equal(sortedComputed, sortedManifest) {
+				fmt.Fprintf(os.Stderr, "builder: source manifest roots %v differ from computed roots %v; using manifest roots\n", manifestRoots, roots)
+			}
+			roots = manifestRoots
+			break
+		}
+	}
+
 	fsBuild := mountfs.New(buildSources.fs())
 	paths := slices.Collect(maps.Keys(fsBuild))
 
@@ -437,12 +467,24 @@ func (b *Builder) Build(ctx context.Context) error {
 		b.revision = revision
 	}
 
+	// If any source manifest specifies a revision, use it as the source of truth.
+	for _, m := range sourceManifests {
+		if m.Revision != "" {
+			if b.revisionFunc != nil {
+				fmt.Fprintf(os.Stderr, "builder: source manifest revision %q overrides WithRevisionFunc result; using manifest revision\n", m.Revision)
+			}
+			b.revision = m.Revision
+			break
+		}
+	}
+
 	target := cmp.Or(b.target, "rego")
 	if target == "ir" { // fix naming convention
 		target = "plan"
 	}
 
 	c := compile.New().
+		WithRegoVersion(effectiveRegoVersion).
 		WithRoots(roots...).
 		WithFS(fsBuild).
 		WithTarget(target).
@@ -454,7 +496,7 @@ func (b *Builder) Build(ctx context.Context) error {
 	}
 
 	result := c.Bundle()
-	result.Manifest.SetRegoVersion(ast.RegoV0)
+	result.Manifest.SetRegoVersion(effectiveRegoVersion)
 	result.Manifest.Revision = b.revision
 
 	return bundle.Write(b.output, *result)
@@ -484,7 +526,7 @@ func (rs *refSet) add(ns ...ast.Ref) {
 // holding the JSON files.
 // It works on `fs.FS`es and expects filters to already have been applied (via
 // `utils.FilterFS`).
-func getRegoAndJSONRoots(fsys fs.FS) ([]ast.Ref, error) {
+func getRegoAndJSONRoots(fsys fs.FS, regoVersion ast.RegoVersion) ([]ast.Ref, error) {
 	set := &refSet{}
 	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry) error {
 		bs, err := fs.ReadFile(fsys, path)
@@ -492,7 +534,7 @@ func getRegoAndJSONRoots(fsys fs.FS) ([]ast.Ref, error) {
 			return err
 		}
 
-		module, err := ast.ParseModule(path, string(bs))
+		module, err := ast.ParseModuleWithOpts(path, string(bs), ast.ParserOptions{RegoVersion: regoVersion})
 		if err != nil {
 			return err
 		}
@@ -605,7 +647,7 @@ func toRefString(d string) string {
 
 var emptyFS = merged_fs.MergeMultiple()
 
-func extractAndTransformRego(fsys fs.FS, mnts []mount) (fs.FS, error) {
+func extractAndTransformRego(fsys fs.FS, mnts []mount, regoVersion ast.RegoVersion) (fs.FS, error) {
 	modules := make(map[string]*ast.Module)
 	if err := fs.WalkDir(fsys, ".", walkSuffixes(func(path string, d fs.DirEntry) error {
 		bs, err := fs.ReadFile(fsys, path)
@@ -613,7 +655,7 @@ func extractAndTransformRego(fsys fs.FS, mnts []mount) (fs.FS, error) {
 			return err
 		}
 
-		modules[path], err = ast.ParseModule(path, string(bs))
+		modules[path], err = ast.ParseModuleWithOpts(path, string(bs), ast.ParserOptions{RegoVersion: regoVersion})
 		return err
 	}, ".rego")); err != nil {
 		if errors.Is(err, fs.ErrNotExist) { // no rego files present
@@ -755,4 +797,18 @@ func offlineCapabilities() *ast.Capabilities {
 	caps := ast.CapabilitiesForThisVersion()
 	caps.AllowNet = []string{} // allow _no_ network access
 	return caps
+}
+
+// readManifest reads a .manifest file from the FS root and returns the parsed
+// bundle.Manifest and true, or an empty manifest and false if absent or unparseable.
+func readManifest(fsys fs.FS) (bundle.Manifest, bool) {
+	content, err := fs.ReadFile(fsys, ".manifest")
+	if err != nil {
+		return bundle.Manifest{}, false
+	}
+	var m bundle.Manifest
+	if err := json.Unmarshal(content, &m); err != nil {
+		return bundle.Manifest{}, false
+	}
+	return m, true
 }

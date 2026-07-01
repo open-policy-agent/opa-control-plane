@@ -8,8 +8,9 @@
 //
 //	db := database.New()
 //	db.WithAuthorizer(myAuthorizer)
-//	rawConfig := []byte(`{"database": {"sql": {"driver": "sqlite3", "dsn": "file::memory:?cache=shared"}}}`)
-//	if err := db.InitDB(ctx, rawConfig); err != nil {
+//	if err := db.InitDBWithConfig(ctx, &config.DatabaseConfig{
+//	    SQL: &config.SQLDatabaseConfig{Driver: "sqlite3", DSN: "file::memory:?cache=shared"},
+//	}); err != nil {
 //	    log.Fatal(err)
 //	}
 //	defer db.CloseDB()
@@ -33,6 +34,7 @@ import (
 
 	jp "github.com/evanphx/json-patch/v5"
 
+	internalconfig "github.com/open-policy-agent/opa-control-plane/internal/config"
 	internaldatabase "github.com/open-policy-agent/opa-control-plane/internal/database"
 	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
 	"github.com/open-policy-agent/opa-control-plane/pkg/config"
@@ -40,8 +42,11 @@ import (
 
 // Re-export sentinel errors.
 var (
-	ErrNotFound      = internaldatabase.ErrNotFound
-	ErrNotAuthorized = internaldatabase.ErrNotAuthorized
+	ErrNotFound         = internaldatabase.ErrNotFound
+	ErrNotAuthorized    = internaldatabase.ErrNotAuthorized
+	ErrAlreadyExists    = internaldatabase.ErrAlreadyExists
+	ErrConflict         = internaldatabase.ErrConflict
+	ErrInvalidReference = internaldatabase.ErrInvalidReference
 )
 
 // ErrInvalidJSON indicates the provided JSON could not be deserialized into the expected type.
@@ -64,6 +69,18 @@ func New() *Database {
 	return &Database{db: internaldatabase.New()}
 }
 
+// NewFromDB creates a Database that shares the given *sql.DB connection pool.
+// The driver parameter must match the underlying driver: "sqlite3", "sqlite",
+// "postgres", "pgx", "cockroachdb", or "mysql".
+// Use this to share a connection (and transactions) with an external caller.
+func NewFromDB(db *sql.DB, driver string) (*Database, error) {
+	idb, err := internaldatabase.NewFromDB(db, driver)
+	if err != nil {
+		return nil, err
+	}
+	return &Database{db: idb}, nil
+}
+
 // WithAuthorizer sets the authorizer for permission checks.
 func (d *Database) WithAuthorizer(a ext_authz.Authorizer) *Database {
 	d.db = d.db.WithAuthorizer(a)
@@ -78,12 +95,15 @@ func (d *Database) WithAccessFactory(af ext_authz.AccessFactory) *Database {
 
 // InitDB initializes the database connection from a raw root configuration.
 //
-// The rawConfig must be a JSON (or YAML) document containing a "database" key.
-// Example:
-//
-//	{"database": {"sql": {"driver": "sqlite3", "dsn": "file::memory:?cache=shared"}}}
+// Deprecated: prefer InitDBWithConfig for type-safe configuration.
 func (d *Database) InitDB(ctx context.Context, rawConfig []byte) error {
 	d.db = d.db.WithRawRootConfig(rawConfig)
+	return d.db.InitDB(ctx)
+}
+
+// InitDBWithConfig initializes the database connection from a typed DatabaseConfig.
+func (d *Database) InitDBWithConfig(ctx context.Context, cfg *config.DatabaseConfig) error {
+	d.db = d.db.WithConfig(internalconfig.DatabaseFromPublic(cfg))
 	return d.db.InitDB(ctx)
 }
 
@@ -218,4 +238,16 @@ func (d *Database) UpsertPrincipal(ctx context.Context, id, role, tenant string)
 		Role:   role,
 		Tenant: tenant,
 	})
+}
+
+// UpsertTenantWithPrincipal creates a tenant and its associated principal in a
+// single transaction. Both inserts are idempotent.
+func (d *Database) UpsertTenantWithPrincipal(ctx context.Context, tenantName, principalID, role string) error {
+	return d.db.UpsertTenantWithPrincipal(ctx, tenantName, principalID, role)
+}
+
+// UpsertTenantWithPrincipalTx performs the tenant+principal upsert within an existing *sql.Tx.
+// Use this when you need the operation to participate in a transaction managed by the caller.
+func (d *Database) UpsertTenantWithPrincipalTx(ctx context.Context, tx *sql.Tx, tenantName, principalID, role string) error {
+	return d.db.UpsertTenantAndPrincipalTx(ctx, tx, tenantName, principalID, role)
 }

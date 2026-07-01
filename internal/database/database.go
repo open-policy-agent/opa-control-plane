@@ -66,6 +66,35 @@ func New() *Database {
 	}
 }
 
+// NewFromDB creates a Database from an existing *sql.DB connection pool.
+// The driver must be one of: "sqlite3", "sqlite", "postgres", "pgx", "postgresql", "cockroachdb", "mysql".
+// This allows sharing a single connection pool with external callers.
+func NewFromDB(db *sql.DB, driver string) (*Database, error) {
+	if db == nil {
+		return nil, errors.New("db must not be nil")
+	}
+	d := &Database{
+		db:            db,
+		executeTx:     executeTx,
+		authorizer:    &authz.OPAuthorizer{},
+		accessFactory: authz.NewAccess,
+	}
+	switch driver {
+	case "sqlite3", "sqlite":
+		d.kind = sqlite
+	case "postgres", "pgx", "postgresql":
+		d.kind = postgres
+	case "cockroachdb":
+		d.kind = cockroach
+		d.executeTx = crdb.ExecuteTx
+	case "mysql":
+		d.kind = mysql
+	default:
+		return nil, fmt.Errorf("unsupported driver: %s", driver)
+	}
+	return d, nil
+}
+
 func (d *Database) DB() *sql.DB {
 	return d.db
 }
@@ -1648,7 +1677,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 		sources := make([]int, 0, len(bundle.Requirements))
 		for _, req := range bundle.Requirements {
 			if req.Source != nil {
-				reqID, err := d.lookupID(ctx, tx, tenant, "sources", *req.Source)
+				reqID, err := d.lookupRequiredID(ctx, tx, tenant, "sources", *req.Source)
 				if err != nil {
 					return fmt.Errorf("lookup id of requirement source %s: %w", *req.Source, err)
 				}
@@ -1765,7 +1794,7 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 		var sources []int
 		for _, r := range source.Requirements {
 			if r.Source != nil {
-				reqID, err := d.lookupID(ctx, tx, tenant, "sources", *r.Source)
+				reqID, err := d.lookupRequiredID(ctx, tx, tenant, "sources", *r.Source)
 				if err != nil {
 					return fmt.Errorf("lookup id of requirement source %s: %w", *r.Source, err)
 				}
@@ -1849,7 +1878,7 @@ func (d *Database) UpsertStack(ctx context.Context, principal, tenant string, st
 
 		for _, r := range stack.Requirements {
 			if r.Source != nil {
-				sourceID, err := d.lookupID(ctx, tx, tenant, "sources", *r.Source)
+				sourceID, err := d.lookupRequiredID(ctx, tx, tenant, "sources", *r.Source)
 				if err != nil {
 					return fmt.Errorf("lookup source %s: %w", *r.Source, err)
 				}
@@ -1947,6 +1976,19 @@ func (d *Database) lookupID(ctx context.Context, tx *sql.Tx, tenant, table, name
 	return id, tx.QueryRowContext(ctx, query, name, tenant).Scan(&id)
 }
 
+// lookupRequiredID is like lookupID but reports a missing row as
+// ErrInvalidReference rather than the raw sql.ErrNoRows. Use it when the
+// caller's input must reference an existing row (e.g. a bundle requirement
+// naming an existing source); a missing row is then equivalent to a
+// foreign-key "no referenced row" violation.
+func (d *Database) lookupRequiredID(ctx context.Context, tx *sql.Tx, tenant, table, name string) (int, error) {
+	id, err := d.lookupID(ctx, tx, tenant, table, name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("%w: %s %q does not exist", ErrInvalidReference, table, name)
+	}
+	return id, err
+}
+
 func (d *Database) upsert(ctx context.Context, tx *sql.Tx, tenant, table string, columns []string, primaryKey []string, values ...any) (int, error) {
 	return d.upsertReturning(ctx, true, false, tx, tenant, table, columns, primaryKey, values...)
 }
@@ -2014,7 +2056,7 @@ func (d *Database) upsertReturning(ctx context.Context, returning, returningLast
 		if d.kind == mysql { // MySQL has no "... RETURNING (cols)"
 			result, err := tx.ExecContext(ctx, query, values...)
 			if err != nil {
-				return 0, err
+				return 0, translateStoreError(err)
 			}
 
 			if returningLastInsertID {
@@ -2033,12 +2075,12 @@ func (d *Database) upsertReturning(ctx context.Context, returning, returningLast
 		var id int
 		query += " RETURNING id"
 		if err := tx.QueryRowContext(ctx, query, values...).Scan(&id); err != nil {
-			return 0, err
+			return 0, translateStoreError(err)
 		}
 		return id, nil
 	} else {
 		_, err := tx.ExecContext(ctx, query, values...)
-		return 0, err
+		return 0, translateStoreError(err)
 	}
 }
 

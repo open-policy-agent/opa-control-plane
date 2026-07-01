@@ -28,9 +28,9 @@ import (
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
-	"github.com/open-policy-agent/opa-control-plane/pkg/service"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/tempfs"
 	"github.com/open-policy-agent/opa-control-plane/libraries"
+	"github.com/open-policy-agent/opa-control-plane/pkg/service"
 )
 
 func TestMigration(t *testing.T) {

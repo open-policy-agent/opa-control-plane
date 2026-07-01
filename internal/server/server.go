@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/server/writer"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
@@ -26,10 +27,13 @@ import (
 const defaultTenant = "default"
 
 type Server struct {
-	router    *http.ServeMux
-	db        *database.Database
-	readyFn   func(context.Context) error
-	apiPrefix string
+	router        *http.ServeMux
+	db            *database.Database
+	readyFn       func(context.Context) error
+	apiPrefix     string
+	metricsConfig *config.MetricsConfig
+	prometheusReg prometheus.Registerer
+	metrics       *metrics.Metrics
 }
 
 func New() *Server {
@@ -41,14 +45,18 @@ func (s *Server) Init() *Server {
 		s.router = http.NewServeMux()
 	}
 
+	if s.metrics == nil {
+		s.metrics = metrics.Init(s.metricsConfig, s.prometheusReg)
+	}
+
 	apiPrefix := s.apiPrefix
 
-	s.router.Handle(apiPrefix+"/metrics", metrics.Handler())
+	s.router.Handle(apiPrefix+"/metrics", s.metrics.Handler())
 	s.router.HandleFunc("GET "+apiPrefix+"/health", s.health)
 
 	base := chain.New(authenticationMiddleware(s.db))
 	setup := func(method, pattern string, hndl http.HandlerFunc) {
-		s.router.Handle(method+" "+apiPrefix+pattern, append(base, metrics.InstrumentHandler(apiPrefix+pattern)).ThenFunc(hndl))
+		s.router.Handle(method+" "+apiPrefix+pattern, append(base, s.metrics.InstrumentHandler(apiPrefix+pattern)).ThenFunc(hndl))
 	}
 
 	setup("GET", "/v1/sources/{source}/data/{path...}", s.v1SourcesDataGet)
@@ -97,6 +105,24 @@ func (s *Server) WithReadiness(fn func(context.Context) error) *Server {
 	return s
 }
 
+func (s *Server) WithConfig(cfg *config.Root) *Server {
+	if cfg != nil && cfg.Service != nil {
+		s.apiPrefix = cfg.Service.ApiPrefix
+	}
+	s.metricsConfig = cfg.Metrics
+	return s
+}
+
+func (s *Server) WithPrometheusRegisterer(reg prometheus.Registerer) *Server {
+	s.prometheusReg = reg
+	return s
+}
+
+func (s *Server) WithMetrics(m *metrics.Metrics) *Server {
+	s.metrics = m
+	return s
+}
+
 func (s *Server) ListenAndServe(addr string) error {
 	if strings.HasPrefix(addr, "unix://") {
 		socketPath := strings.TrimPrefix(addr, "unix://")
@@ -126,13 +152,6 @@ func (s *Server) listenAndServeUnix(socketPath string) error {
 	return http.Serve(listener, s.router)
 }
 
-func (s *Server) WithConfig(config *config.Service) *Server {
-	if config != nil {
-		s.apiPrefix = config.ApiPrefix
-	}
-	return s
-}
-
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 	err := s.readyFn(r.Context())
@@ -146,7 +165,6 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) v1BundlesList(w http.ResponseWriter, r *http.Request) {
-
 	ctx := r.Context()
 	opts := s.listOptions(r)
 	principal, tenant := s.auth(r)
@@ -682,11 +700,17 @@ func (*Server) listOptions(r *http.Request) database.ListOptions {
 }
 
 func errorAuto(w http.ResponseWriter, err error) {
-	switch err {
-	case database.ErrNotAuthorized:
+	switch {
+	case errors.Is(err, database.ErrNotAuthorized):
 		ErrorString(w, http.StatusForbidden, types.CodeNotAuthorized, err)
-	case database.ErrNotFound:
+	case errors.Is(err, database.ErrNotFound):
 		ErrorString(w, http.StatusNotFound, types.CodeNotFound, err)
+	case errors.Is(err, database.ErrAlreadyExists):
+		ErrorString(w, http.StatusConflict, types.CodeAlreadyExists, err)
+	case errors.Is(err, database.ErrConflict):
+		ErrorString(w, http.StatusConflict, types.CodeConflict, err)
+	case errors.Is(err, database.ErrInvalidReference):
+		ErrorString(w, http.StatusUnprocessableEntity, types.CodeInvalidReference, err)
 	default:
 		ErrorString(w, http.StatusInternalServerError, types.CodeInternal, err)
 	}

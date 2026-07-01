@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -336,6 +337,14 @@ func (s *Source) Files() (map[string]string, error) {
 
 	if len(m) == len(s.EmbeddedFiles) {
 		return nil, fmt.Errorf("no files matched patterns for source %q", s.Name)
+	}
+
+	// If the source directory contains a .manifest, include it so that bundle
+	// metadata (e.g. rego_version) flows through to the builder.
+	if s.Directory != "" {
+		if content, err := os.ReadFile(filepath.Join(s.Directory, ".manifest")); err == nil {
+			m[".manifest"] = string(content)
+		}
 	}
 
 	return m, nil
@@ -699,4 +708,27 @@ func (d *Datasource) Equal(other *Datasource) bool {
 
 func (a Datasources) Equal(b Datasources) bool {
 	return internalutil.SetEqual(a, b, func(ds Datasource) string { return ds.Name }, func(a, b Datasource) bool { return a.Equal(&b) })
+}
+
+// DatabaseConfig configures the OCP database connection.
+type DatabaseConfig struct {
+	SQL    *SQLDatabaseConfig `json:"sql,omitempty"`
+	AWSRDS *AmazonRDSConfig   `json:"aws_rds,omitempty"`
+}
+
+// SQLDatabaseConfig configures a generic SQL database connection.
+type SQLDatabaseConfig struct {
+	Driver string `json:"driver"`
+	DSN    string `json:"dsn"`
+}
+
+// AmazonRDSConfig configures an AWS RDS database connection.
+type AmazonRDSConfig struct {
+	Region           string `json:"region"`
+	Endpoint         string `json:"endpoint"`
+	Driver           string `json:"driver"`
+	DatabaseUser     string `json:"database_user"`
+	DatabaseName     string `json:"database_name"`
+	DSN              string `json:"dsn"`
+	RootCertificates string `json:"root_certificates,omitempty"`
 }

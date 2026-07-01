@@ -1008,3 +1008,125 @@ func (tc *testCase) deleteBy(by func(*database.Database, context.Context, string
 func newString(s string) *string {
 	return &s
 }
+
+func TestNewFromDB(t *testing.T) {
+	ctx := t.Context()
+	for databaseType, databaseConfig := range dbs.Configs(t) {
+		t.Run(databaseType, func(t *testing.T) {
+			t.Parallel()
+			var ctr testcontainers.Container
+			if databaseConfig.Setup != nil {
+				ctr = databaseConfig.Setup(t)
+				t.Cleanup(databaseConfig.Cleanup(t, ctr))
+			}
+
+			cfg := databaseConfig.Database(t, ctr)
+			db, err := migrations.New().WithConfig(cfg.Database).WithMigrate(true).Run(ctx)
+			if err != nil {
+				t.Fatalf("migrations: %v", err)
+			}
+			t.Cleanup(db.CloseDB)
+
+			dialect, err := db.Dialect()
+			if err != nil {
+				t.Fatalf("dialect: %v", err)
+			}
+
+			// Create a second Database instance sharing the same *sql.DB.
+			db2, err := database.NewFromDB(db.DB(), dialect)
+			if err != nil {
+				t.Fatalf("NewFromDB: %v", err)
+			}
+
+			// Basic smoke-test: UpsertTenantAndPrincipalTx should succeed via the shared connection.
+			sqlDB := db.DB()
+			tx, err := sqlDB.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatalf("begin tx: %v", err)
+			}
+			defer tx.Rollback() //nolint:errcheck
+
+			if err := db2.UpsertTenantAndPrincipalTx(ctx, tx, "shared-tenant", "shared-principal", "administrator"); err != nil {
+				t.Fatalf("UpsertTenantAndPrincipalTx: %v", err)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatalf("commit: %v", err)
+			}
+
+			// Verify both tenant and principal were written.
+			var tenantCount int
+			if err := sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM tenants WHERE name = 'shared-tenant'").Scan(&tenantCount); err != nil {
+				t.Fatalf("query tenants: %v", err)
+			}
+			if tenantCount != 1 {
+				t.Fatalf("expected 1 tenant, got %d", tenantCount)
+			}
+
+			var principalCount int
+			if err := sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM principals WHERE id = 'shared-principal'").Scan(&principalCount); err != nil {
+				t.Fatalf("query principals: %v", err)
+			}
+			if principalCount != 1 {
+				t.Fatalf("expected 1 principal, got %d", principalCount)
+			}
+		})
+	}
+}
+
+func TestNewFromDB_UnsupportedDriver(t *testing.T) {
+	_, err := database.NewFromDB(nil, "oracle")
+	if err == nil {
+		t.Fatal("expected error for unsupported driver")
+	}
+}
+
+func TestNewFromDB_NilDB(t *testing.T) {
+	_, err := database.NewFromDB(nil, "sqlite3")
+	if err == nil {
+		t.Fatal("expected error for nil db")
+	}
+}
+
+func TestUpsertTenantAndPrincipalTx_Rollback(t *testing.T) {
+	ctx := t.Context()
+	for databaseType, databaseConfig := range dbs.Configs(t) {
+		t.Run(databaseType, func(t *testing.T) {
+			t.Parallel()
+			var ctr testcontainers.Container
+			if databaseConfig.Setup != nil {
+				ctr = databaseConfig.Setup(t)
+				t.Cleanup(databaseConfig.Cleanup(t, ctr))
+			}
+
+			cfg := databaseConfig.Database(t, ctr)
+			db, err := migrations.New().WithConfig(cfg.Database).WithMigrate(true).Run(ctx)
+			if err != nil {
+				t.Fatalf("migrations: %v", err)
+			}
+			t.Cleanup(db.CloseDB)
+
+			sqlDB := db.DB()
+			tx, err := sqlDB.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatalf("begin tx: %v", err)
+			}
+
+			if err := db.UpsertTenantAndPrincipalTx(ctx, tx, "rollback-tenant", "rollback-principal", "administrator"); err != nil {
+				t.Fatalf("UpsertTenantAndPrincipalTx: %v", err)
+			}
+
+			// Roll back — nothing should be persisted.
+			if err := tx.Rollback(); err != nil {
+				t.Fatalf("rollback: %v", err)
+			}
+
+			var count int
+			if err := sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM tenants WHERE name = 'rollback-tenant'").Scan(&count); err != nil {
+				t.Fatalf("query: %v", err)
+			}
+			if count != 0 {
+				t.Fatalf("expected 0 rows after rollback, got %d", count)
+			}
+		})
+	}
+}

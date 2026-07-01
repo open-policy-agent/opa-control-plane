@@ -7,10 +7,12 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/cmd/internal/flags"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
 	"github.com/open-policy-agent/opa-control-plane/internal/server"
 	"github.com/open-policy-agent/opa-control-plane/libraries"
 	"github.com/open-policy-agent/opa-control-plane/pkg/service"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 )
 
@@ -70,8 +72,17 @@ func init() {
 				log.Fatalf("initialize service: %v", err)
 			}
 
+			m := metrics.Init(config.Metrics, prometheus.DefaultRegisterer)
+			svc.WithMetrics(m)
+
 			go func() {
-				if err := server.New().WithDatabase(svc.Database()).WithReadiness(svc.Ready).WithConfig(config.Service).Init().ListenAndServe(params.addr); err != nil {
+				if err := server.New().
+					WithDatabase(svc.Database()).
+					WithReadiness(svc.Ready).
+					WithConfig(config).
+					WithMetrics(m).
+					Init().
+					ListenAndServe(params.addr); err != nil {
 					log.Fatalf("failed to start server: %v", err)
 				}
 			}()

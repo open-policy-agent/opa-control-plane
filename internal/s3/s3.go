@@ -18,10 +18,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"google.golang.org/api/option"
+
 	internal_aws "github.com/open-policy-agent/opa-control-plane/internal/aws"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
-	"google.golang.org/api/option"
 )
 
 var (
@@ -206,7 +207,7 @@ func (e *Error) Error() string {
 // Upload uploads a file to the S3-compatible storage. It computes the SHA256 digest of the file and records that to the object metadata.
 // Relying on object ETag is not if the object is encrypted with SSE-C or SSE-KMS, as the ETag will not be the MD5 hash of the object.
 // With (part) checksums, only parallellizable, less reliable checksums (CRCs) are supported.
-func (s *AmazonS3) Upload(ctx context.Context, body io.ReadSeeker, _ string, revision string, _ int64) error {
+func (s *AmazonS3) Upload(ctx context.Context, body io.ReadSeeker, opts ext_os.UploadOptions) error {
 
 	digest, equal, err := s.check(ctx, body)
 	if err != nil {
@@ -224,8 +225,8 @@ func (s *AmazonS3) Upload(ctx context.Context, body io.ReadSeeker, _ string, rev
 	metadata := map[string]string{
 		"sha256": hex.EncodeToString(digest),
 	}
-	if revision != "" {
-		metadata["revision"] = revision
+	if opts.Revision != "" {
+		metadata["revision"] = opts.Revision
 	}
 
 	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
@@ -278,14 +279,27 @@ func (s *AmazonS3) check(ctx context.Context, body io.Reader) ([]byte, bool, err
 	return digest, output.Metadata["sha256"] == hex.EncodeToString(digest), nil
 }
 
-func (s *GCPCloudStorage) Upload(ctx context.Context, body io.ReadSeeker, _ string, revision string, _ int64) error {
+func (s *GCPCloudStorage) Upload(ctx context.Context, body io.ReadSeeker, opts ext_os.UploadOptions) error {
+	digest, equal, err := s.check(ctx, body)
+	if err != nil {
+		return err
+	}
+	if equal {
+		return ext_os.ErrNotModified
+	}
+
+	if _, err := body.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
 	w := s.client.Bucket(s.bucket).Object(s.object).NewWriter(ctx)
-	if w.Metadata == nil {
-		w.Metadata = make(map[string]string)
+	w.Metadata = map[string]string{
+		"sha256": hex.EncodeToString(digest),
 	}
-	if revision != "" {
-		w.Metadata["revision"] = revision
+	if opts.Revision != "" {
+		w.Metadata["revision"] = opts.Revision
 	}
+
 	if _, err := io.Copy(w, body); err != nil {
 		return err
 	}
@@ -297,14 +311,35 @@ func (*GCPCloudStorage) Download(context.Context) (io.Reader, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker, _ string, revision string, _ int64) error {
-	opts := &azblob.UploadStreamOptions{}
-	if revision != "" {
-		opts.Metadata = map[string]*string{
+func (s *GCPCloudStorage) check(ctx context.Context, body io.Reader) ([]byte, bool, error) {
+	d := sha256.New()
+	_, err := io.Copy(d, body)
+	if err != nil {
+		return nil, false, err
+	}
+
+	digest := d.Sum(nil)
+
+	attrs, err := s.client.Bucket(s.bucket).Object(s.object).Attrs(ctx)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return digest, false, nil
+		}
+		return nil, false, err
+	}
+
+	return digest, attrs.Metadata["sha256"] == hex.EncodeToString(digest), nil
+}
+
+func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker, opts ext_os.UploadOptions) error {
+	uploadOpts := &azblob.UploadStreamOptions{}
+	if opts.Revision != "" {
+		revision := opts.Revision
+		uploadOpts.Metadata = map[string]*string{
 			"revision": &revision,
 		}
 	}
-	_, err := s.client.UploadStream(ctx, s.container, s.path, body, opts)
+	_, err := s.client.UploadStream(ctx, s.container, s.path, body, uploadOpts)
 	return err
 }
 
@@ -312,7 +347,7 @@ func (*AzureBlobStorage) Download(context.Context) (io.Reader, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (s *FileSystemStorage) Upload(ctx context.Context, body io.ReadSeeker, _ string, _ string, _ int64) error {
+func (s *FileSystemStorage) Upload(ctx context.Context, body io.ReadSeeker, _ ext_os.UploadOptions) error {
 	digest, equal, err := s.check(ctx, body)
 	if err != nil {
 		return err

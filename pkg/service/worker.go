@@ -45,6 +45,7 @@ type BundleWorker struct {
 	interval      time.Duration
 	database      *database.Database
 	tenant        string
+	metrics       *metrics.Metrics
 }
 
 type Synchronizer interface {
@@ -104,6 +105,11 @@ func (worker *BundleWorker) WithDatabase(database *database.Database) *BundleWor
 
 func (worker *BundleWorker) WithTenant(tenant string) *BundleWorker {
 	worker.tenant = tenant
+	return worker
+}
+
+func (worker *BundleWorker) WithMetrics(m *metrics.Metrics) *BundleWorker {
+	worker.metrics = m
 	return worker
 }
 
@@ -235,7 +241,12 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 
 	if w.storage != nil {
 		reader := bytes.NewReader(buffer.Bytes())
-		if err := w.storage.Upload(ctx, reader, w.bundleConfig.Name, resolvedRevision, reader.Size()); err != nil {
+		if err := w.storage.Upload(ctx, reader, ext_os.UploadOptions{
+			Tenant:    w.tenant,
+			Name:      w.bundleConfig.Name,
+			Revision:  resolvedRevision,
+			TotalSize: reader.Size(),
+		}); err != nil {
 			if errors.Is(err, ext_os.ErrNotModified) {
 				w.log.Debugf("Bundle %q built, not modified.", w.bundleConfig.Name)
 				return w.report(ctx, BuildStateSuccess, startTime, nil)
@@ -275,9 +286,9 @@ func (w *BundleWorker) report(ctx context.Context, state BuildState, startTime t
 	}
 
 	if state == BuildStateSuccess {
-		metrics.BundleBuildSucceeded(w.bundleConfig.Name, state.String(), startTime)
+		w.metrics.BundleBuildSucceeded(w.bundleConfig.Name, state.String(), startTime)
 	} else {
-		metrics.BundleBuildFailed(w.bundleConfig.Name, state.String())
+		w.metrics.BundleBuildFailed(w.bundleConfig.Name, state.String())
 	}
 
 	if w.singleShot {

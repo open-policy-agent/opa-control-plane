@@ -98,6 +98,18 @@
       },
       "type": "object"
     },
+    "ConfigCounterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "ConfigDatabase": {
       "additionalProperties": false,
       "properties": {
@@ -220,6 +232,57 @@
       },
       "type": "object"
     },
+    "ConfigGitSyncMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        },
+        "git_sync_count": {
+          "$ref": "#/definitions/ConfigCounterConfig"
+        },
+        "git_sync_duration": {
+          "$ref": "#/definitions/ConfigHistogramConfig"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigHTTPMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        },
+        "request_duration": {
+          "$ref": "#/definitions/ConfigHistogramConfig"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigHistogramConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "buckets_seconds": {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "ConfigLabels": {
       "additionalProperties": {
         "type": "string"
@@ -234,6 +297,27 @@
         },
         "exported_from": {
           "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigMetricsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        },
+        "gitsync": {
+          "$ref": "#/definitions/ConfigGitSyncMetrics"
+        },
+        "http": {
+          "$ref": "#/definitions/ConfigHTTPMetrics"
+        },
+        "worker": {
+          "$ref": "#/definitions/ConfigWorkerMetrics"
         }
       },
       "type": "object"
@@ -450,6 +534,24 @@
         }
       },
       "type": "object"
+    },
+    "ConfigWorkerMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "bundle_build_count": {
+          "$ref": "#/definitions/ConfigCounterConfig"
+        },
+        "bundle_build_duration": {
+          "$ref": "#/definitions/ConfigHistogramConfig"
+        },
+        "enabled": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        }
+      },
+      "type": "object"
     }
   },
   "properties": {
@@ -464,6 +566,9 @@
     },
     "metadata": {
       "$ref": "#/definitions/ConfigMetadata"
+    },
+    "metrics": {
+      "$ref": "#/definitions/ConfigMetricsConfig"
     },
     "secrets": {
       "additionalProperties": {
