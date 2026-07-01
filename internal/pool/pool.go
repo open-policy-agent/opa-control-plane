@@ -17,6 +17,7 @@ type Pool struct {
 	mu    sync.Mutex
 	tasks []*task
 	wait  chan struct{}
+	done  chan struct{}
 }
 
 type task struct {
@@ -25,13 +26,20 @@ type task struct {
 }
 
 func New(workers int) *Pool {
-	var pool Pool
+	pool := &Pool{
+		done: make(chan struct{}),
+	}
 
 	for range workers {
 		go pool.work()
 	}
 
-	return &pool
+	return pool
+}
+
+// Stop signals all worker goroutines to exit. It returns once all workers have stopped.
+func (p *Pool) Stop() {
+	close(p.done)
 }
 
 func (p *Pool) Add(fn func(context.Context) time.Time) {
@@ -41,8 +49,12 @@ func (p *Pool) Add(fn func(context.Context) time.Time) {
 // work is the main loop for each worker goroutine.
 func (p *Pool) work() {
 	for {
+		t, ok := p.dequeue()
+		if !ok {
+			return
+		}
 		ctx := context.Background()
-		p.enqueue(p.dequeue().Execute(ctx))
+		p.enqueue(t.Execute(ctx))
 	}
 }
 
@@ -68,12 +80,13 @@ func (p *Pool) enqueue(t *task) {
 	}
 }
 
-func (p *Pool) dequeue() *task {
+// dequeue blocks until a task is ready or the pool is stopped.
+// Returns (task, true) when a task is ready, or (nil, false) when stopped.
+func (p *Pool) dequeue() (*task, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	for {
-
 		var t *task
 		if len(p.tasks) == 0 {
 			t = &task{deadline: time.Now().Add(time.Hour * 24 * 365)} // Default to a far future deadline
@@ -95,6 +108,9 @@ func (p *Pool) dequeue() *task {
 			select {
 			case <-time.After(time.Until(t.deadline)):
 			case <-wait:
+			case <-p.done:
+				p.mu.Lock()
+				return nil, false
 			}
 
 			p.mu.Lock()
@@ -107,7 +123,7 @@ func (p *Pool) dequeue() *task {
 
 	t := p.tasks[0]
 	p.tasks = slices.Delete(p.tasks, 0, 1)
-	return t
+	return t, true
 }
 
 func (t *task) Execute(ctx context.Context) *task {

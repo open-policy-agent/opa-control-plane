@@ -243,6 +243,7 @@ func (s *Service) Run(ctx context.Context) error {
 		return err
 	}
 	defer s.database.CloseDB()
+	defer s.pool.Stop()
 
 	s.readyMutex.Lock()
 	s.ready = true
