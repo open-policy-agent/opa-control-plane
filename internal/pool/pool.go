@@ -109,6 +109,7 @@ func (p *Pool) dequeue() (*task, bool) {
 			case <-time.After(time.Until(t.deadline)):
 			case <-wait:
 			case <-p.done:
+				p.mu.Lock()
 				return nil, false
 			}
 
