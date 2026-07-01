@@ -73,13 +73,13 @@ func TestHTTPDataSynchronizer_Error_BadStatusCode(t *testing.T) {
 	}
 
 	synchronizer := New(file, ts.URL, "", "", nil, nil)
-	_, err = synchronizer.Execute(t.Context())
-	if err == nil {
+	_, syncErr := synchronizer.Execute(t.Context())
+	if syncErr == nil {
 		t.Fatalf("expected error, got nil")
 	}
 	expectedError := "unsuccessful status code 400"
-	if err.Error() != expectedError {
-		t.Fatalf("expected error %q, got %q", expectedError, err.Error())
+	if syncErr.Error() != expectedError {
+		t.Fatalf("expected error %q, got %q", expectedError, syncErr.Error())
 	}
 
 	data, err := os.ReadFile(file)
@@ -91,8 +91,8 @@ func TestHTTPDataSynchronizer_Error_BadStatusCode(t *testing.T) {
 		t.Fatal("downloaded data should be empty after an error")
 	}
 
-	if !syncerr.IsUserError(err) {
-		t.Fatalf("expected a syncerr.UserError for a 4xx response, got: %v", err)
+	if !syncerr.IsUserError(syncErr) {
+		t.Fatalf("expected a syncerr.UserError for a 4xx response, got: %v", syncErr)
 	}
 }
 
