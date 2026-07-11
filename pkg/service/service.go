@@ -262,7 +262,11 @@ shutdown:
 				break shutdown
 			}
 
-			time.Sleep(100 * time.Millisecond)
+			select {
+			case <-time.After(100 * time.Millisecond):
+			case <-ctx.Done():
+				break shutdown
+			}
 		}
 
 		select {
@@ -496,7 +500,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				w.WithStorage(storage)
 			}
 
-			s.pool.Add(w.Execute)
+			s.pool.Add(ctx, w.Execute)
 
 			s.workers[bName] = w
 		}
