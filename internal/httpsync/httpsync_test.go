@@ -465,7 +465,7 @@ func TestHTTPDataSynchronizer_WithS3(t *testing.T) {
 				t.Fatalf("failed to create bucket: %v", err)
 			}
 
-			if _, err := mock.PutObject(tt.bucket, tt.key, map[string]string{}, strings.NewReader(tt.contents), int64(len(tt.contents))); err != nil {
+			if _, err := mock.PutObject(tt.bucket, tt.key, map[string]string{}, strings.NewReader(tt.contents), int64(len(tt.contents)), nil); err != nil {
 				t.Fatalf("failed to put object: %v", err)
 			}
 
