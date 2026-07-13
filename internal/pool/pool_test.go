@@ -11,17 +11,17 @@ func TestPool(t *testing.T) {
 	ctx := context.Background()
 
 	// Add a task that returns a deadline in the future.
-	p.Add(ctx, func(_ context.Context) time.Time {
+	p.Add(ctx, func(context.Context) time.Time {
 		return time.Now().Add(100 * time.Millisecond)
 	})
 
 	// Add a task that returns a deadline in the past.
-	p.Add(ctx, func(_ context.Context) time.Time {
+	p.Add(ctx, func(context.Context) time.Time {
 		return time.Now().Add(-100 * time.Millisecond)
 	})
 
 	// Add a task that returns a deadline in the future.
-	p.Add(ctx, func(_ context.Context) time.Time {
+	p.Add(ctx, func(context.Context) time.Time {
 		return time.Now().Add(200 * time.Millisecond)
 	})
 
