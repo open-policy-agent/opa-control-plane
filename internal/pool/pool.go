@@ -21,6 +21,7 @@ type Pool struct {
 }
 
 type task struct {
+	ctx      context.Context
 	fn       func(context.Context) time.Time
 	deadline time.Time
 }
@@ -42,8 +43,13 @@ func (p *Pool) Stop() {
 	close(p.done)
 }
 
-func (p *Pool) Add(fn func(context.Context) time.Time) {
-	p.enqueue(&task{fn: fn, deadline: time.Now()})
+// Add schedules fn to run in the pool. ctx is retained for the lifetime of the task,
+// including any rescheduled executions (fn returning a future deadline), and is passed
+// to every invocation of fn instead of a detached background context. Cancelling ctx
+// does not interrupt an in-progress call to fn; fn is responsible for observing
+// ctx.Done() itself if it needs to abort early.
+func (p *Pool) Add(ctx context.Context, fn func(context.Context) time.Time) {
+	p.enqueue(&task{ctx: ctx, fn: fn, deadline: time.Now()})
 }
 
 // work is the main loop for each worker goroutine.
@@ -53,8 +59,7 @@ func (p *Pool) work() {
 		if !ok {
 			return
 		}
-		ctx := context.Background()
-		p.enqueue(t.Execute(ctx))
+		p.enqueue(t.Execute(t.ctx))
 	}
 }
 
