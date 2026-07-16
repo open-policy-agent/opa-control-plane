@@ -349,7 +349,6 @@ func TestDatabase(t *testing.T) {
 					root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"], root.Sources["system1"],
 					root.Sources["source-a"], root.Sources["source-b"], root.Sources["source-z"], root.Sources["source-y"], root.Sources["source-x"],
 				}),
-				newTestCase("list sources (stale)").ListSourcesStaleNoError(),
 				newTestCase("list sources with pagination").ListSourcesPagination(5, []*config.Source{ // NB(sr): limit large enough so that we capture system1 which has requirements
 					root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"], root.Sources["system1"],
 				}),
@@ -371,7 +370,6 @@ func TestDatabase(t *testing.T) {
 
 				// stack operations:
 				newTestCase("list stacks").ListStacks([]*config.Stack{root.Stacks["stack1"], root.Stacks["stack2"]}),
-				newTestCase("list stacks (stale)").ListStacksStaleNoError(),
 				newTestCase("list stacks with pagination").ListStacksPagination(1, []*config.Stack{root.Stacks["stack1"]}),
 				newTestCase("get stack stack1").GetStack("stack1", root.Stacks["stack1"]),
 				newTestCase("delete stack stack1 and source-b").
@@ -428,7 +426,6 @@ func TestDatabase(t *testing.T) {
 					root.Bundles["bundle-a"], root.Bundles["system1"], root.Bundles["system2"],
 					root.Bundles["system3"], root.Bundles["system4"], root.Bundles["system5"],
 				}),
-				newTestCase("list bundles (stale)").ListBundlesStaleNoError(),
 				newTestCase("list bundles with pagination").ListBundlesPagination(2, []*config.Bundle{
 					root.Bundles["bundle-a"], root.Bundles["system1"]}),
 				newTestCase("get bundle system1").GetBundle("system1", root.Bundles["system1"]),
@@ -575,6 +572,17 @@ func TestDatabase(t *testing.T) {
 							},
 						},
 					}),
+
+				// Run last, and after an explicit wait: CockroachDB follower
+				// reads (ListOptions.Stale) read a fixed point a few seconds
+				// in the past, which must be after the migrations that
+				// created this schema ran, or the read fails with "relation
+				// does not exist".
+				newTestCase("list bundles/sources/stacks (stale)").
+					Sleep(6 * time.Second).
+					ListBundlesStaleNoError().
+					ListSourcesStaleNoError().
+					ListStacksStaleNoError(),
 			}
 			for _, test := range tests {
 				t.Run(test.note, func(t *testing.T) {
@@ -608,6 +616,20 @@ func (tc *testCase) GetPrincipalByToken(token, exp string) *testCase {
 		if act != exp {
 			t.Fatalf("expected %q, got %q", exp, act)
 		}
+	})
+	return tc
+}
+
+// Sleep pauses before the next operation. Used before the ListOptions.Stale
+// test cases: CockroachDB follower reads read a fixed point a few seconds in
+// the past (follower_read_timestamp()), so a stale read issued too soon
+// after the migrations that created the schema can fail with "relation does
+// not exist" - the read timestamp predates the DDL. Sleeping past that
+// window makes the assertion deterministic instead of depending on how much
+// incidental time earlier test cases happened to take.
+func (tc *testCase) Sleep(d time.Duration) *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		time.Sleep(d)
 	})
 	return tc
 }
