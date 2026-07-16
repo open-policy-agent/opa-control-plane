@@ -349,6 +349,7 @@ func TestDatabase(t *testing.T) {
 					root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"], root.Sources["system1"],
 					root.Sources["source-a"], root.Sources["source-b"], root.Sources["source-z"], root.Sources["source-y"], root.Sources["source-x"],
 				}),
+				newTestCase("list sources (stale)").ListSourcesStaleNoError(),
 				newTestCase("list sources with pagination").ListSourcesPagination(5, []*config.Source{ // NB(sr): limit large enough so that we capture system1 which has requirements
 					root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"], root.Sources["system1"],
 				}),
@@ -370,6 +371,7 @@ func TestDatabase(t *testing.T) {
 
 				// stack operations:
 				newTestCase("list stacks").ListStacks([]*config.Stack{root.Stacks["stack1"], root.Stacks["stack2"]}),
+				newTestCase("list stacks (stale)").ListStacksStaleNoError(),
 				newTestCase("list stacks with pagination").ListStacksPagination(1, []*config.Stack{root.Stacks["stack1"]}),
 				newTestCase("get stack stack1").GetStack("stack1", root.Stacks["stack1"]),
 				newTestCase("delete stack stack1 and source-b").
@@ -426,6 +428,7 @@ func TestDatabase(t *testing.T) {
 					root.Bundles["bundle-a"], root.Bundles["system1"], root.Bundles["system2"],
 					root.Bundles["system3"], root.Bundles["system4"], root.Bundles["system5"],
 				}),
+				newTestCase("list bundles (stale)").ListBundlesStaleNoError(),
 				newTestCase("list bundles with pagination").ListBundlesPagination(2, []*config.Bundle{
 					root.Bundles["bundle-a"], root.Bundles["system1"]}),
 				newTestCase("get bundle system1").GetBundle("system1", root.Bundles["system1"]),
@@ -744,6 +747,22 @@ func (tc *testCase) ListBundlesPagination(limit int, expected []*config.Bundle) 
 	return tc
 }
 
+// ListBundlesStaleNoError exercises ListOptions.Stale (CockroachDB follower
+// reads). It only asserts the call succeeds, not the returned content: a
+// follower read intentionally reads a few-seconds-stale snapshot, so it may
+// not yet reflect writes from immediately before this call in the test
+// sequence, and a content assertion here would be flaky against a real
+// CockroachDB backend.
+func (tc *testCase) ListBundlesStaleNoError() *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		if _, _, err := db.ListBundles(ctx, "admin", tenant, database.ListOptions{Stale: true}); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+
+	return tc
+}
+
 func (tc *testCase) BundlesPutRequirements(id string, requirements config.Requirements) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
 		if err := db.UpsertBundle(ctx, "admin", tenant, &config.Bundle{
@@ -823,6 +842,18 @@ func (tc *testCase) ListSourcesPagination(limit int, expected []*config.Source) 
 
 		if diff := cmp.Diff(expected, sources); diff != "" {
 			t.Fatal("unexpected list result", diff)
+		}
+	})
+
+	return tc
+}
+
+// ListSourcesStaleNoError exercises ListOptions.Stale (CockroachDB follower
+// reads). See ListBundlesStaleNoError for why it doesn't assert content.
+func (tc *testCase) ListSourcesStaleNoError() *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		if _, _, err := db.ListSources(ctx, "admin", tenant, database.ListOptions{Stale: true}); err != nil {
+			t.Fatalf("expected no error, got %v", err)
 		}
 	})
 
@@ -954,6 +985,18 @@ func (tc *testCase) ListStacksPagination(limit int, expected []*config.Stack) *t
 
 		if diff := cmp.Diff(expected, stacks); diff != "" {
 			t.Fatal("unexpected list result", diff)
+		}
+	})
+
+	return tc
+}
+
+// ListStacksStaleNoError exercises ListOptions.Stale (CockroachDB follower
+// reads). See ListBundlesStaleNoError for why it doesn't assert content.
+func (tc *testCase) ListStacksStaleNoError() *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		if _, _, err := db.ListStacks(ctx, "admin", tenant, database.ListOptions{Stale: true}); err != nil {
+			t.Fatalf("expected no error, got %v", err)
 		}
 	})
 
