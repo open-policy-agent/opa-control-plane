@@ -348,14 +348,14 @@ func (s *Service) launchWorkers(ctx context.Context) {
 		}
 		tenant := tenant.Name
 
-		bundles, _, err := s.database.ListBundles(ctx, internalPrincipal, tenant, database.ListOptions{})
+		bundles, _, err := s.database.ListBundles(ctx, internalPrincipal, tenant, database.ListOptions{Stale: true})
 		if err != nil {
 			s.log.Errorf("error listing bundles: %s", err.Error())
 			return
 		}
 		s.log.Debugf("launchWorkers(%s) for %d bundles", tenant, len(bundles))
 
-		sourceDefs, _, err := s.database.ListSources(ctx, internalPrincipal, tenant, database.ListOptions{})
+		sourceDefs, _, err := s.database.ListSources(ctx, internalPrincipal, tenant, database.ListOptions{Stale: true})
 		if err != nil {
 			s.log.Errorf("error listing sources: %s", err.Error())
 			return
@@ -366,7 +366,7 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			sourceDefsByName[src.Name] = src
 		}
 
-		stacks, _, err := s.database.ListStacks(ctx, internalPrincipal, tenant, database.ListOptions{})
+		stacks, _, err := s.database.ListStacks(ctx, internalPrincipal, tenant, database.ListOptions{Stale: true})
 		if err != nil {
 			s.log.Errorf("error listing stacks: %s", err.Error())
 			return

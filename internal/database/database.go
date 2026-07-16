@@ -118,6 +118,14 @@ type ListOptions struct {
 	Limit  int
 	Cursor string
 	name   string
+
+	// Stale allows the list query to read a slightly stale (a few seconds
+	// old) snapshot via CockroachDB follower reads instead of the current
+	// timestamp. Use this for internal bookkeeping reads (e.g. periodic
+	// worker refresh) that don't need up-to-the-moment consistency and
+	// would otherwise contend with concurrent writes to the same tables.
+	// No-op on non-CockroachDB dialects.
+	Stale bool
 }
 
 func (opts ListOptions) cursor() int64 {
@@ -699,6 +707,9 @@ func (d *Database) DeleteBundle(ctx context.Context, principal, tenant, name str
 
 func (d *Database) ListBundles(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.Bundle, string, error) {
 	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.Bundle, string, error) {
+		if err := d.applyFollowerRead(ctx, txn, opts.Stale); err != nil {
+			return nil, "", err
+		}
 
 		ad := d.accessFactory().WithPrincipal(principal).WithTenant(tenant).WithResource("bundles").WithPermission("bundles.view")
 
@@ -999,6 +1010,9 @@ func (d *Database) DeleteSource(ctx context.Context, principal, tenant, name str
 // ListSources returns a list of sources in the database. Note it does not return the source data.
 func (d *Database) ListSources(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.Source, string, error) {
 	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.Source, string, error) {
+		if err := d.applyFollowerRead(ctx, txn, opts.Stale); err != nil {
+			return nil, "", err
+		}
 
 		ad := d.accessFactory().WithPrincipal(principal).WithTenant(tenant).WithResource("sources").WithPermission("sources.view")
 		expr, err := d.authorizer.Partial(ctx, ad, map[string]ext_authz.SQLColumnRef{
@@ -1401,6 +1415,9 @@ func (d *Database) DeleteStack(ctx context.Context, principal, tenant, name stri
 
 func (d *Database) ListStacks(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.Stack, string, error) {
 	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.Stack, string, error) {
+		if err := d.applyFollowerRead(ctx, txn, opts.Stale); err != nil {
+			return nil, "", err
+		}
 
 		ad := d.accessFactory().WithPrincipal(principal).WithTenant(tenant).WithResource("stacks").WithPermission("stacks.view")
 		expr, err := d.authorizer.Partial(ctx, ad, map[string]ext_authz.SQLColumnRef{
@@ -2159,4 +2176,17 @@ func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(*sql.
 		return err
 	})
 	return t, u, err
+}
+
+// applyFollowerRead switches tx to read a slightly stale (a few seconds old)
+// snapshot via CockroachDB follower reads, so it reads a fixed point in the
+// past that can't conflict with concurrent writes to the tables it scans.
+// Must be called before any other statement runs on tx. No-op when stale
+// reads aren't requested, or outside CockroachDB.
+func (d *Database) applyFollowerRead(ctx context.Context, tx *sql.Tx, stale bool) error {
+	if !stale || d.kind != cockroach {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, "SET TRANSACTION AS OF SYSTEM TIME follower_read_timestamp()")
+	return err
 }
