@@ -146,7 +146,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	for _, src := range w.sources {
 		if err := src.Wipe(); err != nil {
 			w.log.Warnf("failed to remove a directory for bundle %q: %v", w.bundleConfig.Name, err)
-			return w.report(ctx, BuildStateInternalError, startTime, err)
+			return w.report(ctx, BuildStateInternalError, BuildPhaseSync, database.SentinelRevision, startTime, err)
 		}
 	}
 
@@ -161,7 +161,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 			if syncerr.IsUserError(err) {
 				state = BuildStateUserError
 			}
-			return w.report(ctx, state, startTime, err)
+			return w.report(ctx, state, BuildPhaseSync, database.SentinelRevision, startTime, err)
 		}
 		if metadata != nil {
 			if sourceMetadata[ss.sourceName] == nil {
@@ -190,7 +190,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		}
 		if err != nil {
 			w.log.Warnf("failed to evaluate source %q for bundle %q: %v", src.Name, w.bundleConfig.Name, err)
-			return w.report(ctx, BuildStateTransformFailed, startTime, err)
+			return w.report(ctx, BuildStateTransformFailed, BuildPhaseTransform, database.SentinelRevision, startTime, err)
 		}
 	}
 
@@ -227,21 +227,7 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 
 	if err := b.Build(ctx); err != nil {
 		w.log.Warnf("failed to build a bundle %q: %v", w.bundleConfig.Name, err)
-
-		if b.Revision() != "" {
-			_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhaseBuild.String(), BuildStateBuildFailed.String(), err.Error())
-			if err != nil {
-				w.log.Warnf("failed to track bundle build state %q: %v", w.bundleConfig.Name, err)
-			}
-		}
-		return w.report(ctx, BuildStateBuildFailed, startTime, err)
-	}
-
-	if b.Revision() != "" {
-		_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhaseBuild.String(), BuildStateSuccess.String(), "")
-		if err != nil {
-			w.log.Warnf("failed to track bundle build state %q: %v", w.bundleConfig.Name, err)
-		}
+		return w.report(ctx, BuildStateBuildFailed, BuildPhaseBuild, resolvedRevision, startTime, err)
 	}
 
 	if w.storage != nil {
@@ -254,40 +240,35 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		}); err != nil {
 			if errors.Is(err, ext_os.ErrNotModified) {
 				w.log.Debugf("Bundle %q built, not modified.", w.bundleConfig.Name)
-				return w.report(ctx, BuildStateSuccess, startTime, nil)
+				return w.report(ctx, BuildStateSuccess, BuildPhasePush, resolvedRevision, startTime, nil)
 			}
 			w.log.Warnf("failed to upload bundle %q: %v", w.bundleConfig.Name, err)
-
-			if b.Revision() != "" {
-				_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhasePush.String(), BuildStatePushFailed.String(), err.Error())
-				if err != nil {
-					w.log.Warnf("failed to track bundle upload state %q: %v", w.bundleConfig.Name, err)
-				}
-			}
-			return w.report(ctx, BuildStatePushFailed, startTime, err)
+			return w.report(ctx, BuildStatePushFailed, BuildPhasePush, resolvedRevision, startTime, err)
 		}
 
 		w.log.Debugf("Bundle %q built and uploaded.", w.bundleConfig.Name)
-
-		if b.Revision() != "" {
-			_, err := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name, b.Revision(), BuildPhasePush.String(), BuildStateSuccess.String(), "")
-			if err != nil {
-				w.log.Warnf("failed to track bundle upload state %q: %v", w.bundleConfig.Name, err)
-			}
-		}
-		return w.report(ctx, BuildStateSuccess, startTime, nil)
+		return w.report(ctx, BuildStateSuccess, BuildPhasePush, resolvedRevision, startTime, nil)
 	}
 
 	w.log.Debugf("Bundle %q built.", w.bundleConfig.Name)
-	return w.report(ctx, BuildStateSuccess, startTime, nil)
+	return w.report(ctx, BuildStateSuccess, BuildPhaseBuild, resolvedRevision, startTime, nil)
 }
 
-func (w *BundleWorker) report(ctx context.Context, state BuildState, startTime time.Time, err error) time.Time {
+func (w *BundleWorker) report(ctx context.Context, state BuildState, phase BuildPhase, revision string, startTime time.Time, err error) time.Time {
 	interval := w.interval
 	w.status.State = state
+	msg := ""
 	if err != nil {
 		interval = errorInterval // faster retry on error
-		w.status.Message = err.Error()
+		msg = err.Error()
+		w.status.Message = msg
+	}
+
+	if w.database != nil {
+		if _, uerr := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name,
+			revision, phase.String(), state.String(), msg); uerr != nil {
+			w.log.Warnf("failed to track bundle status %q: %v", w.bundleConfig.Name, uerr)
+		}
 	}
 
 	if state == BuildStateSuccess {

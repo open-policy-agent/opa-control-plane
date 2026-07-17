@@ -92,7 +92,9 @@ const (
 )
 
 const (
-	BuildPhaseBuild BuildPhase = iota
+	BuildPhaseSync BuildPhase = iota
+	BuildPhaseTransform
+	BuildPhaseBuild
 	BuildPhasePush
 )
 
@@ -121,6 +123,10 @@ func (s BuildState) String() string {
 
 func (s BuildPhase) String() string {
 	switch s {
+	case BuildPhaseSync:
+		return "SYNC"
+	case BuildPhaseTransform:
+		return "TRANSFORM"
 	case BuildPhaseBuild:
 		return "BUILD"
 	case BuildPhasePush:
