@@ -356,6 +356,9 @@
     "ConfigOptions": {
       "additionalProperties": false,
       "properties": {
+        "nested_data_files": {
+          "type": "boolean"
+        },
         "no_default_stack_mount": {
           "type": "boolean"
         },

@@ -1,7 +1,9 @@
 package builder_test
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -898,6 +900,151 @@ func TestBuilder(t *testing.T) {
 		})
 	}
 
+}
+
+// TestBuilderNestedDataFiles verifies WithNestedDataFiles(true) produces exactly
+// one data.json per datasource path — regardless of nesting depth — and that
+// the default (flag absent) still produces a single root /data.json.
+func TestBuilderNestedDataFiles(t *testing.T) {
+	// Simulate two datasources at different path depths within a source
+	// directory. In production these are written by httpsync into
+	// <srcDir>/datasources/<path>/data.json.
+	//
+	//   datasource 1: path="teams"           → teams/data.json       (depth 1)
+	//   datasource 2: path="org/admins"      → org/admins/data.json  (depth 2)
+	//   datasource 3: path="us/east/servers" → us/east/servers/data.json (depth 3)
+	//
+	// The key property: exactly one data.json per datasource, at whatever depth.
+	// The bundle must NOT contain intermediate or root data.json files.
+	files := map[string]string{
+		"src0/teams/data.json":           `{"alice":"admin","bob":"viewer"}`,
+		"src0/org/admins/data.json":      `{"alice":true}`,
+		"src0/us/east/servers/data.json": `["web01","web02"]`,
+		"src0/main.rego": `package main
+import rego.v1
+allow if data.teams[input.user]`,
+	}
+
+	tempfs.WithTempFS(t, files, func(t *testing.T, root string) {
+		newSource := func() *builder.Source {
+			s := builder.NewSource("system")
+			if err := s.AddDir(builder.Dir{Path: root + "/src0"}); err != nil {
+				t.Fatal(err)
+			}
+			return s
+		}
+
+		t.Run("nested layout when WithNestedDataFiles(true)", func(t *testing.T) {
+			buf := bytes.NewBuffer(nil)
+			if err := builder.New().
+				WithSources([]*builder.Source{newSource()}).
+				WithNestedDataFiles(true).
+				WithOutput(buf).
+				Build(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+
+			tarEntries := tarPaths(t, buf.Bytes())
+
+			// Exactly one data.json per datasource, at their actual paths.
+			wantDataEntries := []string{
+				"/teams/data.json",
+				"/org/admins/data.json",
+				"/us/east/servers/data.json",
+			}
+			for _, want := range wantDataEntries {
+				if !slices.Contains(tarEntries, want) {
+					t.Errorf("expected tar entry %q; got: %v", want, tarEntries)
+				}
+			}
+
+			// No root /data.json — that is the flat layout we are replacing.
+			if slices.Contains(tarEntries, "/data.json") {
+				t.Errorf("nested layout must not contain root /data.json; got: %v", tarEntries)
+			}
+
+			// No intermediate data.json files at parent paths — there is no
+			// datasource configured at "org/" or "us/" or "us/east/".
+			unwantedIntermediates := []string{
+				"/org/data.json",
+				"/us/data.json",
+				"/us/east/data.json",
+			}
+			for _, unwanted := range unwantedIntermediates {
+				if slices.Contains(tarEntries, unwanted) {
+					t.Errorf("must not contain intermediate %q; got: %v", unwanted, tarEntries)
+				}
+			}
+
+			// Count: exactly 3 data entries (one per datasource).
+			var dataEntries []string
+			for _, e := range tarEntries {
+				if strings.HasSuffix(e, "/data.json") || e == "/data.json" {
+					dataEntries = append(dataEntries, e)
+				}
+			}
+			if len(dataEntries) != 3 {
+				t.Errorf("expected exactly 3 data.json entries, got %d: %v", len(dataEntries), dataEntries)
+			}
+
+			// Semantic correctness: round-trip through bundle.NewReader must
+			// produce the correct merged data document.
+			b, err := bundle.NewReader(bytes.NewReader(buf.Bytes())).Read()
+			if err != nil {
+				t.Fatal(err)
+			}
+			gotJSON, _ := json.Marshal(b.Data)
+			wantJSON := `{"org":{"admins":{"alice":true}},"teams":{"alice":"admin","bob":"viewer"},"us":{"east":{"servers":["web01","web02"]}}}`
+			if string(gotJSON) != wantJSON {
+				t.Errorf("merged data mismatch\ngot:  %s\nwant: %s", gotJSON, wantJSON)
+			}
+		})
+
+		t.Run("flat layout by default (WithNestedDataFiles not called)", func(t *testing.T) {
+			buf := bytes.NewBuffer(nil)
+			if err := builder.New().
+				WithSources([]*builder.Source{newSource()}).
+				WithOutput(buf).
+				Build(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+
+			tarEntries := tarPaths(t, buf.Bytes())
+
+			if !slices.Contains(tarEntries, "/data.json") {
+				t.Errorf("flat layout must contain root /data.json; got: %v", tarEntries)
+			}
+			for _, unwanted := range []string{
+				"/teams/data.json",
+				"/org/admins/data.json",
+				"/us/east/servers/data.json",
+			} {
+				if slices.Contains(tarEntries, unwanted) {
+					t.Errorf("flat layout must not contain %q; got: %v", unwanted, tarEntries)
+				}
+			}
+		})
+	})
+}
+
+// tarPaths returns all file paths found in a .tar.gz buffer.
+func tarPaths(t *testing.T, data []byte) []string {
+	t.Helper()
+	gr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gr.Close()
+	tr := tar.NewReader(gr)
+	var paths []string
+	for {
+		hdr, err := tr.Next()
+		if err != nil {
+			break
+		}
+		paths = append(paths, hdr.Name)
+	}
+	return paths
 }
 
 func trimLeadingWhitespace(input string) string {

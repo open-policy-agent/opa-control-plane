@@ -1,8 +1,10 @@
 package builder
 
 import (
+	"archive/tar"
 	"bytes"
 	"cmp"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -170,6 +172,7 @@ type Builder struct {
 	excluded          []string
 	target            string
 	optimizationLevel int
+	nestedDataFiles   bool
 	revision          string
 	revisionFunc      func(fs.FS) (string, error)
 }
@@ -200,6 +203,11 @@ func (b *Builder) WithTarget(target string) *Builder {
 
 func (b *Builder) WithOptimizationLevel(level int) *Builder {
 	b.optimizationLevel = level
+	return b
+}
+
+func (b *Builder) WithNestedDataFiles(enabled bool) *Builder {
+	b.nestedDataFiles = enabled
 	return b
 }
 
@@ -456,7 +464,8 @@ func (b *Builder) Build(ctx context.Context) error {
 		}
 	}
 
-	fsBuild := mountfs.New(buildSources.fs())
+	bsFSMap := buildSources.fs()
+	fsBuild := mountfs.New(bsFSMap)
 	paths := slices.Collect(maps.Keys(fsBuild))
 
 	if b.revisionFunc != nil {
@@ -499,7 +508,116 @@ func (b *Builder) Build(ctx context.Context) error {
 	result.Manifest.SetRegoVersion(effectiveRegoVersion)
 	result.Manifest.Revision = b.revision
 
+	if b.nestedDataFiles {
+		return writeBundle(b.output, *result, bsFSMap)
+	}
 	return bundle.Write(b.output, *result)
+}
+
+// writeBundle serializes b as a .tar.gz bundle where data files are written as
+// individual nested data.json entries (one per source subdirectory) rather than
+// a single merged root /data.json. This matches the Styra DAS bundle layout and
+// avoids loading all data into memory as one monolithic document in OPA agents.
+//
+// sourceFSes is the map[escapedSourceName]fs.FS produced by buildSources.fs()
+// before the mountfs is assembled. Each sub-FS is walked for data files; rego
+// modules are taken from the compiled bundle result so their paths already
+// include mount/prefix transformations.
+func writeBundle(w io.Writer, b bundle.Bundle, sourceFSes map[string]fs.FS) error {
+	gw := gzip.NewWriter(w)
+	tw := tar.NewWriter(gw)
+
+	writeTar := func(path string, data []byte) error {
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		hdr := &tar.Header{
+			Name:     path,
+			Mode:     0600,
+			Typeflag: tar.TypeReg,
+			Size:     int64(len(data)),
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+		_, err := tw.Write(data)
+		return err
+	}
+
+	// 1. Manifest
+	manifestBytes, err := json.Marshal(b.Manifest)
+	if err != nil {
+		return fmt.Errorf("bundle manifest: %w", err)
+	}
+	if err := writeTar("/.manifest", manifestBytes); err != nil {
+		return fmt.Errorf("bundle manifest write: %w", err)
+	}
+
+	// 2. Data files — walk each source sub-FS and write data.json/yaml/yml at
+	// their natural nested paths (relative to the sub-FS root, not the top-level
+	// mount). This preserves e.g. /teams/data.json, /admins/data.json as separate
+	// entries rather than merging everything into a single /data.json.
+	writtenData := map[string]bool{}
+	names := slices.Sorted(maps.Keys(sourceFSes))
+	for _, name := range names {
+		subFS := sourceFSes[name]
+		if err := fs.WalkDir(subFS, ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			base := filepath.Base(path)
+			if base != "data.json" && base != "data.yaml" && base != "data.yml" {
+				return nil
+			}
+			// path is relative to the sub-FS, e.g. "teams/data.json"
+			tarPath := filepath.ToSlash(path)
+			if writtenData[tarPath] {
+				return nil
+			}
+			writtenData[tarPath] = true
+			bs, err := fs.ReadFile(subFS, path)
+			if err != nil {
+				return fmt.Errorf("read data file %s: %w", path, err)
+			}
+			return writeTar(tarPath, bs)
+		}); err != nil {
+			return fmt.Errorf("source %s data walk: %w", name, err)
+		}
+	}
+
+	// 3. Rego modules (compiled; paths already include source name prefix)
+	for _, mf := range b.Modules {
+		if err := writeTar(mf.Path, mf.Raw); err != nil {
+			return fmt.Errorf("bundle module %s: %w", mf.Path, err)
+		}
+	}
+
+	// 4. Plan modules (target=plan/ir)
+	for _, pm := range b.PlanModules {
+		if err := writeTar(pm.Path, pm.Raw); err != nil {
+			return fmt.Errorf("bundle plan module %s: %w", pm.Path, err)
+		}
+	}
+
+	// 5. Wasm modules (target=wasm)
+	for _, wm := range b.WasmModules {
+		if err := writeTar(wm.Path, wm.Raw); err != nil {
+			return fmt.Errorf("bundle wasm module %s: %w", wm.Path, err)
+		}
+	}
+	if len(b.Wasm) > 0 {
+		if err := writeTar("/policy.wasm", b.Wasm); err != nil {
+			return fmt.Errorf("bundle wasm: %w", err)
+		}
+	}
+
+	if err := tw.Close(); err != nil {
+		return err
+	}
+	return gw.Close()
 }
 
 type refSet struct {
