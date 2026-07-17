@@ -18,9 +18,10 @@ import (
 
 // Bundle status phases
 const (
-	PhaseSyncBundle  = "sync"
-	PhaseBuildBundle = "build"
-	PhasePushBundle  = "push"
+	PhaseSyncBundle      = "sync"
+	PhaseTransformBundle = "transform"
+	PhaseBuildBundle     = "build"
+	PhasePushBundle      = "push"
 )
 
 // Bundle status states
@@ -919,6 +920,165 @@ func TestUpsertBundleStatusRetentionCleanup(t *testing.T) {
 					require.NoError(t, err,
 						"bundle-b record with id %d should not be affected by bundle-a cleanup", id)
 				}
+			})
+		})
+	}
+}
+
+func countSentinelRows(ctx context.Context, t *testing.T, db *database.Database, bundle string) int {
+	t.Helper()
+	all, err := db.ListBundleStatuses(ctx, "admin", tenant, bundle, "", 0)
+	require.NoError(t, err)
+	n := 0
+	for _, s := range all {
+		if s.Revision == database.SentinelRevision {
+			n++
+		}
+	}
+	return n
+}
+
+func TestUpsertBundleStatusSentinel(t *testing.T) {
+	ctx := context.Background()
+
+	for databaseType, databaseConfig := range dbs.Configs(t) {
+		t.Run(databaseType, func(t *testing.T) {
+			t.Parallel()
+			var ctr testcontainers.Container
+			if databaseConfig.Setup != nil {
+				ctr = databaseConfig.Setup(t)
+				if databaseConfig.Cleanup != nil {
+					t.Cleanup(databaseConfig.Cleanup(t, ctr))
+				}
+			}
+
+			db, err := migrations.New().
+				WithConfig(databaseConfig.Database(t, ctr).Database).
+				WithLogger(logging.NewLogger(logging.Config{Level: logging.LevelDebug})).
+				WithMigrate(true).Run(ctx)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			defer db.CloseDB()
+
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
+				t.Fatal(err)
+			}
+
+			root := config.Root{
+				Bundles: map[string]*config.Bundle{
+					"bundle-a": {
+						Name: "bundle-a",
+						Requirements: config.Requirements{
+							config.Requirement{Source: newString("source-a")},
+						},
+					},
+					"bundle-b": {
+						Name: "bundle-b",
+						Requirements: config.Requirements{
+							config.Requirement{Source: newString("source-a")},
+						},
+					},
+				},
+				Sources: map[string]*config.Source{
+					"source-a": {
+						Name:         "source-a",
+						Requirements: config.Requirements{},
+					},
+				},
+				Database: &config.Database{
+					SQL: &config.SQLDatabase{
+						Driver: "sqlite3",
+						DSN:    database.SQLiteMemoryOnlyDSN,
+					},
+				},
+			}
+			if err := root.Unmarshal(); err != nil {
+				t.Fatalf("failed to unmarshal config: %v", err)
+			}
+
+			for _, op := range newTestCase("load config").LoadConfig(root).operations {
+				op(ctx, t, db)
+			}
+
+			t.Run("sentinel accepted and deduped", func(t *testing.T) {
+				id1, err := db.UpsertBundleStatus(ctx, tenant, "bundle-a", database.SentinelRevision, PhaseSyncBundle, "SYNC_FAILED", "boom")
+				require.NoError(t, err)
+
+				id2, err := db.UpsertBundleStatus(ctx, tenant, "bundle-a", database.SentinelRevision, PhaseSyncBundle, "SYNC_FAILED", "boom again")
+				require.NoError(t, err)
+				assert.Equal(t, id1, id2, "repeated sentinel upserts must reuse the single sentinel row")
+
+				statuses, err := db.ListBundleStatuses(ctx, "admin", tenant, "bundle-a", "", 0)
+				require.NoError(t, err)
+				assert.Len(t, statuses, 1, "exactly one sentinel row expected")
+				assert.Equal(t, database.SentinelRevision, statuses[0].Revision)
+				assert.Equal(t, "SYNC_FAILED", statuses[0].Status)
+			})
+
+			t.Run("sentinel is latest after recovery then re-failure", func(t *testing.T) {
+				_, err := db.UpsertBundleStatus(ctx, tenant, "bundle-b", database.SentinelRevision, PhaseSyncBundle, "SYNC_FAILED", "sync boom")
+				require.NoError(t, err)
+
+				_, err = db.UpsertBundleStatus(ctx, tenant, "bundle-b", "rev-1", PhasePushBundle, "SUCCESS", "")
+				require.NoError(t, err)
+
+				_, err = db.UpsertBundleStatus(ctx, tenant, "bundle-b", database.SentinelRevision, PhaseSyncBundle, "SYNC_FAILED", "sync boom 2")
+				require.NoError(t, err)
+
+				latest, err := db.GetLatestBundleStatus(ctx, "admin", tenant, "bundle-b")
+				require.NoError(t, err)
+				assert.Equal(t, "SYNC_FAILED", latest.Status)
+				assert.Equal(t, database.SentinelRevision, latest.Revision)
+			})
+
+			t.Run("real revision self-heals the sentinel", func(t *testing.T) {
+				_, err := db.UpsertBundleStatus(ctx, tenant, "bundle-a", database.SentinelRevision, PhaseTransformBundle, "TRANSFORM_FAILED", "bad rego")
+				require.NoError(t, err)
+
+				require.Equal(t, 1, countSentinelRows(ctx, t, db, "bundle-a"))
+
+				_, err = db.UpsertBundleStatus(ctx, tenant, "bundle-a", "rev-heal", PhasePushBundle, "SUCCESS", "")
+				require.NoError(t, err)
+
+				// Sentinel gone, only the real-revision row remains.
+				assert.Equal(t, 0, countSentinelRows(ctx, t, db, "bundle-a"),
+					"sentinel row must be deleted after a real-revision write")
+
+				latest, err := db.GetLatestBundleStatus(ctx, "admin", tenant, "bundle-a")
+				require.NoError(t, err)
+				assert.Equal(t, "rev-heal", latest.Revision)
+				assert.Equal(t, "SUCCESS", latest.Status)
+			})
+
+			t.Run("self-heal on build failure after sync recovery", func(t *testing.T) {
+				_, err := db.UpsertBundleStatus(ctx, tenant, "bundle-b", database.SentinelRevision, PhaseSyncBundle, "SYNC_FAILED", "sync boom")
+				require.NoError(t, err)
+
+				_, err = db.UpsertBundleStatus(ctx, tenant, "bundle-b", "rev-2", PhaseBuildBundle, "BUILD_FAILED", "compile error")
+				require.NoError(t, err)
+
+				assert.Equal(t, 0, countSentinelRows(ctx, t, db, "bundle-b"),
+					"sentinel must be cleared once a real revision is written, even on build failure")
+
+				latest, err := db.GetLatestBundleStatus(ctx, "admin", tenant, "bundle-b")
+				require.NoError(t, err)
+				assert.Equal(t, "rev-2", latest.Revision)
+				assert.Equal(t, "BUILD_FAILED", latest.Status)
+			})
+
+			// Revision-scoped queries never return the sentinel row.
+			t.Run("revision scoping excludes sentinel", func(t *testing.T) {
+				_, err := db.UpsertBundleStatus(ctx, tenant, "bundle-a", database.SentinelRevision, PhaseSyncBundle, "SYNC_FAILED", "boom")
+				require.NoError(t, err)
+				_, err = db.UpsertBundleStatus(ctx, tenant, "bundle-a", "rev-scope", PhasePushBundle, "SUCCESS", "")
+				require.NoError(t, err)
+
+				scoped, err := db.ListBundleStatuses(ctx, "admin", tenant, "bundle-a", "rev-scope", 0)
+				require.NoError(t, err)
+				require.Len(t, scoped, 1)
+				assert.Equal(t, "rev-scope", scoped[0].Revision)
 			})
 		})
 	}

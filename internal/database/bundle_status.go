@@ -11,15 +11,26 @@ import (
 
 const MaxBundleStatusRetention = 10
 
+// SentinelRevision keys the single "pre-revision state" row per bundle: the
+// outcome of failures that happen before a revision is resolved (sync, transform,
+// internal). It is the canonical value callers pass to UpsertBundleStatus for
+// pre-revision phases (e.g. pkg/service's worker). A present sentinel row means
+// the bundle is currently failing before the build phase (it is deleted as soon
+// as a real-revision row is written; see UpsertBundleStatus).
+const SentinelRevision = ""
+
 // UpsertBundleStatus creates or updates a bundle status record with the given phase and status.
 // For a given tenant+bundle+revision combination, only one record exists.
 // If a record already exists for the combination, it updates the phase and status.
+//
+// A revision of SentinelRevision (the empty string) records a pre-revision phase
+// (sync/transform/internal) and dedups to one sentinel row per bundle. When a
+// real (non-sentinel) revision is written, any existing sentinel row for the
+// bundle is deleted in the same transaction, so the sentinel never
+// lingers as a stale failure after the run gets past sync/transform.
+//
 // Old records beyond the retention limit (MaxBundleStatusRetention) are cleaned up in the same transaction.
 func (d *Database) UpsertBundleStatus(ctx context.Context, tenant, bundle, revision, phase, status, errMsg string) (int, error) {
-	if revision == "" {
-		return 0, errors.New("error inserting bundle status: revision is required")
-	}
-
 	var id int
 	err := tx1(ctx, d, func(tx *sql.Tx) error {
 
@@ -34,6 +45,22 @@ func (d *Database) UpsertBundleStatus(ctx context.Context, tenant, bundle, revis
 			return fmt.Errorf("error inserting bundle status: %w", err)
 		}
 		id = resID
+
+		// Self-healing: once we've written a real-revision row, the run got past
+		// sync/transform, so drop any stale pre-revision sentinel row for this
+		// bundle in the same transaction.
+		if revision != SentinelRevision {
+			if _, err := tx.ExecContext(ctx,
+				fmt.Sprintf(
+					`DELETE FROM bundles_statuses
+					 WHERE bundle_id = %s AND revision = %s`,
+					d.arg(0), d.arg(1),
+				),
+				bundleID, SentinelRevision,
+			); err != nil {
+				return fmt.Errorf("error clearing sentinel bundle status: %w", err)
+			}
+		}
 
 		// Cleanup: keep only the last MaxBundleStatusRetention records per tenant+bundle_id.
 		// This runs in the same transaction to ensure consistency.
