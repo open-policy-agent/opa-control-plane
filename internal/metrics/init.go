@@ -2,44 +2,53 @@ package metrics
 
 import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
+	pkgmetrics "github.com/open-policy-agent/opa-control-plane/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// Metrics holds all registered Prometheus collectors for the application.
-type Metrics struct {
-	gatherer            prometheus.Gatherer
-	durationHistogram   *prometheus.HistogramVec
-	gitSyncCount        *prometheus.CounterVec
-	gitSyncDuration     *prometheus.HistogramVec
-	bundleBuildCount    *prometheus.CounterVec
-	bundleBuildDuration *prometheus.HistogramVec
-}
-
-// Init initializes all metrics collectors with the given configuration and returns
-// the Metrics instance. Pass the returned value to components that record metrics.
-func Init(cfg *config.MetricsConfig, prometheusRegisterer prometheus.Registerer) *Metrics {
-	m := &Metrics{}
-
-	if g, ok := prometheusRegisterer.(prometheus.Gatherer); ok {
-		m.gatherer = g
+func Init(cfg *config.MetricsConfig, reg prometheus.Registerer) *pkgmetrics.Metrics {
+	opts := pkgmetrics.Options{
+		Registerer: reg,
+		Namespace:  pkgmetrics.DefaultNamespace, // preserve existing OCP metric names
 	}
 
-	if cfg != nil && !isEnabled(cfg.Enabled) {
-		return m
+	if cfg == nil {
+		return pkgmetrics.New(opts)
 	}
-	initHTTPMetrics(m, cfg, prometheusRegisterer)
-	initGitSyncMetrics(m, cfg, prometheusRegisterer)
-	initWorkerMetrics(m, cfg, prometheusRegisterer)
-	return m
-}
 
-func isEnabled(enabled *bool) bool {
-	return enabled == nil || *enabled
-}
-
-func buckets(configured []float64, defaults []float64) []float64 {
-	if len(configured) > 0 {
-		return configured
+	if cfg.Enabled != nil && !*cfg.Enabled {
+		disabled := false
+		opts.HTTPEnabled = &disabled
+		opts.GitSyncEnabled = &disabled
+		opts.WorkerEnabled = &disabled
+		return pkgmetrics.New(opts)
 	}
-	return defaults
+
+	if cfg.HTTP != nil {
+		opts.HTTPEnabled = cfg.HTTP.Enabled
+		if cfg.HTTP.RequestDuration != nil {
+			opts.HTTPRequestDurationEnabled = cfg.HTTP.RequestDuration.Enabled
+			opts.HTTPRequestDurationBuckets = cfg.HTTP.RequestDuration.GetBuckets()
+		}
+	}
+
+	if cfg.GitSync != nil {
+		opts.GitSyncEnabled = cfg.GitSync.Enabled
+		opts.GitSyncCountEnabled = cfg.GitSync.GetCountEnabled()
+		if cfg.GitSync.GitSyncDuration != nil {
+			opts.GitSyncDurationEnabled = cfg.GitSync.GitSyncDuration.Enabled
+			opts.GitSyncDurationBuckets = cfg.GitSync.GitSyncDuration.GetBuckets()
+		}
+	}
+
+	if cfg.Worker != nil {
+		opts.WorkerEnabled = cfg.Worker.Enabled
+		opts.BundleBuildCountEnabled = cfg.Worker.GetCountEnabled()
+		if cfg.Worker.BundleBuildDuration != nil {
+			opts.BundleBuildDurationEnabled = cfg.Worker.BundleBuildDuration.Enabled
+			opts.BundleBuildDurationBuckets = cfg.Worker.BundleBuildDuration.GetBuckets()
+		}
+	}
+
+	return pkgmetrics.New(opts)
 }

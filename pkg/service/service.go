@@ -28,7 +28,6 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/gitsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/httpsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
-	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
 	"github.com/open-policy-agent/opa-control-plane/internal/pool"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
@@ -37,6 +36,7 @@ import (
 	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
 	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
 	pkgconfig "github.com/open-policy-agent/opa-control-plane/pkg/config"
+	"github.com/open-policy-agent/opa-control-plane/pkg/metrics"
 	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
 
