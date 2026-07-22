@@ -7,12 +7,14 @@ import (
 
 // Metrics holds all registered Prometheus collectors for the application.
 type Metrics struct {
-	gatherer            prometheus.Gatherer
-	durationHistogram   *prometheus.HistogramVec
-	gitSyncCount        *prometheus.CounterVec
-	gitSyncDuration     *prometheus.HistogramVec
-	bundleBuildCount    *prometheus.CounterVec
-	bundleBuildDuration *prometheus.HistogramVec
+	gatherer              prometheus.Gatherer
+	durationHistogram     *prometheus.HistogramVec
+	gitSyncCount          *prometheus.CounterVec
+	gitSyncDuration       *prometheus.HistogramVec
+	bundleBuildCount      *prometheus.CounterVec
+	bundleBuildDuration   *prometheus.HistogramVec
+	databaseQueryCount    *prometheus.CounterVec
+	databaseQueryDuration *prometheus.HistogramVec
 }
 
 // Init initializes all metrics collectors with the given configuration and returns
@@ -30,6 +32,7 @@ func Init(cfg *config.MetricsConfig, prometheusRegisterer prometheus.Registerer)
 	initHTTPMetrics(m, cfg, prometheusRegisterer)
 	initGitSyncMetrics(m, cfg, prometheusRegisterer)
 	initWorkerMetrics(m, cfg, prometheusRegisterer)
+	initDatabaseMetrics(m, cfg, prometheusRegisterer)
 	return m
 }
 

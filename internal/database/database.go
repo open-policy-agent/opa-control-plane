@@ -33,6 +33,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
 )
@@ -56,6 +57,7 @@ type Database struct {
 	executeTx     func(context.Context, *sql.DB, *sql.TxOptions, func(*sql.Tx) error) error
 	authorizer    ext_authz.Authorizer
 	accessFactory ext_authz.AccessFactory
+	metrics       *metrics.Metrics
 }
 
 func New() *Database {
@@ -159,6 +161,22 @@ func (d *Database) WithAuthorizer(authorizer ext_authz.Authorizer) *Database {
 func (d *Database) WithAccessFactory(accessFactory ext_authz.AccessFactory) *Database {
 	d.accessFactory = accessFactory
 	return d
+}
+
+// WithMetrics enables per-query metrics (count and duration by outcome) for
+// this Database's connections. Pass nil to disable (the default).
+func (d *Database) WithMetrics(m *metrics.Metrics) *Database {
+	d.metrics = m
+	return d
+}
+
+// instrumentConnector wraps connector with query metrics if metrics are
+// configured, otherwise it returns connector unchanged.
+func (d *Database) instrumentConnector(connector driver.Connector) driver.Connector {
+	if d.metrics == nil {
+		return connector
+	}
+	return newInstrumentedConnector(connector, d.metrics)
 }
 
 func (d *Database) InitDB(ctx context.Context) error {
@@ -350,7 +368,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 			return fmt.Errorf("unsupported AWS RDS driver: %s", drv)
 		}
 
-		d.db = sql.OpenDB(connector)
+		d.db = sql.OpenDB(d.instrumentConnector(connector))
 
 		d.log.Debugf("Connected to %s RDS instance at %s", drv, endpoint)
 
@@ -390,7 +408,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		d.db = sql.OpenDB(pgx_stdlib.GetConnector(*cfg))
+		d.db = sql.OpenDB(d.instrumentConnector(pgx_stdlib.GetConnector(*cfg)))
 
 	case d.config.SQL.Driver == "mysql":
 		dsn := os.ExpandEnv(d.config.SQL.DSN)
@@ -411,7 +429,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		d.db = sql.OpenDB(conn)
+		d.db = sql.OpenDB(d.instrumentConnector(conn))
 
 	default:
 		return errors.New("unsupported database connection type")

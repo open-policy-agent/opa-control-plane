@@ -164,6 +164,7 @@ func (s *Service) WithAuthorizer(a ext_authz.Authorizer) *Service {
 
 func (s *Service) WithMetrics(m *metrics.Metrics) *Service {
 	s.metrics = m
+	s.database = *s.database.WithMetrics(m)
 	return s
 }
 
