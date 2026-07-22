@@ -12,10 +12,10 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
-	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	"github.com/open-policy-agent/opa-control-plane/internal/syncerr"
 	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
+	"github.com/open-policy-agent/opa-control-plane/pkg/metrics"
 	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
 

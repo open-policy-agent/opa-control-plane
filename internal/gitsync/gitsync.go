@@ -30,8 +30,8 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
-	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/syncerr"
+	"github.com/open-policy-agent/opa-control-plane/pkg/metrics"
 )
 
 // configFile is an internal config file used to track if a git repository

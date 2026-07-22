@@ -22,6 +22,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/chain"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/types"
+	pkgmetrics "github.com/open-policy-agent/opa-control-plane/pkg/metrics"
 )
 
 const defaultTenant = "default"
@@ -33,7 +34,7 @@ type Server struct {
 	apiPrefix     string
 	metricsConfig *config.MetricsConfig
 	prometheusReg prometheus.Registerer
-	metrics       *metrics.Metrics
+	metrics       *pkgmetrics.Metrics
 }
 
 func New() *Server {
@@ -118,7 +119,7 @@ func (s *Server) WithPrometheusRegisterer(reg prometheus.Registerer) *Server {
 	return s
 }
 
-func (s *Server) WithMetrics(m *metrics.Metrics) *Server {
+func (s *Server) WithMetrics(m *pkgmetrics.Metrics) *Server {
 	s.metrics = m
 	return s
 }
