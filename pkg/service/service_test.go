@@ -16,6 +16,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/pkg/service"
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -55,6 +56,73 @@ func TestUnconfiguredSecretHandling(t *testing.T) {
 		t.Fatal("expected sync failure state")
 	} else if status.Message != `source "test_src": git synchronizer: https://example.com/repo.git: secret "test_creds" is not configured` {
 		t.Fatal("unexpected status message")
+	}
+}
+
+// TestWithPrometheusRegisterer verifies that git sync metrics are recorded
+// against a caller-provided Prometheus registerer without requiring callers
+// to construct a *metrics.Metrics themselves (that type lives in an internal
+// package and is not reachable outside this module).
+func TestWithPrometheusRegisterer(t *testing.T) {
+	bs := fmt.Appendf(nil, `{
+		bundles: {
+			test_bundle: {
+				object_storage: {
+					filesystem: {
+						path: %q
+					}
+				},
+				requirements: [
+					{source: test_src}
+				]
+			}
+		},
+		sources: {
+			test_src: {
+				git: {
+					repo: https://example.com/repo.git,
+					credentials: test_creds,
+					reference: refs/heads/main,
+				}
+			}
+		},
+		secrets: {
+			test_creds: {} # not configured
+		}
+	}`, filepath.Join(t.TempDir(), "bundles"))
+
+	cfg, err := config.Parse(bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reg := prometheus.NewRegistry()
+	dir := t.TempDir()
+	svc := service.New().
+		WithConfig(cfg).
+		WithPersistenceDir(filepath.Join(dir, "data")).
+		WithSingleShot(true).
+		WithMigrateDB(true).
+		WithPrometheusRegisterer(reg)
+
+	if err := svc.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var found bool
+	for _, f := range families {
+		if f.GetName() == "ocp_git_sync_count_total" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected ocp_git_sync_count_total to be registered and recorded")
 	}
 }
 

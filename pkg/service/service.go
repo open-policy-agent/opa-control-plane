@@ -20,6 +20,7 @@ import (
 
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/prometheus/client_golang/prometheus"
 	_ "modernc.org/sqlite"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
@@ -165,6 +166,16 @@ func (s *Service) WithAuthorizer(a ext_authz.Authorizer) *Service {
 func (s *Service) WithMetrics(m *metrics.Metrics) *Service {
 	s.metrics = m
 	return s
+}
+
+// WithPrometheusRegisterer enables OCP's built-in metrics (git sync, HTTP,
+// bundle build) to be recorded against reg, using default metrics
+// configuration (all metrics enabled, default histogram buckets). This is a
+// convenience for callers that only have a prometheus.Registerer and don't
+// need the finer-grained per-metric enable/disable or bucket overrides
+// available via MetricsConfig; use WithMetrics directly for that.
+func (s *Service) WithPrometheusRegisterer(reg prometheus.Registerer) *Service {
+	return s.WithMetrics(metrics.Init(nil, reg))
 }
 
 func (s *Service) WithConfig(config *config.Root) *Service {
