@@ -572,6 +572,17 @@ func TestDatabase(t *testing.T) {
 							},
 						},
 					}),
+
+				// Run last, and after an explicit wait: CockroachDB follower
+				// reads (ListOptions.Stale) read a fixed point a few seconds
+				// in the past, which must be after the migrations that
+				// created this schema ran, or the read fails with "relation
+				// does not exist".
+				newTestCase("list bundles/sources/stacks (stale)").
+					Sleep(6 * time.Second).
+					ListBundlesStaleNoError().
+					ListSourcesStaleNoError().
+					ListStacksStaleNoError(),
 			}
 			for _, test := range tests {
 				t.Run(test.note, func(t *testing.T) {
@@ -605,6 +616,20 @@ func (tc *testCase) GetPrincipalByToken(token, exp string) *testCase {
 		if act != exp {
 			t.Fatalf("expected %q, got %q", exp, act)
 		}
+	})
+	return tc
+}
+
+// Sleep pauses before the next operation. Used before the ListOptions.Stale
+// test cases: CockroachDB follower reads read a fixed point a few seconds in
+// the past (follower_read_timestamp()), so a stale read issued too soon
+// after the migrations that created the schema can fail with "relation does
+// not exist" - the read timestamp predates the DDL. Sleeping past that
+// window makes the assertion deterministic instead of depending on how much
+// incidental time earlier test cases happened to take.
+func (tc *testCase) Sleep(d time.Duration) *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		time.Sleep(d)
 	})
 	return tc
 }
@@ -744,6 +769,22 @@ func (tc *testCase) ListBundlesPagination(limit int, expected []*config.Bundle) 
 	return tc
 }
 
+// ListBundlesStaleNoError exercises ListOptions.Stale (CockroachDB follower
+// reads). It only asserts the call succeeds, not the returned content: a
+// follower read intentionally reads a few-seconds-stale snapshot, so it may
+// not yet reflect writes from immediately before this call in the test
+// sequence, and a content assertion here would be flaky against a real
+// CockroachDB backend.
+func (tc *testCase) ListBundlesStaleNoError() *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		if _, _, err := db.ListBundles(ctx, "admin", tenant, database.ListOptions{Stale: true}); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+
+	return tc
+}
+
 func (tc *testCase) BundlesPutRequirements(id string, requirements config.Requirements) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
 		if err := db.UpsertBundle(ctx, "admin", tenant, &config.Bundle{
@@ -823,6 +864,18 @@ func (tc *testCase) ListSourcesPagination(limit int, expected []*config.Source) 
 
 		if diff := cmp.Diff(expected, sources); diff != "" {
 			t.Fatal("unexpected list result", diff)
+		}
+	})
+
+	return tc
+}
+
+// ListSourcesStaleNoError exercises ListOptions.Stale (CockroachDB follower
+// reads). See ListBundlesStaleNoError for why it doesn't assert content.
+func (tc *testCase) ListSourcesStaleNoError() *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		if _, _, err := db.ListSources(ctx, "admin", tenant, database.ListOptions{Stale: true}); err != nil {
+			t.Fatalf("expected no error, got %v", err)
 		}
 	})
 
@@ -954,6 +1007,18 @@ func (tc *testCase) ListStacksPagination(limit int, expected []*config.Stack) *t
 
 		if diff := cmp.Diff(expected, stacks); diff != "" {
 			t.Fatal("unexpected list result", diff)
+		}
+	})
+
+	return tc
+}
+
+// ListStacksStaleNoError exercises ListOptions.Stale (CockroachDB follower
+// reads). See ListBundlesStaleNoError for why it doesn't assert content.
+func (tc *testCase) ListStacksStaleNoError() *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		if _, _, err := db.ListStacks(ctx, "admin", tenant, database.ListOptions{Stale: true}); err != nil {
+			t.Fatalf("expected no error, got %v", err)
 		}
 	})
 
