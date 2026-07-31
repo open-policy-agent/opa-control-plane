@@ -166,6 +166,57 @@ func TestGitsyncUserError(t *testing.T) {
 	})
 }
 
+// TestGitsyncCheckAccess verifies that CheckAccess succeeds against a reachable repository
+// and fails with a syncerr.UserError against a non-existent one, without cloning anything.
+func TestGitsyncCheckAccess(t *testing.T) {
+	t.Run("reachable repository", func(t *testing.T) {
+		testRepositoryPath := t.TempDir() + "/testing"
+		repository, err := git.PlainInit(testRepositoryPath, false)
+		if err != nil {
+			t.Fatalf("expected no error while initializing test repository: %v", err)
+		}
+
+		w, err := repository.Worktree()
+		if err != nil {
+			t.Fatalf("expected no error while getting worktree: %v", err)
+		}
+		if _, err := w.Commit("init", &git.CommitOptions{Author: &object.Signature{}, AllowEmptyCommits: true}); err != nil {
+			t.Fatalf("expected no error while committing changes: %v", err)
+		}
+
+		dstPath := t.TempDir() + "/dst"
+		ref := "refs/heads/master"
+		s := gitsync.New(dstPath, config.Git{
+			Repo:      testRepositoryPath,
+			Reference: &ref,
+		}, "test-source")
+
+		if err := s.CheckAccess(t.Context()); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if _, err := os.Stat(dstPath); err == nil {
+			t.Fatal("expected CheckAccess not to create a local clone")
+		}
+	})
+
+	t.Run("repository not found", func(t *testing.T) {
+		ref := "refs/heads/master"
+		s := gitsync.New(t.TempDir()+"/dst", config.Git{
+			Repo:      t.TempDir() + "/does-not-exist",
+			Reference: &ref,
+		}, "test-source")
+
+		err := s.CheckAccess(t.Context())
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if !syncerr.IsUserError(err) {
+			t.Fatalf("expected a syncerr.UserError, got: %v", err)
+		}
+	})
+}
+
 // TestGitsyncSSH tests the functionality of the gitsync package with an SSH server.
 // It creates a temporary git repository, commits a file, and then uses the gitsync package to clone the repository over SSH.
 // It verifies that the cloned repository contains the expected content.

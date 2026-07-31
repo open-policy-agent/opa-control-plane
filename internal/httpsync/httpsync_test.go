@@ -117,6 +117,46 @@ func TestHTTPDataSynchronizer_Error_ServerError(t *testing.T) {
 	}
 }
 
+// TestHTTPDataSynchronizer_CheckAccess verifies that CheckAccess reports success for a
+// reachable endpoint and a syncerr.UserError for a 4xx response, without writing any file.
+func TestHTTPDataSynchronizer_CheckAccess(t *testing.T) {
+	t.Run("reachable endpoint", func(t *testing.T) {
+		var requestCount int
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestCount++
+			_, _ = w.Write([]byte(`{"key": "value"}`))
+		}))
+		defer ts.Close()
+
+		file := path.Join(t.TempDir(), "foo/test.json")
+		synchronizer := New(file, ts.URL, "", "", nil, nil)
+		if err := synchronizer.CheckAccess(t.Context()); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if _, err := os.Stat(file); err == nil {
+			t.Fatal("expected CheckAccess not to write a file")
+		}
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		}))
+		defer ts.Close()
+
+		file := path.Join(t.TempDir(), "foo/test.json")
+		synchronizer := New(file, ts.URL, "", "", nil, nil)
+		err := synchronizer.CheckAccess(t.Context())
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+		if !syncerr.IsUserError(err) {
+			t.Fatalf("expected a syncerr.UserError for a 4xx response, got: %v", err)
+		}
+	})
+}
+
 func TestHTTPDataSynchronizer_Post(t *testing.T) {
 
 	payloadContents := `{"data": "data"}`

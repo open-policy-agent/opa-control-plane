@@ -23,6 +23,20 @@ type Synchronizer interface {
 	Close(ctx context.Context)
 }
 
+// AccessChecker is an optional interface that a Synchronizer implementation
+// may satisfy to support lightweight source-access validation. Callers should
+// use a type assertion to check for support before calling CheckAccess, since
+// not all Synchronizer implementations (including external ones) provide it.
+type AccessChecker interface {
+	// CheckAccess verifies that the configured source is reachable and that its
+	// credentials, if any, are valid, without performing a full synchronization
+	// (e.g. no git clone or full download). It allows callers to validate a
+	// source configuration up front rather than waiting for a real sync to fail.
+	//
+	// Returns an error if the source is unreachable or the credentials are invalid.
+	CheckAccess(ctx context.Context) error
+}
+
 // SecretProvider defines the interface for retrieving secrets from external systems.
 // External projects (e.g., OMA with Whisper, enterprises with Vault) implement this
 // interface to integrate their own secret management systems.
