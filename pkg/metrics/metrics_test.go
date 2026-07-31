@@ -6,8 +6,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-
-	"github.com/open-policy-agent/opa-control-plane/internal/config"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -28,13 +26,17 @@ func TestNilMetricsSafe(t *testing.T) {
 func TestDisable(t *testing.T) {
 	cases := []struct {
 		name string
-		cfg  *config.MetricsConfig
-		// fields expected to be nil after Init
+		opts Options
+		// fields expected to be nil after New
 		wantNil []func(*Metrics) bool
 	}{
 		{
-			name: "global",
-			cfg:  &config.MetricsConfig{Enabled: boolPtr(false)},
+			name: "all subsystems",
+			opts: Options{
+				HTTPEnabled:    boolPtr(false),
+				GitSyncEnabled: boolPtr(false),
+				WorkerEnabled:  boolPtr(false),
+			},
 			wantNil: []func(*Metrics) bool{
 				func(m *Metrics) bool { return m.durationHistogram == nil },
 				func(m *Metrics) bool { return m.gitSyncCount == nil },
@@ -43,7 +45,7 @@ func TestDisable(t *testing.T) {
 		},
 		{
 			name: "gitsync subsystem",
-			cfg:  &config.MetricsConfig{GitSync: &config.GitSyncMetrics{Enabled: boolPtr(false)}},
+			opts: Options{GitSyncEnabled: boolPtr(false)},
 			wantNil: []func(*Metrics) bool{
 				func(m *Metrics) bool { return m.gitSyncCount == nil },
 				func(m *Metrics) bool { return m.gitSyncDuration == nil },
@@ -53,7 +55,8 @@ func TestDisable(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			m := Init(tc.cfg, prometheus.NewRegistry())
+			tc.opts.Registerer = prometheus.NewRegistry()
+			m := New(tc.opts)
 			for i, check := range tc.wantNil {
 				if !check(m) {
 					t.Errorf("check %d failed", i)
@@ -64,7 +67,7 @@ func TestDisable(t *testing.T) {
 }
 
 func TestGitSyncRecording(t *testing.T) {
-	m := Init(nil, prometheus.NewRegistry())
+	m := New(Options{Registerer: prometheus.NewRegistry()})
 
 	m.GitSyncFailed("s1", "repo1")
 	m.GitSyncFailed("s1", "repo1")
@@ -75,5 +78,56 @@ func TestGitSyncRecording(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(m.gitSyncCount.WithLabelValues("s1", "repo1", "SUCCESS")); got != 1 {
 		t.Errorf("SUCCESS count: want 1, got %v", got)
+	}
+}
+
+// TestNamespace verifies the fully-qualified metric names are derived from the
+// configured Namespace prefix: the default preserves the historical "ocp_"
+// names, and a custom prefix remaps them.
+func TestNamespace(t *testing.T) {
+	cases := []struct {
+		name      string
+		namespace string
+		want      []string
+	}{
+		{
+			name:      "default",
+			namespace: "",
+			want: []string{
+				"ocp_git_sync_count_total",
+				"ocp_git_sync_duration_seconds",
+			},
+		},
+		{
+			name:      "custom",
+			namespace: "build_worker",
+			want: []string{
+				"build_worker_git_sync_count_total",
+				"build_worker_git_sync_duration_seconds",
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := prometheus.NewRegistry()
+			m := New(Options{Registerer: reg, Namespace: tc.namespace})
+
+			// Observe once so the vec metric families are emitted by Gather.
+			m.GitSyncSucceeded("s1", "repo1", time.Now())
+
+			mfs, err := reg.Gather()
+			if err != nil {
+				t.Fatalf("gather: %v", err)
+			}
+			got := make(map[string]bool, len(mfs))
+			for _, mf := range mfs {
+				got[mf.GetName()] = true
+			}
+			for _, name := range tc.want {
+				if !got[name] {
+					t.Errorf("expected metric family %q, got %v", name, got)
+				}
+			}
+		})
 	}
 }

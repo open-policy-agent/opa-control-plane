@@ -6,8 +6,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	"github.com/open-policy-agent/opa-control-plane/internal/config"
 )
 
 var defaultHTTPBuckets = []float64{
@@ -23,25 +21,21 @@ var defaultHTTPBuckets = []float64{
 	1, // 1 second
 }
 
-func initHTTPMetrics(m *Metrics, cfg *config.MetricsConfig, prometheusRegisterer prometheus.Registerer) {
-	if cfg != nil && cfg.HTTP != nil && !isEnabled(cfg.HTTP.Enabled) {
+func initHTTPMetrics(m *Metrics, opts Options) {
+	if !isEnabled(opts.HTTPEnabled) {
 		return
 	}
 
-	var hcfg *config.HistogramConfig
-	if cfg != nil && cfg.HTTP != nil {
-		hcfg = cfg.HTTP.RequestDuration
-	}
-
-	if hcfg != nil && !isEnabled(hcfg.Enabled) {
+	if !isEnabled(opts.HTTPRequestDurationEnabled) {
 		return
 	}
 
-	m.durationHistogram = promauto.With(prometheusRegisterer).NewHistogramVec(
+	m.durationHistogram = promauto.With(opts.Registerer).NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "http_request_duration_seconds",
-			Help:    "A histogram of duration for requests.",
-			Buckets: buckets(hcfg.GetBuckets(), defaultHTTPBuckets),
+			Namespace: opts.Namespace,
+			Name:      "http_request_duration_seconds",
+			Help:      "A histogram of duration for requests.",
+			Buckets:   buckets(opts.HTTPRequestDurationBuckets, defaultHTTPBuckets),
 		},
 		[]string{"code", "handler", "method"},
 	)
