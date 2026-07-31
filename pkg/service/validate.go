@@ -11,20 +11,43 @@ import (
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
 
+// BindingType identifies the kind of binding a BindingAccessResult reports on.
+type BindingType string
+
+const (
+	BindingTypeGit  BindingType = "git"
+	BindingTypeHTTP BindingType = "http"
+	BindingTypeS3   BindingType = "s3"
+)
+
+// Error is a JSON-serializable description of why a binding's access check
+// failed. A Go error doesn't marshal to anything useful on its own, so
+// BindingAccessResult reports failures through this type instead.
+type Error struct {
+	Message string `json:"message"`
+	// UserError is true when the failure is caused by misconfiguration
+	// (invalid credentials, an unreachable repository/URL, a 4xx
+	// response, ...) rather than a transient or internal failure. Callers
+	// can use this to decide whether Message is safe to surface to the
+	// end user as-is.
+	UserError bool `json:"user_error"`
+}
+
+func newError(err error) *Error {
+	if err == nil {
+		return nil
+	}
+	return &Error{Message: err.Error(), UserError: syncerr.IsUserError(err)}
+}
+
 // BindingAccessResult reports the outcome of checking one git or datasource
 // binding within a Source for reachability and credential validity.
 type BindingAccessResult struct {
-	// Type is "git", "http", or "s3".
-	Type string
+	Type BindingType `json:"type"`
 	// Name is the datasource name, or "" for the source's git binding.
-	Name string
-	// Err is non-nil if the binding could not be verified.
-	Err error
-	// UserError is true when Err is caused by misconfiguration (invalid
-	// credentials, an unreachable repository/URL, a 4xx response, ...)
-	// rather than a transient or internal failure. Callers can use this to
-	// decide whether Err is safe to surface to the end user as-is.
-	UserError bool
+	Name string `json:"name,omitempty"`
+	// Err is nil if the binding was successfully verified.
+	Err *Error `json:"error,omitempty"`
 }
 
 type accessChecker interface {
@@ -46,7 +69,7 @@ func ValidateSourceAccess(ctx context.Context, src *config.Source, provider pkgs
 	if checker := gitAccessChecker(src, provider); checker != nil {
 		defer checker.Close(ctx)
 		err := checker.CheckAccess(ctx)
-		results = append(results, BindingAccessResult{Type: "git", Err: err, UserError: syncerr.IsUserError(err)})
+		results = append(results, BindingAccessResult{Type: BindingTypeGit, Err: newError(err)})
 	}
 
 	for _, ds := range src.Datasources {
@@ -56,7 +79,7 @@ func ValidateSourceAccess(ctx context.Context, src *config.Source, provider pkgs
 		}
 		defer checker.Close(ctx)
 		err := checker.CheckAccess(ctx)
-		results = append(results, BindingAccessResult{Type: ds.Type, Name: ds.Name, Err: err, UserError: syncerr.IsUserError(err)})
+		results = append(results, BindingAccessResult{Type: BindingType(ds.Type), Name: ds.Name, Err: newError(err)})
 	}
 
 	return results

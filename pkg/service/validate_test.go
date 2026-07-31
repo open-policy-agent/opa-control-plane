@@ -46,7 +46,7 @@ func TestValidateSourceAccess_Git(t *testing.T) {
 		if len(results) != 1 {
 			t.Fatalf("expected 1 result, got %v", results)
 		}
-		if results[0].Type != "git" || results[0].Err != nil {
+		if results[0].Type != service.BindingTypeGit || results[0].Err != nil {
 			t.Fatalf("expected successful git result, got %+v", results[0])
 		}
 	})
@@ -62,10 +62,10 @@ func TestValidateSourceAccess_Git(t *testing.T) {
 		if len(results) != 1 {
 			t.Fatalf("expected 1 result, got %v", results)
 		}
-		if results[0].Type != "git" || results[0].Err == nil {
+		if results[0].Type != service.BindingTypeGit || results[0].Err == nil {
 			t.Fatalf("expected a git error, got %+v", results[0])
 		}
-		if !results[0].UserError {
+		if !results[0].Err.UserError {
 			t.Fatalf("expected UserError=true for an unreachable repository, got %+v", results[0])
 		}
 	})
@@ -89,7 +89,7 @@ func TestValidateSourceAccess_HTTPDatasource(t *testing.T) {
 		if len(results) != 1 {
 			t.Fatalf("expected 1 result, got %v", results)
 		}
-		if results[0].Type != "http" || results[0].Name != "ds1" || results[0].Err != nil {
+		if results[0].Type != service.BindingTypeHTTP || results[0].Name != "ds1" || results[0].Err != nil {
 			t.Fatalf("expected successful http result, got %+v", results[0])
 		}
 	})
@@ -114,7 +114,7 @@ func TestValidateSourceAccess_HTTPDatasource(t *testing.T) {
 		if results[0].Err == nil {
 			t.Fatalf("expected an error, got %+v", results[0])
 		}
-		if !results[0].UserError {
+		if !results[0].Err.UserError {
 			t.Fatalf("expected UserError=true for a 401 response, got %+v", results[0])
 		}
 	})
