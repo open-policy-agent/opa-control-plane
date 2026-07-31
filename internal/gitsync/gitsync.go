@@ -25,6 +25,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	"github.com/go-git/go-git/v5/storage/memory"
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 
 	"golang.org/x/crypto/ssh"
@@ -154,6 +155,31 @@ func (s *Synchronizer) Execute(ctx context.Context) (map[string]any, error) {
 
 func (s *Synchronizer) SourceName() string {
 	return s.sourceName
+}
+
+// CheckAccess verifies that the configured repository is reachable and that the
+// configured credentials, if any, are valid. It performs a lightweight ls-remote
+// against the repository and does not clone or check out any content.
+func (s *Synchronizer) CheckAccess(ctx context.Context) error {
+	authMethod, err := s.auth(ctx)
+	if err != nil {
+		return err
+	}
+
+	remote := git.NewRemote(memory.NewStorage(), &gitconfig.RemoteConfig{
+		Name: "origin",
+		URLs: []string{s.config.Repo},
+	})
+
+	if _, err := remote.ListContext(ctx, &git.ListOptions{Auth: authMethod}); err != nil {
+		wrapped := fmt.Errorf("source %q: git synchronizer: %v: %w", s.sourceName, s.config.Repo, err)
+		if isGitUserError(err) {
+			return syncerr.UserError{Cause: wrapped}
+		}
+		return wrapped
+	}
+
+	return nil
 }
 
 func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {

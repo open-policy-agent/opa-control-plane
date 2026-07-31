@@ -181,6 +181,69 @@ func (*HttpDataSynchronizer) Close(context.Context) {
 	// No resources to close for HTTP synchronizer
 }
 
+// CheckAccess verifies that the configured HTTP/S3 endpoint is reachable and
+// that the configured credentials, if any, are valid. It always issues a HEAD
+// request, regardless of the configured method/body, so that it never sends
+// the real request payload or triggers side effects of a non-idempotent sync.
+func (s *HttpDataSynchronizer) CheckAccess(ctx context.Context) error {
+	if s.region != "" {
+		return s.checkAccessS3(ctx)
+	}
+	return s.checkAccessHTTP(ctx)
+}
+
+func (s *HttpDataSynchronizer) checkAccessHTTP(ctx context.Context) error {
+	if err := s.initClient(ctx); err != nil {
+		return fmt.Errorf("init client: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, s.url, nil)
+	if err != nil {
+		return err
+	}
+	s.setHeaders(req)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		err := fmt.Errorf("unsuccessful status code %d", resp.StatusCode)
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return syncerr.UserError{Cause: err}
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (s *HttpDataSynchronizer) checkAccessS3(ctx context.Context) error {
+	if err := s.initS3Client(ctx); err != nil {
+		return fmt.Errorf("init S3 client: %w", err)
+	}
+
+	bucket, key, err := parseS3URL(s.url)
+	if err != nil {
+		return fmt.Errorf("parse S3 URL: %w", err)
+	}
+
+	if _, err := s.s3Client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}); err != nil {
+		var httpErr *awshttp.ResponseError
+		if errors.As(err, &httpErr) && httpErr.HTTPStatusCode() >= 400 && httpErr.HTTPStatusCode() < 500 {
+			return syncerr.UserError{Cause: fmt.Errorf("S3 HeadObject: %w", err)}
+		}
+		return fmt.Errorf("S3 HeadObject: %w", err)
+	}
+
+	return nil
+}
+
 func (s *HttpDataSynchronizer) initClient(ctx context.Context) error {
 	if s.client != nil {
 		return nil
