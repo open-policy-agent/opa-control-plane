@@ -142,6 +142,7 @@ func (s *Synchronizer) Execute(ctx context.Context) (map[string]any, error) {
 		if isGitUserError(err) {
 			return nil, syncerr.UserError{Cause: wrapped}
 		}
+		s.metrics.GitSyncServerError(s.sourceName, s.config.Repo)
 		return nil, wrapped
 	}
 	if done {

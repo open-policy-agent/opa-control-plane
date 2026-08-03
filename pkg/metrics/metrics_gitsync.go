@@ -23,6 +23,15 @@ func initGitSyncMetrics(m *Metrics, opts Options) {
 			},
 			[]string{"source", "repo", "state"},
 		)
+
+		m.gitSyncServerError = promauto.With(opts.Registerer).NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: opts.Namespace,
+				Name:      "git_sync_server_error_total",
+				Help:      "Number of git syncs that failed due to a non-user (server/transient) error",
+			},
+			[]string{"source", "repo"},
+		)
 	}
 
 	if !isEnabled(opts.GitSyncDurationEnabled) {
@@ -45,6 +54,16 @@ func (m *Metrics) GitSyncFailed(source string, repo string) {
 		return
 	}
 	m.gitSyncCount.WithLabelValues(source, repo, "FAILED").Inc()
+}
+
+// GitSyncServerError records a git sync failure caused by a non-user
+// (server/transient) error, as opposed to a user misconfiguration. This is a
+// subset of the failures counted by GitSyncFailed.
+func (m *Metrics) GitSyncServerError(source string, repo string) {
+	if m == nil || m.gitSyncServerError == nil {
+		return
+	}
+	m.gitSyncServerError.WithLabelValues(source, repo).Inc()
 }
 
 func (m *Metrics) GitSyncSucceeded(source string, repo string, startTime time.Time) {
