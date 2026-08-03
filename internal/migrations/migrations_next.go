@@ -103,6 +103,23 @@ func addBundlesStatuses(offset int, dialect string) fs.FS {
 	})
 }
 
+// addBundlesStatusesUpdatedAt adds an updated_at column to bundles_statuses so
+// callers can tell when a status last changed.
+func addBundlesStatusesUpdatedAt(offset int, dialect string) fs.FS {
+	var stmtAdd string
+	switch dialect {
+	case "sqlite", "postgresql", "cockroachdb", "mysql":
+		stmtAdd = `ALTER TABLE bundles_statuses ADD updated_at TIMESTAMP`
+	}
+
+	stmtBackfill := `UPDATE bundles_statuses SET updated_at = created_at WHERE updated_at IS NULL`
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_bundles_statuses_updated_at.up.sql", offset):        stmtAdd,
+		fmt.Sprintf("%03d_backfill_bundles_statuses_updated_at.up.sql", offset+1): stmtBackfill,
+	})
+}
+
 // NOTE(sr): We create new tables to drop constraints. It's hard to predict constraint names
 // across MySQL and Postgres if they have not been set up at creation time.
 // NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,

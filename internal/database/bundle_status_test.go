@@ -291,6 +291,10 @@ func TestInsertBundleStatusUpdateExisting(t *testing.T) {
 				id1, err := db.UpsertBundleStatus(ctx, tenant, "bundle-a", "rev-1", PhaseSyncBundle, StatusInProgress, "")
 				require.NoError(t, err)
 
+				first, err := db.GetBundleStatus(ctx, id1)
+				require.NoError(t, err)
+				assert.False(t, first.UpdatedAt.IsZero(), "updated_at should be set on insert")
+
 				// Insert second time with different phase/status - should update existing record
 				id2, err := db.UpsertBundleStatus(ctx, tenant, "bundle-a", "rev-1", PhaseBuildBundle, StatusInProgress, "")
 				require.NoError(t, err)
@@ -303,6 +307,9 @@ func TestInsertBundleStatusUpdateExisting(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, PhaseBuildBundle, status.Phase)
 				assert.Equal(t, StatusInProgress, status.Status)
+				// updated_at must advance on update, while created_at stays fixed.
+				assert.False(t, status.UpdatedAt.Before(first.UpdatedAt), "updated_at should not go backwards on update")
+				assert.Equal(t, first.CreatedAt, status.CreatedAt, "created_at should not change on update")
 			})
 		})
 	}
@@ -389,6 +396,7 @@ func TestGetBundleStatus(t *testing.T) {
 				assert.Equal(t, PhaseSyncBundle, status.Phase)
 				assert.Equal(t, StatusCompleted, status.Status)
 				assert.NotZero(t, status.CreatedAt)
+				assert.NotZero(t, status.UpdatedAt)
 			})
 
 			t.Run("get non-existent status returns ErrNotFound", func(t *testing.T) {

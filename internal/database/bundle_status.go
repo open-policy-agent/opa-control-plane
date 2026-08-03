@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/open-policy-agent/opa-control-plane/pkg/config"
 )
@@ -39,8 +40,12 @@ func (d *Database) UpsertBundleStatus(ctx context.Context, tenant, bundle, revis
 			return fmt.Errorf("error looking up bundle %s: %w", bundle, err)
 		}
 
-		resID, err := d.upsertReturning(ctx, true, true, tx, tenant, "bundles_statuses", []string{"bundle_id", "revision", "phase", "status", "error_message"}, []string{"bundle_id", "revision"},
-			bundleID, revision, phase, status, errMsg)
+		// updated_at is written on every upsert so callers
+		// can tell when a status last changed.
+		now := time.Now().UTC()
+
+		resID, err := d.upsertReturning(ctx, true, true, tx, tenant, "bundles_statuses", []string{"bundle_id", "revision", "phase", "status", "error_message", "updated_at"}, []string{"bundle_id", "revision"},
+			bundleID, revision, phase, status, errMsg, now)
 		if err != nil {
 			return fmt.Errorf("error inserting bundle status: %w", err)
 		}
@@ -107,13 +112,13 @@ func (d *Database) GetBundleStatus(ctx context.Context, id int) (*config.BundleS
 	var s config.BundleStatus
 	err := tx1(ctx, d, func(tx *sql.Tx) error {
 		err := tx.QueryRowContext(ctx,
-			`SELECT id, tenant_id, bundle_id, revision, phase, status, error_message, created_at
+			`SELECT id, tenant_id, bundle_id, revision, phase, status, error_message, created_at, updated_at
 			 FROM bundles_statuses
 			 WHERE id = `+d.arg(0),
 			id,
 		).Scan(
 			&s.ID, &s.TenantID, &s.BundleID, &s.Revision, &s.Phase, &s.Status,
-			&s.ErrorMessage, &s.CreatedAt,
+			&s.ErrorMessage, &s.CreatedAt, &s.UpdatedAt,
 		)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -175,7 +180,7 @@ func (d *Database) ListBundleStatuses(ctx context.Context, principal, tenant, bu
 
 		if revision != "" {
 			query = fmt.Sprintf(
-				`SELECT bundles_statuses.id, tenant_id, bundle_id, revision, phase, status, error_message, created_at
+				`SELECT bundles_statuses.id, tenant_id, bundle_id, revision, phase, status, error_message, created_at, updated_at
 				 FROM bundles_statuses
 				 JOIN tenants ON tenants.id = bundles_statuses.tenant_id
 				 WHERE tenants.name = %s AND bundle_id = %s AND revision = %s
@@ -186,7 +191,7 @@ func (d *Database) ListBundleStatuses(ctx context.Context, principal, tenant, bu
 			args = []any{tenant, bundleID, revision, limit}
 		} else {
 			query = fmt.Sprintf(
-				`SELECT bundles_statuses.id, tenant_id, bundle_id, revision, phase, status, error_message, created_at
+				`SELECT bundles_statuses.id, tenant_id, bundle_id, revision, phase, status, error_message, created_at, updated_at
 				 FROM bundles_statuses
 				 JOIN tenants ON tenants.id = bundles_statuses.tenant_id
 				 WHERE tenants.name = %s AND bundle_id = %s
@@ -207,7 +212,7 @@ func (d *Database) ListBundleStatuses(ctx context.Context, principal, tenant, bu
 			var s config.BundleStatus
 			if err := rows.Scan(
 				&s.ID, &s.TenantID, &s.BundleID, &s.Revision, &s.Phase, &s.Status,
-				&s.ErrorMessage, &s.CreatedAt,
+				&s.ErrorMessage, &s.CreatedAt, &s.UpdatedAt,
 			); err != nil {
 				return fmt.Errorf("error scanning bundle status: %w", err)
 			}
