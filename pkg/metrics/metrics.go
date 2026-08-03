@@ -15,6 +15,7 @@ type Metrics struct {
 	gatherer            prometheus.Gatherer
 	durationHistogram   *prometheus.HistogramVec
 	gitSyncCount        *prometheus.CounterVec
+	gitSyncServerError  *prometheus.CounterVec
 	gitSyncDuration     *prometheus.HistogramVec
 	bundleBuildCount    *prometheus.CounterVec
 	bundleBuildDuration *prometheus.HistogramVec

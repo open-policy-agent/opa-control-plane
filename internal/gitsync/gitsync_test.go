@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,6 +20,9 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/gitsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/syncerr"
+	"github.com/open-policy-agent/opa-control-plane/pkg/metrics"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -164,6 +168,113 @@ func TestGitsyncUserError(t *testing.T) {
 			t.Fatalf("expected a plain error, got a syncerr.UserError: %v", err)
 		}
 	})
+}
+
+// TestGitsyncServerErrorMetric verifies that Execute records the git_sync_server_error_total
+// metric only for non-user (server/transient) failures, while git_sync_count_total{state="FAILED"}
+// counts every failure regardless of classification.
+func TestGitsyncServerErrorMetric(t *testing.T) {
+	const failed = "ocp_git_sync_count_total"
+	const serverError = "ocp_git_sync_server_error_total"
+
+	t.Run("user error does not record a server error", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := metrics.New(metrics.Options{Registerer: reg})
+
+		repo := t.TempDir() + "/does-not-exist"
+		ref := "refs/heads/master"
+		s := gitsync.New(t.TempDir()+"/dst", config.Git{
+			Repo:      repo,
+			Reference: &ref,
+		}, "test-source").WithMetrics(m)
+
+		if _, err := s.Execute(t.Context()); !syncerr.IsUserError(err) {
+			t.Fatalf("expected a syncerr.UserError, got: %v", err)
+		}
+
+		labels := map[string]string{"source": "test-source", "repo": repo}
+		if got := counterValue(t, reg, failed, mergeLabels(labels, "state", "FAILED")); got != 1 {
+			t.Errorf("FAILED count: want 1, got %v", got)
+		}
+		if got := counterValue(t, reg, serverError, labels); got != 0 {
+			t.Errorf("server error count: want 0, got %v", got)
+		}
+	})
+
+	t.Run("server error records both counters", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := metrics.New(metrics.Options{Registerer: reg})
+
+		repo := t.TempDir() + "/testing"
+		repository, err := git.PlainInit(repo, false)
+		if err != nil {
+			t.Fatalf("expected no error while initializing test repository: %v", err)
+		}
+		w, err := repository.Worktree()
+		if err != nil {
+			t.Fatalf("expected no error while getting worktree: %v", err)
+		}
+		if _, err := w.Commit("init", &git.CommitOptions{Author: &object.Signature{}, AllowEmptyCommits: true}); err != nil {
+			t.Fatalf("expected no error while committing changes: %v", err)
+		}
+
+		ref := "refs/heads/does-not-exist"
+		s := gitsync.New(t.TempDir()+"/dst", config.Git{
+			Repo:      repo,
+			Reference: &ref,
+		}, "test-source").WithMetrics(m)
+
+		if _, err := s.Execute(t.Context()); err == nil || syncerr.IsUserError(err) {
+			t.Fatalf("expected a non-user error, got: %v", err)
+		}
+
+		labels := map[string]string{"source": "test-source", "repo": repo}
+		if got := counterValue(t, reg, failed, mergeLabels(labels, "state", "FAILED")); got != 1 {
+			t.Errorf("FAILED count: want 1, got %v", got)
+		}
+		if got := counterValue(t, reg, serverError, labels); got != 1 {
+			t.Errorf("server error count: want 1, got %v", got)
+		}
+	})
+}
+
+func mergeLabels(labels map[string]string, key, value string) map[string]string {
+	out := make(map[string]string, len(labels)+1)
+	maps.Copy(out, labels)
+	out[key] = value
+	return out
+}
+
+func counterValue(t *testing.T, g prometheus.Gatherer, name string, labels map[string]string) float64 {
+	t.Helper()
+	mfs, err := g.Gather()
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	for _, mf := range mfs {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, metric := range mf.GetMetric() {
+			if labelsMatch(metric.GetLabel(), labels) {
+				return metric.GetCounter().GetValue()
+			}
+		}
+	}
+	return 0
+}
+
+func labelsMatch(pairs []*dto.LabelPair, want map[string]string) bool {
+	got := make(map[string]string, len(pairs))
+	for _, p := range pairs {
+		got[p.GetName()] = p.GetValue()
+	}
+	for k, v := range want {
+		if got[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 // TestGitsyncCheckAccess verifies that CheckAccess succeeds against a reachable repository
