@@ -19,6 +19,8 @@ func TestNilMetricsSafe(t *testing.T) {
 	m.GitSyncSucceeded("src", "repo", time.Now())
 	m.BundleBuildFailed("b", "FAILED")
 	m.BundleBuildSucceeded("b", "SUCCESS", time.Now())
+	m.DatabaseQueryFailed("select")
+	m.DatabaseQuerySucceeded("select", time.Now())
 	if m.Handler() == nil {
 		t.Error("Handler() on nil Metrics must return a non-nil fallback")
 	}
@@ -34,14 +36,17 @@ func TestDisable(t *testing.T) {
 		{
 			name: "all subsystems",
 			opts: Options{
-				HTTPEnabled:    boolPtr(false),
-				GitSyncEnabled: boolPtr(false),
-				WorkerEnabled:  boolPtr(false),
+				HTTPEnabled:     boolPtr(false),
+				GitSyncEnabled:  boolPtr(false),
+				WorkerEnabled:   boolPtr(false),
+				DatabaseEnabled: boolPtr(false),
 			},
 			wantNil: []func(*Metrics) bool{
 				func(m *Metrics) bool { return m.durationHistogram == nil },
 				func(m *Metrics) bool { return m.gitSyncCount == nil },
 				func(m *Metrics) bool { return m.bundleBuildCount == nil },
+				func(m *Metrics) bool { return m.databaseQueryCount == nil },
+				func(m *Metrics) bool { return m.databaseQueryDuration == nil },
 			},
 		},
 		{
@@ -52,6 +57,31 @@ func TestDisable(t *testing.T) {
 				func(m *Metrics) bool { return m.gitSyncServerError == nil },
 				func(m *Metrics) bool { return m.gitSyncDuration == nil },
 				func(m *Metrics) bool { return m.durationHistogram != nil }, // others unaffected
+			},
+		},
+		{
+			name: "database subsystem",
+			opts: Options{DatabaseEnabled: boolPtr(false)},
+			wantNil: []func(*Metrics) bool{
+				func(m *Metrics) bool { return m.databaseQueryCount == nil },
+				func(m *Metrics) bool { return m.databaseQueryDuration == nil },
+				func(m *Metrics) bool { return m.durationHistogram != nil }, // others unaffected
+			},
+		},
+		{
+			name: "database query count only",
+			opts: Options{DatabaseQueryCountEnabled: boolPtr(false)},
+			wantNil: []func(*Metrics) bool{
+				func(m *Metrics) bool { return m.databaseQueryCount == nil },
+				func(m *Metrics) bool { return m.databaseQueryDuration != nil },
+			},
+		},
+		{
+			name: "database query duration only",
+			opts: Options{DatabaseQueryDurationEnabled: boolPtr(false)},
+			wantNil: []func(*Metrics) bool{
+				func(m *Metrics) bool { return m.databaseQueryDuration == nil },
+				func(m *Metrics) bool { return m.databaseQueryCount != nil },
 			},
 		},
 	}
@@ -87,6 +117,39 @@ func TestGitSyncRecording(t *testing.T) {
 	}
 }
 
+func TestDatabaseQueryRecording(t *testing.T) {
+	m := New(Options{Registerer: prometheus.NewRegistry()})
+
+	m.DatabaseQueryFailed("insert")
+	m.DatabaseQueryFailed("insert")
+	m.DatabaseQuerySucceeded("select", time.Now())
+
+	if got := testutil.ToFloat64(m.databaseQueryCount.WithLabelValues("insert", "FAILED")); got != 2 {
+		t.Errorf("FAILED count: want 2, got %v", got)
+	}
+	if got := testutil.ToFloat64(m.databaseQueryCount.WithLabelValues("select", "SUCCESS")); got != 1 {
+		t.Errorf("SUCCESS count: want 1, got %v", got)
+	}
+}
+
+func TestDatabaseOperation(t *testing.T) {
+	cases := []struct {
+		sql  string
+		want string
+	}{
+		{"SELECT * FROM t", "select"},
+		{"insert into t values (1)", "insert"},
+		{"  UPDATE t SET x = 1", "update"},
+		{"", "other"},
+		{"WITH cte AS (SELECT 1) SELECT * FROM cte", "other"},
+	}
+	for _, tc := range cases {
+		if got := DatabaseOperation(tc.sql); got != tc.want {
+			t.Errorf("DatabaseOperation(%q) = %q, want %q", tc.sql, got, tc.want)
+		}
+	}
+}
+
 // TestNamespace verifies the fully-qualified metric names are derived from the
 // configured Namespace prefix: the default preserves the historical "ocp_"
 // names, and a custom prefix remaps them.
@@ -102,6 +165,8 @@ func TestNamespace(t *testing.T) {
 			want: []string{
 				"ocp_git_sync_count_total",
 				"ocp_git_sync_duration_seconds",
+				"ocp_database_query_count_total",
+				"ocp_database_query_duration_seconds",
 			},
 		},
 		{
@@ -110,6 +175,8 @@ func TestNamespace(t *testing.T) {
 			want: []string{
 				"build_worker_git_sync_count_total",
 				"build_worker_git_sync_duration_seconds",
+				"build_worker_database_query_count_total",
+				"build_worker_database_query_duration_seconds",
 			},
 		},
 	}
@@ -120,6 +187,7 @@ func TestNamespace(t *testing.T) {
 
 			// Observe once so the vec metric families are emitted by Gather.
 			m.GitSyncSucceeded("s1", "repo1", time.Now())
+			m.DatabaseQuerySucceeded("select", time.Now())
 
 			mfs, err := reg.Gather()
 			if err != nil {

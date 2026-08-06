@@ -122,6 +122,24 @@
       },
       "type": "object"
     },
+    "ConfigDatabaseMetrics": {
+      "additionalProperties": false,
+      "properties": {
+        "database_query_count": {
+          "$ref": "#/definitions/ConfigCounterConfig"
+        },
+        "database_query_duration": {
+          "$ref": "#/definitions/ConfigHistogramConfig"
+        },
+        "enabled": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "ConfigDatasource": {
       "additionalProperties": false,
       "properties": {
@@ -304,6 +322,9 @@
     "ConfigMetricsConfig": {
       "additionalProperties": false,
       "properties": {
+        "database": {
+          "$ref": "#/definitions/ConfigDatabaseMetrics"
+        },
         "enabled": {
           "type": [
             "null",

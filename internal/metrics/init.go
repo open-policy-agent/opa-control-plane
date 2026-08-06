@@ -21,6 +21,7 @@ func Init(cfg *config.MetricsConfig, reg prometheus.Registerer) *pkgmetrics.Metr
 		opts.HTTPEnabled = &disabled
 		opts.GitSyncEnabled = &disabled
 		opts.WorkerEnabled = &disabled
+		opts.DatabaseEnabled = &disabled
 		return pkgmetrics.New(opts)
 	}
 
@@ -47,6 +48,15 @@ func Init(cfg *config.MetricsConfig, reg prometheus.Registerer) *pkgmetrics.Metr
 		if cfg.Worker.BundleBuildDuration != nil {
 			opts.BundleBuildDurationEnabled = cfg.Worker.BundleBuildDuration.Enabled
 			opts.BundleBuildDurationBuckets = cfg.Worker.BundleBuildDuration.GetBuckets()
+		}
+	}
+
+	if cfg.Database != nil {
+		opts.DatabaseEnabled = cfg.Database.Enabled
+		opts.DatabaseQueryCountEnabled = cfg.Database.GetCountEnabled()
+		if cfg.Database.DatabaseQueryDuration != nil {
+			opts.DatabaseQueryDurationEnabled = cfg.Database.DatabaseQueryDuration.Enabled
+			opts.DatabaseQueryDurationBuckets = cfg.Database.DatabaseQueryDuration.GetBuckets()
 		}
 	}
 

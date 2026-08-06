@@ -12,13 +12,15 @@ const DefaultNamespace = "ocp"
 
 // Metrics holds all registered Prometheus collectors.
 type Metrics struct {
-	gatherer            prometheus.Gatherer
-	durationHistogram   *prometheus.HistogramVec
-	gitSyncCount        *prometheus.CounterVec
-	gitSyncServerError  *prometheus.CounterVec
-	gitSyncDuration     *prometheus.HistogramVec
-	bundleBuildCount    *prometheus.CounterVec
-	bundleBuildDuration *prometheus.HistogramVec
+	gatherer              prometheus.Gatherer
+	durationHistogram     *prometheus.HistogramVec
+	gitSyncCount          *prometheus.CounterVec
+	gitSyncDuration       *prometheus.HistogramVec
+	bundleBuildCount      *prometheus.CounterVec
+	bundleBuildDuration   *prometheus.HistogramVec
+	databaseQueryCount    *prometheus.CounterVec
+	databaseQueryDuration *prometheus.HistogramVec
+	gitSyncServerError    *prometheus.CounterVec
 }
 
 // Options configures collector creation and registration.
@@ -42,6 +44,12 @@ type Options struct {
 	BundleBuildCountEnabled    *bool
 	BundleBuildDurationEnabled *bool
 	BundleBuildDurationBuckets []float64
+
+	// Database query metrics.
+	DatabaseEnabled              *bool
+	DatabaseQueryCountEnabled    *bool
+	DatabaseQueryDurationEnabled *bool
+	DatabaseQueryDurationBuckets []float64
 }
 
 // New builds and registers all enabled collectors against opts.Registerer and
@@ -60,6 +68,7 @@ func New(opts Options) *Metrics {
 	initHTTPMetrics(m, opts)
 	initGitSyncMetrics(m, opts)
 	initWorkerMetrics(m, opts)
+	initDatabaseMetrics(m, opts)
 	return m
 }
 
