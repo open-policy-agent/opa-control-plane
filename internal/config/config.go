@@ -603,12 +603,22 @@ type WorkerMetrics struct {
 	_ struct{} `additionalProperties:"false"`
 }
 
+// DatabaseMetrics configures database query metrics.
+type DatabaseMetrics struct {
+	Enabled               *bool            `json:"enabled,omitempty"`
+	DatabaseQueryDuration *HistogramConfig `json:"database_query_duration,omitempty"`
+	DatabaseQueryCount    *CounterConfig   `json:"database_query_count,omitempty"`
+
+	_ struct{} `additionalProperties:"false"`
+}
+
 // MetricsConfig configures Prometheus metrics collection.
 type MetricsConfig struct {
-	Enabled *bool           `json:"enabled,omitempty"`
-	HTTP    *HTTPMetrics    `json:"http,omitempty"`
-	GitSync *GitSyncMetrics `json:"gitsync,omitempty"`
-	Worker  *WorkerMetrics  `json:"worker,omitempty"`
+	Enabled  *bool            `json:"enabled,omitempty"`
+	HTTP     *HTTPMetrics     `json:"http,omitempty"`
+	GitSync  *GitSyncMetrics  `json:"gitsync,omitempty"`
+	Worker   *WorkerMetrics   `json:"worker,omitempty"`
+	Database *DatabaseMetrics `json:"database,omitempty"`
 
 	_ struct{} `additionalProperties:"false"`
 }
@@ -635,4 +645,12 @@ func (w *WorkerMetrics) GetCountEnabled() *bool {
 		return nil
 	}
 	return w.BundleBuildCount.Enabled
+}
+
+// GetCountEnabled returns the Enabled pointer from the counter config, or nil if the receiver is nil.
+func (d *DatabaseMetrics) GetCountEnabled() *bool {
+	if d == nil || d.DatabaseQueryCount == nil {
+		return nil
+	}
+	return d.DatabaseQueryCount.Enabled
 }
