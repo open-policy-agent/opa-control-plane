@@ -145,7 +145,6 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 // indirect
@@ -234,7 +233,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/fsouza/fake-gcs-server v1.55.1
 	github.com/gliderlabs/ssh v0.3.8
-	github.com/go-git/go-git/v5 v5.19.1
+	github.com/go-git/go-git/v5 v5.19.2
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/gobwas/glob v0.2.3
@@ -247,6 +246,7 @@ require (
 	github.com/olekukonko/tablewriter v1.1.4
 	github.com/open-policy-agent/opa v1.18.2
 	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_model v0.6.2
 	github.com/rogpeppe/go-internal v1.15.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/schollz/progressbar/v3 v3.19.1
