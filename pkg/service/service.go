@@ -81,7 +81,8 @@ type BuildState int
 type BuildPhase int
 
 const (
-	BuildStateInternalError BuildState = iota
+	BuildStateUnknown BuildState = iota
+	BuildStateInternalError
 	BuildStateConfigError
 	BuildStateSuccess
 	BuildStateSyncFailed
@@ -89,6 +90,7 @@ const (
 	BuildStateTransformFailed
 	BuildStateBuildFailed
 	BuildStatePushFailed
+	BuildStateCancelled
 )
 
 const (
@@ -100,6 +102,8 @@ const (
 
 func (s BuildState) String() string {
 	switch s {
+	case BuildStateInternalError:
+		return "INTERNAL_ERROR"
 	case BuildStateConfigError:
 		return "CONFIG_ERROR"
 	case BuildStateSuccess:
@@ -114,10 +118,10 @@ func (s BuildState) String() string {
 		return "BUILD_FAILED"
 	case BuildStatePushFailed:
 		return "PUSH_FAILED"
-	case BuildStateInternalError:
-		fallthrough
+	case BuildStateCancelled:
+		return "CANCELLED"
 	default:
-		return "INTERNAL_ERROR"
+		return "UNKNOWN"
 	}
 }
 

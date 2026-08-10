@@ -43,6 +43,7 @@ type BundleWorker struct {
 	log           *logging.Logger
 	bar           *progress.Bar
 	status        Status
+	reported      bool
 	interval      time.Duration
 	database      *database.Database
 	tenant        string
@@ -256,20 +257,13 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 
 func (w *BundleWorker) report(ctx context.Context, state BuildState, phase BuildPhase, revision string, startTime time.Time, err error) time.Time {
 	interval := w.interval
-	w.status.State = state
 	msg := ""
 	if err != nil {
 		interval = errorInterval // faster retry on error
 		msg = err.Error()
-		w.status.Message = msg
 	}
 
-	if w.database != nil {
-		if _, uerr := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name,
-			revision, phase.String(), state.String(), msg); uerr != nil {
-			w.log.Warnf("failed to track bundle status %q: %v", w.bundleConfig.Name, uerr)
-		}
-	}
+	w.writeStatus(ctx, state, phase, revision, msg)
 
 	if state == BuildStateSuccess {
 		w.metrics.BundleBuildSucceeded(w.bundleConfig.Name, state.String(), startTime)
@@ -282,6 +276,25 @@ func (w *BundleWorker) report(ctx context.Context, state BuildState, phase Build
 	}
 
 	return time.Now().Add(interval)
+}
+
+// writeStatus records the worker's current state in memory and, if a database
+// is configured, persists it as a bundle status row.
+//
+// It deliberately skips metrics and the retry interval, which report() drives
+// on top of this. That keeps it safe to call from die() too: a cancelled
+// worker is neither a failed nor a successful build, so it shouldn't affect
+// either.
+func (w *BundleWorker) writeStatus(ctx context.Context, state BuildState, phase BuildPhase, revision string, msg string) {
+	w.status = Status{State: state, Message: msg}
+	w.reported = true
+
+	if w.database != nil {
+		if _, uerr := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name,
+			revision, phase.String(), state.String(), msg); uerr != nil {
+			w.log.Warnf("failed to track bundle status %q: %v", w.bundleConfig.Name, uerr)
+		}
+	}
 }
 
 func (w *BundleWorker) changeConfiguration() {
@@ -302,6 +315,11 @@ func (w *BundleWorker) configurationChanged() bool {
 }
 
 func (w *BundleWorker) die(ctx context.Context) time.Time {
+	if !w.reported {
+		w.writeStatus(ctx, BuildStateCancelled, BuildPhaseSync, database.SentinelRevision,
+			"worker stopped due to a configuration change or shutdown before completing a build iteration")
+	}
+
 	for _, ss := range w.synchronizers {
 		ss.sync.Close(ctx)
 	}
