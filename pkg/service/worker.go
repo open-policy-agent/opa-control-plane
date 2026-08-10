@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"database/sql"
 	"errors"
 	"io/fs"
 	"time"
@@ -267,7 +268,13 @@ func (w *BundleWorker) report(ctx context.Context, state BuildState, phase Build
 	if w.database != nil {
 		if _, uerr := w.database.UpsertBundleStatus(ctx, w.tenant, w.bundleConfig.Name,
 			revision, phase.String(), state.String(), msg); uerr != nil {
-			w.log.Warnf("failed to track bundle status %q: %v", w.bundleConfig.Name, uerr)
+			if errors.Is(uerr, sql.ErrNoRows) {
+				// The bundle was deleted concurrently (e.g. by another process sharing
+				// the database) while this run was in flight; there's no status to track.
+				w.log.Debugf("failed to track bundle status %q: %v", w.bundleConfig.Name, uerr)
+			} else {
+				w.log.Warnf("failed to track bundle status %q: %v", w.bundleConfig.Name, uerr)
+			}
 		}
 	}
 
