@@ -77,13 +77,25 @@ func (s *Source) Wipe() error {
 	return nil
 }
 
+var vcsExcludes = []string{
+	".git",       // checkout metadata directory
+	".git/**",    // its contents
+	"**/.git",    // submodule metadata, at any depth
+	"**/.git/**", // and its contents
+}
+
 func (s *Source) AddDir(d Dir) error {
 	// We record the Dir struct because we need to know whether we can Wipe().
 	// `os.DirFS()` does not read anything until it's used, so it's OK to alter
 	// the underlying OS filesystem via Wipe() or when applying the `Transforms`.
 	s.dirs = append(s.dirs, d)
 
-	f, err := ocp_fs.NewFilterFS(os.DirFS(d.Path), d.IncludedFiles, d.ExcludedFiles)
+	excluded := d.ExcludedFiles
+	if d.ExcludeVCS {
+		excluded = slices.Concat(excluded, vcsExcludes)
+	}
+
+	f, err := ocp_fs.NewFilterFS(os.DirFS(d.Path), d.IncludedFiles, excluded)
 	if err != nil {
 		return err
 	}
@@ -162,6 +174,7 @@ type Dir struct {
 	Wipe          bool     // bit indicates if worker should delete directory before synchronization
 	IncludedFiles []string // inclusion filter on files to load from path
 	ExcludedFiles []string // exclusion filter on files to skip from path
+	ExcludeVCS    bool     // drop version control metadata
 }
 
 type Builder struct {

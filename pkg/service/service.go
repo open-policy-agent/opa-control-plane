@@ -589,12 +589,13 @@ func newSource(name string) *source {
 	}
 }
 
-func (src *source) addDir(dir string, wipe bool, includedFiles []string, excludedFiles []string) {
+func (src *source) addDir(dir string, wipe bool, includedFiles []string, excludedFiles []string, excludeVCS bool) {
 	_ = src.Source.AddDir(builder.Dir{
 		Path:          filepath.ToSlash(dir),
 		Wipe:          wipe,
 		IncludedFiles: includedFiles,
 		ExcludedFiles: excludedFiles,
+		ExcludeVCS:    excludeVCS,
 	})
 }
 
@@ -608,7 +609,7 @@ func (src *source) SyncGit(syncs *[]sourceSynchronizer, sourceName string, git c
 		if git.Path != nil {
 			srcDir = join(srcDir, *git.Path)
 		}
-		src.addDir(srcDir, false, git.IncludedFiles, git.ExcludedFiles)
+		src.addDir(srcDir, false, git.IncludedFiles, git.ExcludedFiles, true)
 		if reqCommit != "" {
 			git.Commit = &reqCommit
 		}
@@ -683,7 +684,7 @@ func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName strin
 		}
 	}
 	if len(datasources) > 0 {
-		src.addDir(dir, true, nil, nil)
+		src.addDir(dir, true, nil, nil, false)
 	}
 	return src
 }
@@ -698,7 +699,7 @@ func (src *source) SyncSourceSQL(syncs *[]sourceSynchronizer, sourceID int64, na
 		sourceName: name,
 		sourceType: "sql",
 	})
-	src.addDir(dir, true, nil, nil)
+	src.addDir(dir, true, nil, nil, false)
 	return src
 }
 
