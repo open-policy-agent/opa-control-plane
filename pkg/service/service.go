@@ -334,6 +334,7 @@ func (s *Service) initDB(ctx context.Context) error {
 		WithLogger(s.log).
 		WithMigrate(s.migrateDB).
 		WithAuthorizer(s.authorizer).
+		WithMetrics(s.metrics).
 		Run(ctx)
 	if err != nil {
 		return err

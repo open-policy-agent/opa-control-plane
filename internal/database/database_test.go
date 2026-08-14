@@ -9,6 +9,7 @@ import (
 
 	"github.com/achille-roussel/sqlrange"
 	"github.com/google/go-cmp/cmp"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/testcontainers/testcontainers-go"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
@@ -16,6 +17,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
+	"github.com/open-policy-agent/opa-control-plane/pkg/metrics"
 )
 
 const tenant = "default"
@@ -1149,6 +1151,59 @@ func TestNewFromDB_NilDB(t *testing.T) {
 	_, err := database.NewFromDB(nil, "sqlite3")
 	if err == nil {
 		t.Fatal("expected error for nil db")
+	}
+}
+
+// TestMigratorWithMetrics guards against a regression where metrics attached
+// via Migrator.WithMetrics never reach the *database.Database that Run
+// returns: Run constructs its own database.New() internally and, without
+// this option, had no way to carry metrics through to it. sqlite is skipped
+// because the sqlite path intentionally bypasses connector instrumentation
+// (see instrumentConnector's callers).
+func TestMigratorWithMetrics(t *testing.T) {
+	ctx := t.Context()
+	for databaseType, databaseConfig := range dbs.Configs(t) {
+		if strings.HasPrefix(databaseType, "sqlite") {
+			continue
+		}
+		t.Run(databaseType, func(t *testing.T) {
+			t.Parallel()
+			var ctr testcontainers.Container
+			if databaseConfig.Setup != nil {
+				ctr = databaseConfig.Setup(t)
+				t.Cleanup(databaseConfig.Cleanup(t, ctr))
+			}
+
+			reg := prometheus.NewRegistry()
+			m := metrics.New(metrics.Options{Registerer: reg})
+
+			db, err := migrations.New().
+				WithConfig(databaseConfig.Database(t, ctr).Database).
+				WithLogger(logging.NewLogger(logging.Config{Level: logging.LevelDebug})).
+				WithMigrate(true).
+				WithMetrics(m).
+				Run(ctx)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			t.Cleanup(db.CloseDB)
+
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
+				t.Fatal(err)
+			}
+
+			mfs, err := reg.Gather()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, mf := range mfs {
+				if mf.GetName() == "ocp_database_query_count_total" {
+					return
+				}
+			}
+			t.Fatalf("expected ocp_database_query_count_total to be recorded against the registerer "+
+				"passed to Migrator.WithMetrics; got families: %v", mfs)
+		})
 	}
 }
 
