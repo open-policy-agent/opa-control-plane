@@ -25,6 +25,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
+	"github.com/open-policy-agent/opa-control-plane/pkg/metrics"
 )
 
 const (
@@ -53,6 +54,7 @@ type Migrator struct {
 	log        *logging.Logger
 	migrate    bool
 	authorizer ext_authz.Authorizer
+	metrics    *metrics.Metrics
 }
 
 func New() *Migrator {
@@ -61,6 +63,13 @@ func New() *Migrator {
 
 func (m *Migrator) WithConfig(db *config.Database) *Migrator {
 	m.config = db
+	return m
+}
+
+// WithMetrics enables per-query database metrics on the *database.Database
+// this Migrator returns from Run. Pass nil to disable (the default).
+func (m *Migrator) WithMetrics(metrics *metrics.Metrics) *Migrator {
+	m.metrics = metrics
 	return m
 }
 
@@ -85,6 +94,9 @@ func (m *Migrator) Run(ctx context.Context) (*database.Database, error) {
 	db := database.New().WithConfig(m.config).WithLogger(m.log)
 	if m.authorizer != nil {
 		db = db.WithAuthorizer(m.authorizer)
+	}
+	if m.metrics != nil {
+		db = db.WithMetrics(m.metrics)
 	}
 	if err := db.InitDB(ctx); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
