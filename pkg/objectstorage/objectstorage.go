@@ -29,3 +29,15 @@ type ObjectStorage interface {
 	// Download retrieves a bundle artifact from object storage.
 	Download(ctx context.Context) (io.Reader, error)
 }
+
+// VersionedObjectStorage is an optional capability an ObjectStorage
+// implementation may provide. Callers can check for it via a type assertion;
+// implementations that can't answer this cheaply (without building the
+// bundle first) should simply not implement it.
+type VersionedObjectStorage interface {
+	// LatestRevision returns the revision recorded for the most recently
+	// stored bundle matching opts.Tenant/opts.Name, without requiring the
+	// caller to build the bundle first. It returns "" if no such bundle
+	// exists yet, or the backend can't determine its revision cheaply.
+	LatestRevision(ctx context.Context, opts UploadOptions) (string, error)
+}

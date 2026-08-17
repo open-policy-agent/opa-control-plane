@@ -26,10 +26,12 @@ import (
 )
 
 var (
-	_ ext_os.ObjectStorage = (*AmazonS3)(nil)
-	_ ext_os.ObjectStorage = (*GCPCloudStorage)(nil)
-	_ ext_os.ObjectStorage = (*AzureBlobStorage)(nil)
-	_ ext_os.ObjectStorage = (*FileSystemStorage)(nil)
+	_ ext_os.ObjectStorage          = (*AmazonS3)(nil)
+	_ ext_os.ObjectStorage          = (*GCPCloudStorage)(nil)
+	_ ext_os.ObjectStorage          = (*AzureBlobStorage)(nil)
+	_ ext_os.ObjectStorage          = (*FileSystemStorage)(nil)
+	_ ext_os.VersionedObjectStorage = (*AmazonS3)(nil)
+	_ ext_os.VersionedObjectStorage = (*GCPCloudStorage)(nil)
 )
 
 type (
@@ -279,6 +281,24 @@ func (s *AmazonS3) check(ctx context.Context, body io.Reader) ([]byte, bool, err
 	return digest, output.Metadata["sha256"] == hex.EncodeToString(digest), nil
 }
 
+// LatestRevision returns the revision recorded on the currently stored
+// object's metadata, without downloading or hashing its content.
+func (s *AmazonS3) LatestRevision(ctx context.Context, _ ext_os.UploadOptions) (string, error) {
+	output, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(s.key),
+	})
+	if err != nil {
+		var noKey *types.NoSuchKey
+		var notFound *types.NotFound
+		if errors.As(err, &noKey) || errors.As(err, &notFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	return output.Metadata["revision"], nil
+}
+
 func (s *GCPCloudStorage) Upload(ctx context.Context, body io.ReadSeeker, opts ext_os.UploadOptions) error {
 	digest, equal, err := s.check(ctx, body)
 	if err != nil {
@@ -329,6 +349,19 @@ func (s *GCPCloudStorage) check(ctx context.Context, body io.Reader) ([]byte, bo
 	}
 
 	return digest, attrs.Metadata["sha256"] == hex.EncodeToString(digest), nil
+}
+
+// LatestRevision returns the revision recorded on the currently stored
+// object's metadata, without downloading or hashing its content.
+func (s *GCPCloudStorage) LatestRevision(ctx context.Context, _ ext_os.UploadOptions) (string, error) {
+	attrs, err := s.client.Bucket(s.bucket).Object(s.object).Attrs(ctx)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	return attrs.Metadata["revision"], nil
 }
 
 func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker, opts ext_os.UploadOptions) error {

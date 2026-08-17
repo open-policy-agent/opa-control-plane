@@ -184,6 +184,36 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		}
 	}
 
+	_, needsBundleHash, err := extractRevisionRefs(w.bundleConfig.Revision)
+	if err != nil {
+		w.log.Warnf("failed to parse revision expression for bundle %q: %v", w.bundleConfig.Name, err)
+		return w.report(ctx, BuildStateConfigError, BuildPhaseSync, database.SentinelRevision, startTime, err)
+	}
+
+	// If the revision doesn't depend on the built bundle's own content hash,
+	// it can be resolved from sync metadata alone, before transform/build run.
+	// In that case, ask the storage backend (if it supports answering this
+	// cheaply) whether a bundle with this revision is already the latest one
+	// stored; if so, skip the rest of this iteration entirely.
+	if !needsBundleHash && w.storage != nil {
+		if vs, ok := w.storage.(ext_os.VersionedObjectStorage); ok {
+			earlyRevision, err := resolveRevision(ctx, w.bundleConfig.Revision, sourceMetadata, "")
+			if err != nil {
+				w.log.Warnf("failed to resolve revision for bundle %q: %v", w.bundleConfig.Name, err)
+				return w.report(ctx, BuildStateConfigError, BuildPhaseSync, database.SentinelRevision, startTime, err)
+			}
+			if earlyRevision != "" {
+				latest, err := vs.LatestRevision(ctx, ext_os.UploadOptions{Tenant: w.tenant, Name: w.bundleConfig.Name})
+				if err != nil {
+					w.log.Warnf("failed to look up latest revision for bundle %q: %v", w.bundleConfig.Name, err)
+				} else if latest != "" && latest == earlyRevision {
+					w.log.Debugf("Bundle %q revision %q already up to date, skipping build.", w.bundleConfig.Name, earlyRevision)
+					return w.report(ctx, BuildStateSuccess, BuildPhasePush, earlyRevision, startTime, nil)
+				}
+			}
+		}
+	}
+
 	for _, src := range w.sources {
 		buf, err := src.Transform(ctx)
 		if buf != nil && buf.Len() > 0 {
@@ -196,8 +226,6 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	}
 
 	buffer := bytes.NewBuffer(nil)
-
-	_, needsBundleHash, _ := extractRevisionRefs(w.bundleConfig.Revision)
 
 	var resolvedRevision string
 	b := builder.New().
