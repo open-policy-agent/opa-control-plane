@@ -132,11 +132,21 @@ func cloneRepo(t *testing.T, upstream, name string) string {
 	return dir
 }
 
+func metadataFiles(excludeVCS bool) []string {
+	if excludeVCS {
+		return gitsync.MetadataFiles
+	}
+	return nil
+}
+
 func buildRevision(t *testing.T, dir string, excludeVCS bool) string {
 	t.Helper()
 
 	src := builder.NewSource("test_src")
-	if err := src.AddDir(builder.Dir{Path: filepath.ToSlash(dir), ExcludeVCS: excludeVCS}); err != nil {
+	if err := src.AddDir(builder.Dir{
+		Path:                  filepath.ToSlash(dir),
+		ExcludedMetadataFiles: metadataFiles(excludeVCS),
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -163,7 +173,10 @@ func hashedFiles(t *testing.T, dir string, excludeVCS bool) []string {
 	t.Helper()
 
 	src := builder.NewSource("test_src")
-	if err := src.AddDir(builder.Dir{Path: filepath.ToSlash(dir), ExcludeVCS: excludeVCS}); err != nil {
+	if err := src.AddDir(builder.Dir{
+		Path:                  filepath.ToSlash(dir),
+		ExcludedMetadataFiles: metadataFiles(excludeVCS),
+	}); err != nil {
 		t.Fatal(err)
 	}
 

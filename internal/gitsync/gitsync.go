@@ -41,6 +41,15 @@ import (
 // bundle builder.
 const configFile = "ocpconfig"
 
+// MetadataFiles are glob patterns matching git's own bookkeeping inside a
+// checkout.
+var MetadataFiles = []string{
+	".git",       // metadata directory, or a gitfile pointing at one
+	".git/**",    // its contents
+	"**/.git",    // nested metadata, at any depth
+	"**/.git/**", // and its contents
+}
+
 func init() {
 	// For Azure DevOps compatibility. More details: https://github.com/go-git/go-git/issues/64
 	transport.UnsupportedCapabilities = []capability.Capability{
