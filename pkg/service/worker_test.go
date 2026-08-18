@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
@@ -12,7 +15,25 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
 	"github.com/open-policy-agent/opa-control-plane/internal/syncerr"
 	"github.com/open-policy-agent/opa-control-plane/internal/test/dbs"
+	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
+	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 )
+
+// newTestSource builds a minimal builder.Source backed by a temp directory
+// containing a single data file, sufficient for BundleWorker.Execute to run
+// a real build.
+func newTestSource(t *testing.T) *builder.Source {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{"a":1}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := builder.NewSource("test-source")
+	if err := src.AddDir(builder.Dir{Path: dir}); err != nil {
+		t.Fatal(err)
+	}
+	return src
+}
 
 type fakeSynchronizer struct {
 	err error
@@ -215,4 +236,185 @@ func TestBundleWorkerExecute_SyncFailurePersisted(t *testing.T) {
 	if status.Revision != database.SentinelRevision {
 		t.Fatalf("expected sentinel revision %q, got %q", database.SentinelRevision, status.Revision)
 	}
+}
+
+// fakeStorage is a plain ext_os.ObjectStorage that records how many times
+// Upload was called, without implementing VersionedObjectStorage.
+type fakeStorage struct {
+	uploads int
+}
+
+func (f *fakeStorage) Upload(context.Context, io.ReadSeeker, ext_os.UploadOptions) error {
+	f.uploads++
+	return nil
+}
+
+func (*fakeStorage) Download(context.Context) (io.Reader, error) {
+	return nil, errors.New("not implemented")
+}
+
+// fakeVersionedStorage additionally implements VersionedObjectStorage, so
+// BundleWorker.Execute can attempt the early-skip path against it.
+type fakeVersionedStorage struct {
+	fakeStorage
+	latestRevision string
+	latestErr      error
+	latestCalls    int
+}
+
+func (f *fakeVersionedStorage) LatestRevision(context.Context, ext_os.UploadOptions) (string, error) {
+	f.latestCalls++
+	return f.latestRevision, f.latestErr
+}
+
+// TestBundleWorkerExecute_EarlySkip verifies the early-skip path added to
+// Execute: when the bundle's revision expression doesn't depend on the
+// built bundle's content hash, and the storage backend reports that
+// revision as already the latest stored one, Execute should short-circuit
+// before ever calling Upload.
+func TestBundleWorkerExecute_EarlySkip(t *testing.T) {
+	t.Run("skips build and upload when resolved revision already matches", func(t *testing.T) {
+		storage := &fakeVersionedStorage{latestRevision: "rev-1"}
+
+		worker := NewBundleWorker(t.TempDir(), &config.Bundle{
+			Name:     "test_bundle",
+			Revision: `"rev-1"`,
+		}, nil, nil, logging.NewLogger(logging.Config{}), progress.New(true, 1, "test")).
+			WithSingleShot(true).
+			WithStorage(storage)
+
+		worker.Execute(t.Context())
+
+		if storage.latestCalls != 1 {
+			t.Fatalf("expected LatestRevision to be called once, got %d", storage.latestCalls)
+		}
+		if storage.uploads != 0 {
+			t.Fatalf("expected Upload to be skipped, got %d calls", storage.uploads)
+		}
+		if worker.status.State != BuildStateSuccess {
+			t.Fatalf("expected state %v, got %v", BuildStateSuccess, worker.status.State)
+		}
+	})
+
+	t.Run("builds and uploads when resolved revision differs from latest stored", func(t *testing.T) {
+		storage := &fakeVersionedStorage{latestRevision: "rev-old"}
+
+		worker := NewBundleWorker(t.TempDir(), &config.Bundle{
+			Name:     "test_bundle",
+			Revision: `"rev-new"`,
+		}, nil, nil, logging.NewLogger(logging.Config{}), progress.New(true, 1, "test")).
+			WithSingleShot(true).
+			WithSources([]*builder.Source{newTestSource(t)}).
+			WithStorage(storage)
+
+		worker.Execute(t.Context())
+
+		if storage.latestCalls != 1 {
+			t.Fatalf("expected LatestRevision to be called once, got %d", storage.latestCalls)
+		}
+		if storage.uploads != 1 {
+			t.Fatalf("expected Upload to be called once, got %d", storage.uploads)
+		}
+		if worker.status.State != BuildStateSuccess {
+			t.Fatalf("expected state %v, got %v", BuildStateSuccess, worker.status.State)
+		}
+	})
+
+	t.Run("builds and uploads when no stored revision exists yet", func(t *testing.T) {
+		storage := &fakeVersionedStorage{latestRevision: ""}
+
+		worker := NewBundleWorker(t.TempDir(), &config.Bundle{
+			Name:     "test_bundle",
+			Revision: `"rev-new"`,
+		}, nil, nil, logging.NewLogger(logging.Config{}), progress.New(true, 1, "test")).
+			WithSingleShot(true).
+			WithSources([]*builder.Source{newTestSource(t)}).
+			WithStorage(storage)
+
+		worker.Execute(t.Context())
+
+		if storage.uploads != 1 {
+			t.Fatalf("expected Upload to be called once, got %d", storage.uploads)
+		}
+	})
+
+	t.Run("proceeds through normal build when LatestRevision errors", func(t *testing.T) {
+		storage := &fakeVersionedStorage{latestErr: errors.New("head object failed")}
+
+		worker := NewBundleWorker(t.TempDir(), &config.Bundle{
+			Name:     "test_bundle",
+			Revision: `"rev-new"`,
+		}, nil, nil, logging.NewLogger(logging.Config{}), progress.New(true, 1, "test")).
+			WithSingleShot(true).
+			WithSources([]*builder.Source{newTestSource(t)}).
+			WithStorage(storage)
+
+		worker.Execute(t.Context())
+
+		if storage.uploads != 1 {
+			t.Fatalf("expected Upload to be called once despite LatestRevision error, got %d", storage.uploads)
+		}
+		if worker.status.State != BuildStateSuccess {
+			t.Fatalf("expected state %v, got %v", BuildStateSuccess, worker.status.State)
+		}
+	})
+
+	t.Run("does not attempt early skip when storage doesn't implement VersionedObjectStorage", func(t *testing.T) {
+		storage := &fakeStorage{}
+
+		worker := NewBundleWorker(t.TempDir(), &config.Bundle{
+			Name:     "test_bundle",
+			Revision: `"rev-new"`,
+		}, nil, nil, logging.NewLogger(logging.Config{}), progress.New(true, 1, "test")).
+			WithSingleShot(true).
+			WithSources([]*builder.Source{newTestSource(t)}).
+			WithStorage(storage)
+
+		worker.Execute(t.Context())
+
+		if storage.uploads != 1 {
+			t.Fatalf("expected Upload to be called once, got %d", storage.uploads)
+		}
+	})
+
+	t.Run("does not attempt early skip when revision depends on bundle content hash", func(t *testing.T) {
+		storage := &fakeVersionedStorage{latestRevision: "should-be-ignored"}
+
+		worker := NewBundleWorker(t.TempDir(), &config.Bundle{
+			Name:     "test_bundle",
+			Revision: `input.bundle.hash`,
+		}, nil, nil, logging.NewLogger(logging.Config{}), progress.New(true, 1, "test")).
+			WithSingleShot(true).
+			WithSources([]*builder.Source{newTestSource(t)}).
+			WithStorage(storage)
+
+		worker.Execute(t.Context())
+
+		if storage.latestCalls != 0 {
+			t.Fatalf("expected LatestRevision not to be called, got %d calls", storage.latestCalls)
+		}
+		if storage.uploads != 1 {
+			t.Fatalf("expected Upload to be called once, got %d", storage.uploads)
+		}
+	})
+
+	t.Run("reports config error when revision expression is invalid", func(t *testing.T) {
+		storage := &fakeVersionedStorage{}
+
+		worker := NewBundleWorker(t.TempDir(), &config.Bundle{
+			Name:     "test_bundle",
+			Revision: "not a valid {{{ rego",
+		}, nil, nil, logging.NewLogger(logging.Config{}), progress.New(true, 1, "test")).
+			WithSingleShot(true).
+			WithStorage(storage)
+
+		worker.Execute(t.Context())
+
+		if worker.status.State != BuildStateConfigError {
+			t.Fatalf("expected state %v, got %v", BuildStateConfigError, worker.status.State)
+		}
+		if storage.uploads != 0 || storage.latestCalls != 0 {
+			t.Fatalf("expected no storage interaction, got uploads=%d latestCalls=%d", storage.uploads, storage.latestCalls)
+		}
+	})
 }
