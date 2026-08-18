@@ -83,7 +83,9 @@ func (s *Source) AddDir(d Dir) error {
 	// the underlying OS filesystem via Wipe() or when applying the `Transforms`.
 	s.dirs = append(s.dirs, d)
 
-	f, err := ocp_fs.NewFilterFS(os.DirFS(d.Path), d.IncludedFiles, d.ExcludedFiles)
+	excluded := slices.Concat(d.ExcludedFiles, d.ExcludedMetadataFiles)
+
+	f, err := ocp_fs.NewFilterFS(os.DirFS(d.Path), d.IncludedFiles, excluded)
 	if err != nil {
 		return err
 	}
@@ -158,10 +160,11 @@ func (s *Source) Transform(ctx context.Context) (*bytes.Buffer, error) {
 }
 
 type Dir struct {
-	Path          string   // local fs path to source files
-	Wipe          bool     // bit indicates if worker should delete directory before synchronization
-	IncludedFiles []string // inclusion filter on files to load from path
-	ExcludedFiles []string // exclusion filter on files to skip from path
+	Path                  string   // local fs path to source files
+	Wipe                  bool     // bit indicates if worker should delete directory before synchronization
+	IncludedFiles         []string // inclusion filter on files to load from path
+	ExcludedFiles         []string // exclusion filter on files to skip from path
+	ExcludedMetadataFiles []string // excludes files that exist in the directory but are not part of its source content (eg. git checkout's .git)
 }
 
 type Builder struct {
