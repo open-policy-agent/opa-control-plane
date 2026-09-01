@@ -202,7 +202,7 @@ func (d *Database) ListBundleStatuses(ctx context.Context, principal, tenant, bu
 			args = []any{tenant, bundleID, limit}
 		}
 
-		rows, err := tx.Query(query, args...)
+		rows, err := tx.QueryContext(ctx, query, args...)
 		if err != nil {
 			return err
 		}

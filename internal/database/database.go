@@ -529,7 +529,7 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 			return zero, false, fmt.Errorf("lookup source name %s: %w", sourceName, err)
 		}
 
-		rows, err := tx.Query(fmt.Sprintf(`SELECT
+		rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT
 	data
 FROM
 	sources_data
@@ -607,7 +607,7 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 			return fmt.Errorf("lookup source name %s: %w", sourceName, err)
 		}
 
-		_, err = tx.Exec(fmt.Sprintf(`DELETE FROM sources_data WHERE source_id = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
+		_, err = tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM sources_data WHERE source_id = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
 		return err
 	})
 }
@@ -802,7 +802,7 @@ LEFT JOIN
     sources ON bundles_requirements.source_id = sources.id
 `, bundles)
 
-		rows, err := txn.Query(query, args...)
+		rows, err := txn.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, "", err
 		}
@@ -1095,7 +1095,7 @@ LEFT JOIN
 WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type IS NULL)
 `, sources)
 
-		rows, err := txn.Query(query, args...)
+		rows, err := txn.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, "", err
 		}
@@ -1226,7 +1226,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 
 		// Load datasources for each source.
 
-		rows2, err := txn.Query(`SELECT
+		rows2, err := txn.QueryContext(ctx, `SELECT
 		sources_datasources.name,
 		sources.name,
 		sources_datasources.path,
@@ -1366,7 +1366,7 @@ func (d *Database) ListSecrets(ctx context.Context, principal, tenant string, op
 			args = append(args, opts.Limit)
 		}
 
-		rows, err := txn.Query(query, args...)
+		rows, err := txn.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, "", err
 		}
@@ -1485,7 +1485,7 @@ LEFT JOIN
 LEFT JOIN
 	sources ON sources.id = stacks_requirements.source_id
 `, stacks)
-		rows, err := txn.Query(query, args...)
+		rows, err := txn.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, "", err
 		}
