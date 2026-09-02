@@ -10,15 +10,15 @@ import (
 
 type FilterFS struct {
 	fs       fs.FS
-	included []glob.Glob // List of file patterns to include
-	excluded []glob.Glob // List of file patterns to exclude (overrides includes)
+	included []*glob.Pattern // List of file patterns to include
+	excluded []*glob.Pattern // List of file patterns to exclude (overrides includes)
 }
 
 type filteredDir struct {
 	d        fs.ReadDirFile
 	path     string
-	included []glob.Glob
-	excluded []glob.Glob
+	included []*glob.Pattern
+	excluded []*glob.Pattern
 }
 
 // NewFilterFS takes an fs.FS instance and lists of glob strings to be included and excluded.
@@ -119,16 +119,16 @@ func (d *filteredDir) Read(bs []byte) (int, error) {
 	return d.d.Read(bs)
 }
 
-func isExcluded(excluded []glob.Glob, name string) bool {
+func isExcluded(excluded []*glob.Pattern, name string) bool {
 	name = filepath.ToSlash(filepath.Clean(name))
-	return slices.ContainsFunc(excluded, func(g glob.Glob) bool {
+	return slices.ContainsFunc(excluded, func(g *glob.Pattern) bool {
 		return g.Match(name)
 	})
 }
 
-func isIncluded(included []glob.Glob, name string) bool {
+func isIncluded(included []*glob.Pattern, name string) bool {
 	name = filepath.ToSlash(filepath.Clean(name))
-	return len(included) == 0 || slices.ContainsFunc(included, func(g glob.Glob) bool {
+	return len(included) == 0 || slices.ContainsFunc(included, func(g *glob.Pattern) bool {
 		return g.Match(name)
 	})
 }
