@@ -120,6 +120,44 @@ func addBundlesStatusesUpdatedAt(offset int, dialect string) fs.FS {
 	})
 }
 
+// addBundlesStatusesBundleIDIndex indexes bundles_statuses by bundle_id.
+//
+// Every lookup of a bundle's statuses filters on bundle_id, either directly
+// (ListBundleStatuses, and the two DELETEs UpsertBundleStatus runs to drop the
+// pre-revision sentinel row and to enforce the retention limit) or via the
+// ON DELETE CASCADE from bundles. None of them could use an index: the only
+// candidate was UNIQUE(tenant_id, bundle_id, revision), whose leading column is
+// tenant_id, so each of those statements scanned the table instead -- a delete
+// of a single bundle was reading hundreds of rows.
+//
+// tenant_id is stored in the index rather than left out because deleting a row
+// also means removing its entry from UNIQUE(tenant_id, bundle_id, revision),
+// which needs the tenant_id; storing it here avoids a second lookup against the
+// primary index to fetch it. Dialects spell that differently, and SQLite and
+// MySQL have no equivalent -- MySQL gets tenant_id as a trailing key column,
+// which covers the same reads, and SQLite is dev/test only.
+func addBundlesStatusesBundleIDIndex(offset int, dialect string) fs.FS {
+	var stmt string
+	switch dialect {
+	case "cockroachdb":
+		stmt = `CREATE INDEX bundles_statuses_bundle_id_revision_idx
+			ON bundles_statuses (bundle_id, revision) STORING (tenant_id)`
+	case "postgresql":
+		stmt = `CREATE INDEX bundles_statuses_bundle_id_revision_idx
+			ON bundles_statuses (bundle_id, revision) INCLUDE (tenant_id)`
+	case "mysql":
+		stmt = `CREATE INDEX bundles_statuses_bundle_id_revision_idx
+			ON bundles_statuses (bundle_id, revision, tenant_id)`
+	case "sqlite":
+		stmt = `CREATE INDEX bundles_statuses_bundle_id_revision_idx
+			ON bundles_statuses (bundle_id, revision)`
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_bundles_statuses_bundle_id_index.up.sql", offset): stmt,
+	})
+}
+
 // NOTE(sr): We create new tables to drop constraints. It's hard to predict constraint names
 // across MySQL and Postgres if they have not been set up at creation time.
 // NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,
