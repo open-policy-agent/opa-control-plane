@@ -312,11 +312,11 @@ func (a Stacks) Equal(b Stacks) bool {
 
 type Selector struct {
 	s map[string]StringSet
-	m map[string][]glob.Glob // Pre-compiled glob patterns for faster matching
+	m map[string][]*glob.Pattern // Pre-compiled glob patterns for faster matching
 }
 
 func MustNewSelector(s map[string]StringSet) Selector {
-	ss := Selector{s: make(map[string]StringSet), m: make(map[string][]glob.Glob)}
+	ss := Selector{s: make(map[string]StringSet), m: make(map[string][]*glob.Pattern)}
 	for key, value := range s {
 		if err := ss.Set(key, value); err != nil {
 			panic(err)
@@ -330,7 +330,7 @@ func MustNewSelector(s map[string]StringSet) Selector {
 func (s *Selector) Matches(labels Labels) bool {
 	for expLabel, expValues := range s.m {
 		v, ok := labels[expLabel]
-		if !ok || (len(expValues) > 0 && !slices.ContainsFunc(expValues, func(ev glob.Glob) bool { return ev.Match(v) })) {
+		if !ok || (len(expValues) > 0 && !slices.ContainsFunc(expValues, func(ev *glob.Pattern) bool { return ev.Match(v) })) {
 			return false
 		}
 	}
@@ -390,7 +390,7 @@ func (s *Selector) UnmarshalJSON(bs []byte) error {
 }
 
 func (s *Selector) unmarshal(raw map[string][]string) error {
-	*s = Selector{s: make(map[string]StringSet), m: make(map[string][]glob.Glob)}
+	*s = Selector{s: make(map[string]StringSet), m: make(map[string][]*glob.Pattern)}
 	for key, encodedValue := range raw {
 		if err := s.Set(key, encodedValue); err != nil {
 			return err
@@ -422,7 +422,7 @@ func (s *Selector) Set(key string, value []string) error {
 			s.m[key] = append(s.m[key], g)
 		}
 	} else {
-		s.m[key] = []glob.Glob{}
+		s.m[key] = []*glob.Pattern{}
 	}
 
 	s.s[key] = value
@@ -436,7 +436,7 @@ func (s *Selector) Len() int {
 func (s *Selector) init() {
 	if s.s == nil {
 		s.s = make(map[string]StringSet)
-		s.m = make(map[string][]glob.Glob)
+		s.m = make(map[string][]*glob.Pattern)
 	}
 }
 

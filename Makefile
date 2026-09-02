@@ -30,6 +30,19 @@ LDFLAGS := "-s"
 
 GOLANGCI_LINT_VERSION := v2.9.0
 
+# golangci-lint runs in a container that has no Go caches of its own, so it
+# re-downloads and re-type-checks every dependency on each run. Share the host
+# caches with it to keep the run inside the linter's own timeout.
+GOMODCACHE ?= $(shell go env GOMODCACHE 2>/dev/null)
+LINT_CACHE := $(shell pwd)/.go/lint-cache
+
+LINT_DOCKER_FLAGS := -v $(shell pwd):/app:ro,Z -w /app \
+        -v $(LINT_CACHE)/build:/lint-cache/build:Z -e GOCACHE=/lint-cache/build \
+        -v $(LINT_CACHE)/golangci:/lint-cache/golangci:Z -e GOLANGCI_LINT_CACHE=/lint-cache/golangci
+ifneq ($(GOMODCACHE),)
+LINT_DOCKER_FLAGS += -v $(GOMODCACHE):/go/pkg/mod:Z -e GOMODCACHE=/go/pkg/mod
+endif
+
 DOCKER_RUNNING ?= $(shell docker ps >/dev/null 2>&1 && echo 1 || echo 0)
 
 # Get current git SHA and add -dirty if there are uncommitted changes
@@ -170,7 +183,8 @@ clean:
 .PHONY: check
 check:
 ifeq ($(DOCKER_RUNNING), 1)
-	docker run --rm -v $(shell pwd):/app:ro,Z -w /app golangci/golangci-lint:${GOLANGCI_LINT_VERSION} golangci-lint run -v
+	@mkdir -p $(LINT_CACHE)/build $(LINT_CACHE)/golangci
+	docker run --rm $(LINT_DOCKER_FLAGS) golangci/golangci-lint:${GOLANGCI_LINT_VERSION} golangci-lint run -v
 else
 	@echo "Docker not installed or running. Skipping golangci run."
 endif
