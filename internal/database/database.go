@@ -1224,11 +1224,19 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			return nil, "", err
 		}
 
-		// Load datasources for each source.
+		// Load datasources for the sources selected above, matched by source id.
 
-		rows2, err := txn.QueryContext(ctx, `SELECT
+		if len(idMap) > 0 {
+			dsArgs := make([]any, 0, len(idMap))
+			byID := make(map[int64]*config.Source, len(idMap))
+			for name, id := range idMap {
+				dsArgs = append(dsArgs, id)
+				byID[id] = srcMap[name]
+			}
+
+			rows2, err := txn.QueryContext(ctx, `SELECT
 		sources_datasources.name,
-		sources.name,
+		sources_datasources.source_id,
 		sources_datasources.path,
 		sources_datasources.type,
 		sources_datasources.config,
@@ -1240,52 +1248,52 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 		sources_datasources
 	LEFT JOIN
 		secrets ON sources_datasources.secret_id = secrets.id
-	LEFT JOIN
-		sources ON sources_datasources.source_id = sources.id
-	`)
-		if err != nil {
-			return nil, "", err
-		}
-
-		defer rows2.Close()
-
-		for rows2.Next() {
-			var name, source_name, path, type_, configuration, transformQuery string
-			var credentialsName, secretName, secretValue sql.NullString
-			if err := rows2.Scan(&name, &source_name, &path, &type_, &configuration, &transformQuery, &credentialsName, &secretName, &secretValue); err != nil {
+	WHERE sources_datasources.source_id IN (`+strings.Join(d.args(len(dsArgs)), ", ")+`)
+	`, dsArgs...)
+			if err != nil {
 				return nil, "", err
 			}
 
-			datasource := config.Datasource{
-				Name:           name,
-				Type:           type_,
-				Path:           path,
-				TransformQuery: transformQuery,
-			}
+			defer rows2.Close()
 
-			if err := json.Unmarshal([]byte(configuration), &datasource.Config); err != nil {
-				return nil, "", err
-			}
-
-			if secretName.Valid && secretValue.Valid {
-				s := config.Secret{Name: secretName.String}
-				if err := json.Unmarshal([]byte(secretValue.String), &s.Value); err != nil {
+			for rows2.Next() {
+				var sourceID int64
+				var name, path, type_, configuration, transformQuery string
+				var credentialsName, secretName, secretValue sql.NullString
+				if err := rows2.Scan(&name, &sourceID, &path, &type_, &configuration, &transformQuery, &credentialsName, &secretName, &secretValue); err != nil {
 					return nil, "", err
 				}
-				datasource.Credentials = s.Ref()
-			} else if credentialsName.Valid {
-				// Secret not in DB but credential name preserved — will be resolved by secret provider at sync time
-				s := config.Secret{Name: credentialsName.String}
-				datasource.Credentials = s.Ref()
-			}
 
-			src, ok := srcMap[source_name]
-			if ok {
-				src.Datasources = append(src.Datasources, datasource)
+				datasource := config.Datasource{
+					Name:           name,
+					Type:           type_,
+					Path:           path,
+					TransformQuery: transformQuery,
+				}
+
+				if err := json.Unmarshal([]byte(configuration), &datasource.Config); err != nil {
+					return nil, "", err
+				}
+
+				if secretName.Valid && secretValue.Valid {
+					s := config.Secret{Name: secretName.String}
+					if err := json.Unmarshal([]byte(secretValue.String), &s.Value); err != nil {
+						return nil, "", err
+					}
+					datasource.Credentials = s.Ref()
+				} else if credentialsName.Valid {
+					// Secret not in DB but credential name preserved — will be resolved by secret provider at sync time
+					s := config.Secret{Name: credentialsName.String}
+					datasource.Credentials = s.Ref()
+				}
+
+				if src, ok := byID[sourceID]; ok {
+					src.Datasources = append(src.Datasources, datasource)
+				}
 			}
-		}
-		if err := rows2.Err(); err != nil {
-			return nil, "", err
+			if err := rows2.Err(); err != nil {
+				return nil, "", err
+			}
 		}
 
 		sl := slices.Collect(maps.Values(srcMap))
