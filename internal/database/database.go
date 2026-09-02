@@ -2111,9 +2111,13 @@ func (d *Database) upsertReturning(ctx context.Context, returning, returningLast
 				return int(id), nil
 			}
 
+			// Filter on the tenant too: rows are only unique within one, so
+			// without it a same-named row in another tenant matches just as
+			// well, and the caller goes on to write that tenant's rows.
 			var id int
-			query = fmt.Sprintf("SELECT %[1]s.id FROM %[1]s JOIN tenants ON tenants.id = %[1]s.tenant_id AND %[1]s.%[2]s = %[3]s", table, primaryKey[0], d.arg(0))
-			return id, tx.QueryRowContext(ctx, query, values[0]).Scan(&id)
+			query = fmt.Sprintf("SELECT %[1]s.id FROM %[1]s JOIN tenants ON tenants.id = %[1]s.tenant_id WHERE %[1]s.%[2]s = %[3]s AND tenants.name = %[4]s",
+				table, primaryKey[0], d.arg(0), d.arg(1))
+			return id, tx.QueryRowContext(ctx, query, values[0], tenant).Scan(&id)
 		}
 		var id int
 		query += " RETURNING id"
