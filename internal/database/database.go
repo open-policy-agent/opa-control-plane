@@ -1073,29 +1073,7 @@ WHERE (` + conditions + ") AND tenants.name = " + d.arg(len(args))
 			args = append(args, opts.Limit)
 		}
 
-		query := fmt.Sprintf(`SELECT
-	sources.*,
-	secrets.name AS secret_name,
-	sources_secrets.ref_type,
-	secrets.value,
-	required_sources.name,
-	sources_requirements.gitcommit,
-	sources_requirements.path,
-	sources_requirements.prefix,
-	sources_requirements.options
-FROM (%s) AS sources
-LEFT JOIN
-	sources_secrets ON sources.id = sources_secrets.source_id
-LEFT JOIN
-	secrets ON sources_secrets.secret_id = secrets.id
-LEFT JOIN
-	sources_requirements ON sources.id = sources_requirements.source_id
-LEFT JOIN
-    sources AS required_sources ON required_sources.id = sources_requirements.requirement_id
-WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type IS NULL)
-`, sources)
-
-		rows, err := txn.QueryContext(ctx, query, args...)
+		rows, err := txn.QueryContext(ctx, sources, args...)
 		if err != nil {
 			return nil, "", err
 		}
@@ -1108,10 +1086,6 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			repo                                             string
 			ref, gitCommit, path, includePaths, excludePaths *string
 			gitCredentialsName                               *string
-			secretName, secretRefType, secretValue           *string
-			requirementName, requirementCommit               *string
-			reqPath, reqPrefix                               sql.Null[string]
-			reqOpts                                          sql.Null[string] // JSON
 		}
 
 		srcMap := make(map[string]*config.Source)
@@ -1130,90 +1104,46 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 				&row.includePaths,
 				&row.excludePaths,
 				&row.gitCredentialsName,
-				&row.secretName,
-				&row.secretRefType,
-				&row.secretValue,
-				&row.requirementName,
-				&row.requirementCommit,
-				&row.reqPath,
-				&row.reqPrefix,
-				&row.reqOpts,
 			); err != nil {
 				return nil, "", err
 			}
 
-			src, exists := srcMap[row.sourceName]
-			if !exists {
-				src = &config.Source{
-					ID:      row.id,
-					Name:    row.sourceName,
-					Builtin: row.builtin,
-					Git: config.Git{
-						Repo: row.repo,
-					},
-				}
-				srcMap[row.sourceName] = src
-				idMap[row.sourceName] = row.id
+			src := &config.Source{
+				ID:      row.id,
+				Name:    row.sourceName,
+				Builtin: row.builtin,
+				Git: config.Git{
+					Repo: row.repo,
+				},
+			}
+			srcMap[row.sourceName] = src
+			idMap[row.sourceName] = row.id
 
-				if row.ref != nil {
-					src.Git.Reference = row.ref
+			if row.ref != nil {
+				src.Git.Reference = row.ref
+			}
+			if row.gitCommit != nil {
+				src.Git.Commit = row.gitCommit
+			}
+			if row.path != nil {
+				src.Git.Path = row.path
+			}
+			if row.includePaths != nil {
+				if err := json.Unmarshal([]byte(*row.includePaths), &src.Git.IncludedFiles); err != nil {
+					return nil, "", fmt.Errorf("failed to unmarshal include paths for %q: %w", src.Name, err)
 				}
-				if row.gitCommit != nil {
-					src.Git.Commit = row.gitCommit
-				}
-				if row.path != nil {
-					src.Git.Path = row.path
-				}
-				if row.includePaths != nil {
-					if err := json.Unmarshal([]byte(*row.includePaths), &src.Git.IncludedFiles); err != nil {
-						return nil, "", fmt.Errorf("failed to unmarshal include paths for %q: %w", src.Name, err)
-					}
-				}
-				if row.excludePaths != nil {
-					if err := json.Unmarshal([]byte(*row.excludePaths), &src.Git.ExcludedFiles); err != nil {
-						return nil, "", fmt.Errorf("failed to unmarshal exclude paths for %q: %w", src.Name, err)
-					}
+			}
+			if row.excludePaths != nil {
+				if err := json.Unmarshal([]byte(*row.excludePaths), &src.Git.ExcludedFiles); err != nil {
+					return nil, "", fmt.Errorf("failed to unmarshal exclude paths for %q: %w", src.Name, err)
 				}
 			}
 
-			if row.secretRefType != nil && *row.secretRefType == "git_credentials" && row.secretName != nil {
-				s := config.Secret{Name: *row.secretName}
-				if row.secretValue != nil {
-					if err := json.Unmarshal([]byte(*row.secretValue), &s.Value); err != nil {
-						return nil, "", err
-					}
-				}
-				src.Git.Credentials = s.Ref()
-			} else if row.gitCredentialsName != nil {
+			// A row in sources_secrets takes precedence over this, and overwrites
+			// it below if one exists.
+			if row.gitCredentialsName != nil {
 				s := config.Secret{Name: *row.gitCredentialsName}
 				src.Git.Credentials = s.Ref()
-			}
-
-			if row.requirementName != nil {
-				var automount *bool
-				if row.reqOpts.Valid {
-					var m map[string]any
-					if err := json.Unmarshal([]byte(row.reqOpts.V), &m); err != nil {
-						return nil, "", fmt.Errorf("failed to unmarshal options for requirement %s of source %s: %w", *row.requirementName, row.sourceName, err)
-					}
-					if am, ok := m["automount"]; ok {
-						if am, ok := am.(bool); ok {
-							automount = &am
-							delete(m, "automount")
-						}
-					}
-					if len(m) > 0 {
-						return nil, "", fmt.Errorf("unknown options for requirement %s of source %s: %v", *row.requirementName, row.sourceName, m)
-					}
-
-				}
-				src.Requirements = append(src.Requirements, config.Requirement{
-					Source:    row.requirementName,
-					Git:       config.GitRequirement{Commit: row.requirementCommit},
-					Path:      row.reqPath.V,
-					Prefix:    row.reqPrefix.V,
-					AutoMount: automount,
-				})
 			}
 
 			if row.id > last {
@@ -1224,16 +1154,125 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			return nil, "", err
 		}
 
-		// Load datasources for the sources selected above, matched by source id.
+		// The remaining attributes hang off the sources selected above, matched by
+		// source id. Each is its own statement rather than a join: the ids are
+		// literals here, so the planner can seek on the leading primary-key column
+		// instead of estimating how many rows the source query returns and falling
+		// back to a hash join over the whole table.
 
-		if len(idMap) > 0 {
-			dsArgs := make([]any, 0, len(idMap))
-			byID := make(map[int64]*config.Source, len(idMap))
-			for name, id := range idMap {
-				dsArgs = append(dsArgs, id)
-				byID[id] = srcMap[name]
+		var srcArgs []any
+		byID := make(map[int64]*config.Source, len(idMap))
+		for name, id := range idMap {
+			srcArgs = append(srcArgs, id)
+			byID[id] = srcMap[name]
+		}
+		idList := strings.Join(d.args(len(srcArgs)), ", ")
+
+		if len(srcArgs) > 0 {
+			rowsSecrets, err := txn.QueryContext(ctx, `SELECT
+		sources_secrets.source_id,
+		secrets.name,
+		secrets.value
+	FROM sources_secrets
+	JOIN secrets ON sources_secrets.secret_id = secrets.id
+	WHERE sources_secrets.ref_type = 'git_credentials'
+	  AND sources_secrets.source_id IN (`+idList+`)
+	`, srcArgs...)
+			if err != nil {
+				return nil, "", err
+			}
+			defer rowsSecrets.Close()
+
+			for rowsSecrets.Next() {
+				var sourceID int64
+				var secretName string
+				var secretValue *string
+				if err := rowsSecrets.Scan(&sourceID, &secretName, &secretValue); err != nil {
+					return nil, "", err
+				}
+
+				src, ok := byID[sourceID]
+				if !ok {
+					continue
+				}
+
+				s := config.Secret{Name: secretName}
+				if secretValue != nil {
+					if err := json.Unmarshal([]byte(*secretValue), &s.Value); err != nil {
+						return nil, "", err
+					}
+				}
+				src.Git.Credentials = s.Ref()
+			}
+			if err := rowsSecrets.Err(); err != nil {
+				return nil, "", err
 			}
 
+			rowsReqs, err := txn.QueryContext(ctx, `SELECT
+		sources_requirements.source_id,
+		required_sources.name,
+		sources_requirements.gitcommit,
+		sources_requirements.path,
+		sources_requirements.prefix,
+		sources_requirements.options
+	FROM sources_requirements
+	JOIN sources AS required_sources ON required_sources.id = sources_requirements.requirement_id
+	WHERE sources_requirements.source_id IN (`+idList+`)
+	ORDER BY sources_requirements.source_id, sources_requirements.requirement_id
+	`, srcArgs...)
+			if err != nil {
+				return nil, "", err
+			}
+			defer rowsReqs.Close()
+
+			for rowsReqs.Next() {
+				var sourceID int64
+				var requirementName string
+				var requirementCommit *string
+				var reqPath, reqPrefix sql.Null[string]
+				var reqOpts sql.Null[string] // JSON
+				if err := rowsReqs.Scan(&sourceID, &requirementName, &requirementCommit, &reqPath, &reqPrefix, &reqOpts); err != nil {
+					return nil, "", err
+				}
+
+				src, ok := byID[sourceID]
+				if !ok {
+					continue
+				}
+
+				var automount *bool
+				if reqOpts.Valid {
+					var m map[string]any
+					if err := json.Unmarshal([]byte(reqOpts.V), &m); err != nil {
+						return nil, "", fmt.Errorf("failed to unmarshal options for requirement %s of source %s: %w", requirementName, src.Name, err)
+					}
+					if am, ok := m["automount"]; ok {
+						if am, ok := am.(bool); ok {
+							automount = &am
+							delete(m, "automount")
+						}
+					}
+					if len(m) > 0 {
+						return nil, "", fmt.Errorf("unknown options for requirement %s of source %s: %v", requirementName, src.Name, m)
+					}
+				}
+
+				src.Requirements = append(src.Requirements, config.Requirement{
+					Source:    &requirementName,
+					Git:       config.GitRequirement{Commit: requirementCommit},
+					Path:      reqPath.V,
+					Prefix:    reqPrefix.V,
+					AutoMount: automount,
+				})
+			}
+			if err := rowsReqs.Err(); err != nil {
+				return nil, "", err
+			}
+		}
+
+		// Load datasources for the sources selected above, matched by source id.
+
+		if len(srcArgs) > 0 {
 			rows2, err := txn.QueryContext(ctx, `SELECT
 		sources_datasources.name,
 		sources_datasources.source_id,
@@ -1248,8 +1287,8 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 		sources_datasources
 	LEFT JOIN
 		secrets ON sources_datasources.secret_id = secrets.id
-	WHERE sources_datasources.source_id IN (`+strings.Join(d.args(len(dsArgs)), ", ")+`)
-	`, dsArgs...)
+	WHERE sources_datasources.source_id IN (`+idList+`)
+	`, srcArgs...)
 			if err != nil {
 				return nil, "", err
 			}
