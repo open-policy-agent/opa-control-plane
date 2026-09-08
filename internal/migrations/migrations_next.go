@@ -120,6 +120,45 @@ func addBundlesStatusesUpdatedAt(offset int, dialect string) fs.FS {
 	})
 }
 
+// addSourcesTenantIDIndex covers the columns ListSources selects, so listing a
+// tenant's sources doesn't have to go back to the primary index per row.
+//
+// ListSources (and GetSource, which is a list with the name pinned) selects
+// every source column but tenant_id. The only index it can use is
+// UNIQUE(tenant_id, name), which holds just those two columns plus the primary
+// key, so the planner seeks it for the tenant and then joins back to the
+// primary index for the rest -- once per row. In production that statement
+// averaged 128 rows read to return a source.
+//
+// The key is tenant_id alone rather than (tenant_id, name): a secondary index
+// implicitly carries the primary key, so this orders as (tenant_id, id), which
+// is exactly the WHERE tenant_id = ? ... ORDER BY sources.id that the query
+// asks for. Adding name in front would order by name instead and leave the sort
+// to be done separately.
+//
+// Only CockroachDB and PostgreSQL get the covering columns; MySQL stores these
+// as TEXT, which can't go in an index key without a prefix length, and SQLite
+// has no equivalent of STORING. Both keep UNIQUE(tenant_id, name) for the seek
+// and pay the lookup, which is what they do today.
+func addSourcesTenantIDIndex(offset int, dialect string) fs.FS {
+	const covering = `name, builtin, repo, ref, gitcommit, path,
+		git_included_files, git_excluded_files, git_credentials_name`
+
+	var stmt string
+	switch dialect {
+	case "cockroachdb":
+		stmt = `CREATE INDEX sources_tenant_id_idx ON sources (tenant_id) STORING (` + covering + `)`
+	case "postgresql":
+		stmt = `CREATE INDEX sources_tenant_id_idx ON sources (tenant_id) INCLUDE (` + covering + `)`
+	case "mysql", "sqlite":
+		stmt = `CREATE INDEX sources_tenant_id_idx ON sources (tenant_id)`
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_sources_tenant_id_index.up.sql", offset): stmt,
+	})
+}
+
 // NOTE(sr): We create new tables to drop constraints. It's hard to predict constraint names
 // across MySQL and Postgres if they have not been set up at creation time.
 // NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,
