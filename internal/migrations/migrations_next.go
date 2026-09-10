@@ -120,6 +120,76 @@ func addBundlesStatusesUpdatedAt(offset int, dialect string) fs.FS {
 	})
 }
 
+// fixDatasourcesPrimaryKey widens the primary key of sources_datasources from
+// (source_id, name) to (source_id, name, path). Without "path" in the key,
+// two datasources sharing the same "name" but different "path" values collapse
+// into a single row on upsert, silently dropping one of them. Since none of our
+// dialects support altering a primary key in place, we recreate the table with
+// the new key, copy the data across, and drop the old table.
+//
+// For postgresql, mysql and sqlite, all four steps run as a single migration
+// wrapped in one transaction, so a failure partway through leaves the database
+// unchanged instead of stuck with the table renamed away but not yet recreated.
+//
+// CockroachDB is the exception: its async schema changer rejects DML (our
+// INSERT ... SELECT copy) against a table that was created earlier in the same
+// transaction, so for that dialect the four steps remain separate migrations
+// (each auto-committed on its own) instead of one multi-statement transaction.
+func fixDatasourcesPrimaryKey(offset int, dialect string) fs.FS {
+	var kind int
+	switch dialect {
+	case "postgresql":
+		kind = postgres
+	case "mysql":
+		kind = mysql
+	case "sqlite":
+		kind = sqlite
+	case "cockroachdb":
+		kind = cockroachdb
+	}
+
+	newTbl := createSQLTable("sources_datasources").
+		WithIteration("ocp_v2_pkfix"). // distinct from "ocp_v2" to avoid clashing with the old table's constraint names while both exist during the migration
+		VarCharNonNullColumn("name").
+		IntegerNonNullColumn("source_id").
+		IntegerColumn("secret_id"). // optional
+		TextNonNullColumn("type").
+		VarCharNonNullColumn("path"). // part of the primary key; needs a bounded length for MySQL
+		TextNonNullColumn("config").
+		TextNonNullColumn("transform_query").
+		TextColumn("credentials_name").
+		PrimaryKey("source_id", "name", "path").
+		ForeignKey("secret_id", "secrets(id)").
+		ForeignKey("source_id", "sources(id)")
+
+	const oldName = "sources_datasources_old"
+	cols := "name, source_id, secret_id, type, path, config, transform_query, credentials_name"
+
+	renameStmt := "ALTER TABLE sources_datasources RENAME TO " + oldName
+	createStmt := strings.TrimRight(newTbl.SQL(kind), ";")
+	copyStmt := fmt.Sprintf(`INSERT INTO sources_datasources (%[1]s) SELECT %[1]s FROM %[2]s`, cols, oldName)
+	dropStmt := "DROP TABLE " + oldName
+
+	if kind == cockroachdb {
+		return ocp_fs.MapFS(map[string]string{
+			fmt.Sprintf("%03d_fix_datasources_primary_key_rename.up.sql", offset):   renameStmt,
+			fmt.Sprintf("%03d_fix_datasources_primary_key_create.up.sql", offset+1): createStmt,
+			fmt.Sprintf("%03d_fix_datasources_primary_key_copy.up.sql", offset+2):   copyStmt,
+			fmt.Sprintf("%03d_fix_datasources_primary_key_drop.up.sql", offset+3):   dropStmt,
+		})
+	}
+
+	stmts := []string{renameStmt, createStmt, copyStmt, dropStmt}
+	if kind != sqlite { // sqlite's migrate driver already wraps each migration file in its own transaction
+		stmts = append([]string{"BEGIN"}, stmts...)
+		stmts = append(stmts, "COMMIT")
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_fix_datasources_primary_key.up.sql", offset): strings.Join(stmts, "; "),
+	})
+}
+
 // addSourcesProviders adds the table for sources' `providers:` entries.
 // Entries are keyed by name within their source; config holds the entry's
 // own (non-reserved) keys as JSON.

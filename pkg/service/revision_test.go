@@ -474,6 +474,24 @@ func TestResolveRevision(t *testing.T) {
 			want: "bracket-hash",
 		},
 		{
+			// Regression test for datasources sharing a name but having different
+			// paths (see #416): the worker nests their metadata one level deeper,
+			// keyed by path, instead of one overwriting the other.
+			name:     "http datasources sharing a name disambiguated by path",
+			revision: `$"{substring(input.sources.data.http.duplicate.a.hash, 0, 8)}-{substring(input.sources.data.http.duplicate.b.hash, 0, 8)}"`,
+			sourceMetadata: map[string]map[string]any{
+				"data": {
+					"http": map[string]any{
+						"duplicate": map[string]any{
+							"a": map[string]any{"hash": "aaaaaaaa1111"},
+							"b": map[string]any{"hash": "bbbbbbbb2222"},
+						},
+					},
+				},
+			},
+			want: "aaaaaaaa-bbbbbbbb",
+		},
+		{
 			name:       "input.bundle.hash resolves to provided hash",
 			revision:   `input.bundle.hash`,
 			bundleHash: "abc123def456",

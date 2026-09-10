@@ -45,8 +45,9 @@ func Migrations(dialect string) (fs.FS, error) {
 		addDatasourcesCredentialsName(24, dialect),
 		addSourcesGitCredentialsName(25, dialect),
 		addBundlesStatuses(26, dialect),
-		addBundlesStatusesUpdatedAt(27, dialect),
-		addSourcesProviders(29, dialect),
+		addBundlesStatusesUpdatedAt(27, dialect), // adds 2, next is 29.
+		addSourcesProviders(29, dialect),         // adds 1, next is 30.
+		fixDatasourcesPrimaryKey(30, dialect),    // adds 4 for cockroachdb, 1 otherwise; next is 34.
 	), nil
 }
 
