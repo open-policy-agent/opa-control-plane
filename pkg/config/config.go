@@ -707,8 +707,12 @@ func (d *Datasource) Equal(other *Datasource) bool {
 	})
 }
 
+// datasourceKey uniquely identifies a Datasource within a Source: Name alone is not
+// unique, since multiple datasources may share a Name as long as their Path differs.
+type datasourceKey struct{ name, path string }
+
 func (a Datasources) Equal(b Datasources) bool {
-	return internalutil.SetEqual(a, b, func(ds Datasource) string { return ds.Name }, func(a, b Datasource) bool { return a.Equal(&b) })
+	return internalutil.SetEqual(a, b, func(ds Datasource) datasourceKey { return datasourceKey{ds.Name, ds.Path} }, func(a, b Datasource) bool { return a.Equal(&b) })
 }
 
 // DatabaseConfig configures the OCP database connection.
