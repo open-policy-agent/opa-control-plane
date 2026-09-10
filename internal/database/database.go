@@ -512,10 +512,6 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 ) func(*sql.Tx) (T, bool, error) {
 	return func(tx *sql.Tx) (T, bool, error) {
 		var zero T
-		if err := d.resourceExists(ctx, tx, tenant, "sources", sourceName); err != nil {
-			return zero, false, err
-		}
-
 		ad := d.accessFactory().WithPrincipal(principal).WithTenant(tenant).WithResource("sources").WithPermission("sources.data.read").WithName(sourceName)
 		expr, err := d.authorizer.Partial(ctx, ad, nil)
 		if err != nil {
@@ -524,9 +520,9 @@ func sourcesDataGet[T any](ctx context.Context, d *Database, sourceName, path st
 
 		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
 
-		args[0], err = d.lookupID(ctx, tx, tenant, "sources", sourceName)
+		args[0], err = d.lookupExistingID(ctx, tx, tenant, "sources", sourceName)
 		if err != nil {
-			return zero, false, fmt.Errorf("lookup source name %s: %w", sourceName, err)
+			return zero, false, err
 		}
 
 		rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT
@@ -563,19 +559,15 @@ func (d *Database) SourcesDataPut(ctx context.Context, sourceName, path string, 
 
 func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, data any, principal, tenant string) func(*sql.Tx) error {
 	return func(tx *sql.Tx) error {
-		if err := d.resourceExists(ctx, tx, tenant, "sources", sourceName); err != nil {
-			return err
-		}
-
 		ad := d.accessFactory().WithPrincipal(principal).WithTenant(tenant).WithResource("sources").WithPermission("sources.data.write").WithName(sourceName)
 		allowed := d.authorizer.Check(ctx, tx, d.arg, ad)
 		if !allowed {
 			return errors.New("unauthorized")
 		}
 
-		sourceID, err := d.lookupID(ctx, tx, tenant, "sources", sourceName)
+		sourceID, err := d.lookupExistingID(ctx, tx, tenant, "sources", sourceName)
 		if err != nil {
-			return fmt.Errorf("lookup source %s: %w", sourceName, err)
+			return err
 		}
 
 		bs, err := json.Marshal(data)
@@ -590,10 +582,6 @@ func (d *Database) sourcesDataPut(ctx context.Context, sourceName, path string, 
 func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path string, principal, tenant string) error {
 	path = filepath.ToSlash(path)
 	return tx1(ctx, d, func(tx *sql.Tx) error {
-		if err := d.resourceExists(ctx, tx, tenant, "sources", sourceName); err != nil {
-			return err
-		}
-
 		ad := d.accessFactory().WithPrincipal(principal).WithTenant(tenant).WithResource("sources").WithPermission("sources.data.write").WithName(sourceName)
 		expr, err := d.authorizer.Partial(ctx, ad, nil)
 		if err != nil {
@@ -602,9 +590,9 @@ func (d *Database) SourcesDataDelete(ctx context.Context, sourceName, path strin
 
 		conditions, args := expr.SQL(d.arg, []any{sourceName, path})
 
-		args[0], err = d.lookupID(ctx, tx, tenant, "sources", sourceName)
+		args[0], err = d.lookupExistingID(ctx, tx, tenant, "sources", sourceName)
 		if err != nil {
-			return fmt.Errorf("lookup source name %s: %w", sourceName, err)
+			return err
 		}
 
 		_, err = tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM sources_data WHERE source_id = %s AND path = %s AND (`+conditions+")", d.arg(0), d.arg(1)), args...)
@@ -706,12 +694,9 @@ func (d *Database) GetBundle(ctx context.Context, principal, tenant, name string
 
 func (d *Database) DeleteBundle(ctx context.Context, principal, tenant, name string) error {
 	return tx1(ctx, d, func(tx *sql.Tx) error {
-		if err := d.prepareDelete(ctx, tx, principal, tenant, "bundles", name, "bundles.manage"); err != nil {
-			return err
-		}
-		id, err := d.lookupID(ctx, tx, tenant, "bundles", name)
+		id, err := d.prepareDelete(ctx, tx, principal, tenant, "bundles", name, "bundles.manage")
 		if err != nil {
-			return fmt.Errorf("lookup bundle %s: %w", name, err)
+			return err
 		}
 		if err := d.delete(ctx, tx, "bundles_secrets", "bundle_id", id); err != nil {
 			return err
@@ -999,12 +984,9 @@ func (d *Database) GetSource(ctx context.Context, principal, tenant, name string
 
 func (d *Database) DeleteSource(ctx context.Context, principal, tenant, name string) error {
 	return tx1(ctx, d, func(tx *sql.Tx) error {
-		if err := d.prepareDelete(ctx, tx, principal, tenant, "sources", name, "sources.manage"); err != nil {
-			return err
-		}
-		id, err := d.lookupID(ctx, tx, tenant, "sources", name)
+		id, err := d.prepareDelete(ctx, tx, principal, tenant, "sources", name, "sources.manage")
 		if err != nil {
-			return fmt.Errorf("lookup source %s: %w", name, err)
+			return err
 		}
 
 		// NB(sr): We do not clean out stacks_requirements and bundles_requirements:
@@ -1326,13 +1308,9 @@ func (d *Database) GetSecret(ctx context.Context, principal, tenant, name string
 
 func (d *Database) DeleteSecret(ctx context.Context, principal, tenant, name string) error {
 	return tx1(ctx, d, func(tx *sql.Tx) error {
-		if err := d.prepareDelete(ctx, tx, principal, tenant, "secrets", name, "secrets.manage"); err != nil {
-			return err
-		}
-
-		id, err := d.lookupID(ctx, tx, tenant, "secrets", name)
+		id, err := d.prepareDelete(ctx, tx, principal, tenant, "secrets", name, "secrets.manage")
 		if err != nil {
-			return fmt.Errorf("lookup secret %s: %w", name, err)
+			return err
 		}
 		return d.delete(ctx, tx, "secrets", "id", id)
 	})
@@ -1424,12 +1402,9 @@ func (d *Database) GetStack(ctx context.Context, principal, tenant, name string)
 
 func (d *Database) DeleteStack(ctx context.Context, principal, tenant, name string) error {
 	return tx1(ctx, d, func(tx *sql.Tx) error {
-		if err := d.prepareDelete(ctx, tx, principal, tenant, "stacks", name, "stacks.manage"); err != nil {
-			return err
-		}
-		id, err := d.lookupID(ctx, tx, tenant, "stacks", name)
+		id, err := d.prepareDelete(ctx, tx, principal, tenant, "stacks", name, "stacks.manage")
 		if err != nil {
-			return fmt.Errorf("lookup stack %s: %w", name, err)
+			return err
 		}
 
 		if err := d.delete(ctx, tx, "stacks_requirements", "stack_id", id); err != nil {
@@ -1988,14 +1963,22 @@ func (d *Database) prepareUpsert(ctx context.Context, tx *sql.Tx, principal, ten
 	return nil
 }
 
-func (d *Database) prepareDelete(ctx context.Context, tx *sql.Tx, principal, tenant, resource, name string, permUpdate string) error {
+// prepareDelete authorizes the delete and resolves the row's id together. The
+// authorization check runs first, so a caller without permission cannot tell a
+// missing row from a forbidden one; the lookup that follows serves as the
+// existence check.
+func (d *Database) prepareDelete(ctx context.Context, tx *sql.Tx, principal, tenant, resource, name string, permUpdate string) (int, error) {
 
 	ad := d.accessFactory().WithPrincipal(principal).WithTenant(tenant).WithResource(resource).WithPermission(permUpdate).WithName(name)
-	if d.authorizer.Check(ctx, tx, d.arg, ad) {
-		return d.resourceExists(ctx, tx, tenant, resource, name) // only inform about existence if authorized
+	if !d.authorizer.Check(ctx, tx, d.arg, ad) {
+		return 0, ErrNotAuthorized
 	}
 
-	return ErrNotAuthorized
+	id, err := d.lookupExistingID(ctx, tx, tenant, resource, name)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return 0, fmt.Errorf("lookup %s %s: %w", resource, name, err)
+	}
+	return id, err
 }
 
 func (d *Database) resourceExists(ctx context.Context, tx *sql.Tx, tenant, table, name string) error {
@@ -2017,6 +2000,17 @@ func (d *Database) lookupID(ctx context.Context, tx *sql.Tx, tenant, table, name
 	var id int
 	query := fmt.Sprintf("SELECT id FROM %s WHERE (name = %s AND tenant_id = (SELECT id FROM tenants WHERE name = %s))", table, d.arg(0), d.arg(1))
 	return id, tx.QueryRowContext(ctx, query, name, tenant).Scan(&id)
+}
+
+// lookupExistingID is like lookupID but reports a missing row as ErrNotFound.
+// Callers that would otherwise run a separate existence check use this instead:
+// the lookup answers both questions in one statement.
+func (d *Database) lookupExistingID(ctx context.Context, tx *sql.Tx, tenant, table, name string) (int, error) {
+	id, err := d.lookupID(ctx, tx, tenant, table, name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return id, err
 }
 
 // lookupRequiredID is like lookupID but reports a missing row as
