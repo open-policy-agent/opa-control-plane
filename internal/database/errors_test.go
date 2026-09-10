@@ -139,4 +139,14 @@ func TestLookupRequiredID_MissingRowReturnsErrInvalidReference(t *testing.T) {
 	if errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("lookupRequiredID: must not surface sql.ErrNoRows, got %v", err)
 	}
+
+	// lookupExistingID must translate the missing row to ErrNotFound, since
+	// callers use it in place of a separate existence check.
+	_, err = d.lookupExistingID(ctx, tx, "t1", "sources", "missing")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("lookupExistingID: expected ErrNotFound, got %v", err)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("lookupExistingID: must not surface sql.ErrNoRows, got %v", err)
+	}
 }
