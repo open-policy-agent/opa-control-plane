@@ -575,6 +575,48 @@ func TestDatabase(t *testing.T) {
 						},
 					}),
 
+				newTestCase("upsert source with datasources sharing name but different path").
+					UpsertSource(&config.Source{
+						Name: "dup-name-ds",
+						Datasources: config.Datasources{
+							{
+								Name: "duplicate",
+								Type: "http",
+								Config: map[string]any{
+									"url": "https://example.com/a",
+								},
+							},
+							{
+								Name: "duplicate",
+								Path: "subpath",
+								Type: "http",
+								Config: map[string]any{
+									"url": "https://example.com/b",
+								},
+							},
+						},
+					}).
+					GetSource("dup-name-ds", &config.Source{
+						Name: "dup-name-ds",
+						Datasources: config.Datasources{
+							{
+								Name: "duplicate",
+								Type: "http",
+								Config: map[string]any{
+									"url": "https://example.com/a",
+								},
+							},
+							{
+								Name: "duplicate",
+								Path: "subpath",
+								Type: "http",
+								Config: map[string]any{
+									"url": "https://example.com/b",
+								},
+							},
+						},
+					}),
+
 				// Run last, and after an explicit wait: CockroachDB follower
 				// reads (ListOptions.Stale) read a fixed point a few seconds
 				// in the past, which must be after the migrations that
