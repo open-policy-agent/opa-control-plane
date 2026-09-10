@@ -782,27 +782,7 @@ WHERE (` + conditions + ") AND tenants.name = " + d.arg(len(args))
 			args = append(args, opts.Limit)
 		}
 
-		query := fmt.Sprintf(`SELECT
-		bundles.*,
-		secrets.name AS secret_name,
-		secrets.value AS secret_value,
-		sources.name AS req_src,
-		bundles_requirements.path AS req_path,
-		bundles_requirements.prefix AS req_prefix,
-		bundles_requirements.options AS req_options,
-		bundles_requirements.gitcommit AS req_commit
-FROM (%s) AS bundles
-LEFT JOIN
-    bundles_secrets ON bundles.id = bundles_secrets.bundle_id
-LEFT JOIN
-    secrets ON bundles_secrets.secret_id = secrets.id
-LEFT JOIN
-	bundles_requirements ON bundles.id = bundles_requirements.bundle_id
-LEFT JOIN
-    sources ON bundles_requirements.source_id = sources.id
-`, bundles)
-
-		rows, err := txn.QueryContext(ctx, query, args...)
+		rows, err := txn.QueryContext(ctx, bundles, args...)
 		if err != nil {
 			return nil, "", err
 		}
@@ -820,10 +800,6 @@ LEFT JOIN
 			excluded                                   *string
 			interval                                   *string
 			options                                    *string
-			secretName, secretValue                    *string
-			reqSrc, reqCommit                          *string
-			reqPath, reqPrefix                         sql.Null[string]
-			reqOpts                                    sql.Null[string] // JSON
 		}
 		bundleMap := make(map[string]*config.Bundle)
 		idMap := make(map[string]int64)
@@ -838,28 +814,14 @@ LEFT JOIN
 				&row.filepath,
 				&row.excluded,
 				&row.interval,
-				&row.options,
-				&row.secretName, &row.secretValue,
-				&row.reqSrc,
-				&row.reqPath, &row.reqPrefix,
-				&row.reqOpts,
-				&row.reqCommit); err != nil {
+				&row.options); err != nil {
 				return nil, "", err
 			}
 
-			var s *config.Secret
-			if row.secretName != nil {
-				s = &config.Secret{Name: *row.secretName}
-				if err := json.Unmarshal([]byte(*row.secretValue), &s.Value); err != nil {
-					return nil, "", err
-				}
+			bundle := &config.Bundle{
+				Name: row.bundleName,
 			}
-
-			bundle, exists := bundleMap[row.bundleName]
-			if !exists {
-				bundle = &config.Bundle{
-					Name: row.bundleName,
-				}
+			{
 
 				if row.labels != nil {
 					if err := json.Unmarshal([]byte(*row.labels), &bundle.Labels); err != nil {
@@ -888,10 +850,6 @@ LEFT JOIN
 						bundle.ObjectStorage.AmazonS3.URL = *row.s3url
 					}
 
-					if s != nil {
-						bundle.ObjectStorage.AmazonS3.Credentials = s.Ref()
-					}
-
 				} else if row.gcpProject != nil && row.s3bucket != nil && row.gcpObject != nil {
 					bundle.ObjectStorage.GCPCloudStorage = &config.GCPCloudStorage{
 						Project: *row.gcpProject,
@@ -899,19 +857,11 @@ LEFT JOIN
 						Object:  *row.gcpObject,
 					}
 
-					if s != nil {
-						bundle.ObjectStorage.GCPCloudStorage.Credentials = s.Ref()
-					}
-
 				} else if row.azureAccountURL != nil && row.azureContainer != nil && row.azurePath != nil {
 					bundle.ObjectStorage.AzureBlobStorage = &config.AzureBlobStorage{
 						AccountURL: *row.azureAccountURL,
 						Container:  *row.azureContainer,
 						Path:       *row.azurePath,
-					}
-
-					if s != nil {
-						bundle.ObjectStorage.AzureBlobStorage.Credentials = s.Ref()
 					}
 
 				} else if row.filepath != nil {
@@ -935,12 +885,114 @@ LEFT JOIN
 				}
 			}
 
-			if row.reqSrc != nil {
+			if row.id > lastId {
+				lastId = row.id
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, "", err
+		}
+
+		// The credentials and requirements hang off the bundles selected above,
+		// matched by bundle id. Each is its own statement rather than a join: the
+		// ids are literals here, so the planner seeks on the leading primary-key
+		// column instead of estimating how many rows the bundle query returns and
+		// falling back to a hash join over the whole table.
+
+		var bundleArgs []any
+		byID := make(map[int64]*config.Bundle, len(idMap))
+		for name, id := range idMap {
+			bundleArgs = append(bundleArgs, id)
+			byID[id] = bundleMap[name]
+		}
+		idList := strings.Join(d.args(len(bundleArgs)), ", ")
+
+		if len(bundleArgs) > 0 {
+			rowsSecrets, err := txn.QueryContext(ctx, `SELECT
+		bundles_secrets.bundle_id,
+		secrets.name,
+		secrets.value
+	FROM bundles_secrets
+	JOIN secrets ON bundles_secrets.secret_id = secrets.id
+	WHERE bundles_secrets.bundle_id IN (`+idList+`)
+	`, bundleArgs...)
+			if err != nil {
+				return nil, "", err
+			}
+			defer rowsSecrets.Close()
+
+			for rowsSecrets.Next() {
+				var bundleID int64
+				var secretName string
+				var secretValue *string
+				if err := rowsSecrets.Scan(&bundleID, &secretName, &secretValue); err != nil {
+					return nil, "", err
+				}
+
+				bundle, ok := byID[bundleID]
+				if !ok {
+					continue
+				}
+
+				secret := config.Secret{Name: secretName}
+				if secretValue != nil {
+					if err := json.Unmarshal([]byte(*secretValue), &secret.Value); err != nil {
+						return nil, "", err
+					}
+				}
+
+				// Only one storage backend is populated per bundle, and the file
+				// system one takes no credentials.
+				switch {
+				case bundle.ObjectStorage.AmazonS3 != nil:
+					bundle.ObjectStorage.AmazonS3.Credentials = secret.Ref()
+				case bundle.ObjectStorage.GCPCloudStorage != nil:
+					bundle.ObjectStorage.GCPCloudStorage.Credentials = secret.Ref()
+				case bundle.ObjectStorage.AzureBlobStorage != nil:
+					bundle.ObjectStorage.AzureBlobStorage.Credentials = secret.Ref()
+				}
+			}
+			if err := rowsSecrets.Err(); err != nil {
+				return nil, "", err
+			}
+
+			rowsReqs, err := txn.QueryContext(ctx, `SELECT
+		bundles_requirements.bundle_id,
+		sources.name,
+		bundles_requirements.gitcommit,
+		bundles_requirements.path,
+		bundles_requirements.prefix,
+		bundles_requirements.options
+	FROM bundles_requirements
+	JOIN sources ON bundles_requirements.source_id = sources.id
+	WHERE bundles_requirements.bundle_id IN (`+idList+`)
+	ORDER BY bundles_requirements.bundle_id, bundles_requirements.source_id
+	`, bundleArgs...)
+			if err != nil {
+				return nil, "", err
+			}
+			defer rowsReqs.Close()
+
+			for rowsReqs.Next() {
+				var bundleID int64
+				var reqSrc string
+				var reqCommit *string
+				var reqPath, reqPrefix sql.Null[string]
+				var reqOpts sql.Null[string] // JSON
+				if err := rowsReqs.Scan(&bundleID, &reqSrc, &reqCommit, &reqPath, &reqPrefix, &reqOpts); err != nil {
+					return nil, "", err
+				}
+
+				bundle, ok := byID[bundleID]
+				if !ok {
+					continue
+				}
+
 				var automount *bool
-				if row.reqOpts.Valid {
+				if reqOpts.Valid {
 					var m map[string]any
-					if err := json.Unmarshal([]byte(row.reqOpts.V), &m); err != nil {
-						return nil, "", fmt.Errorf("failed to unmarshal options for requirement %s of bundle %s: %w", *row.reqSrc, bundle.Name, err)
+					if err := json.Unmarshal([]byte(reqOpts.V), &m); err != nil {
+						return nil, "", fmt.Errorf("failed to unmarshal options for requirement %s of bundle %s: %w", reqSrc, bundle.Name, err)
 					}
 					if am, ok := m["automount"]; ok {
 						if am, ok := am.(bool); ok {
@@ -949,25 +1001,21 @@ LEFT JOIN
 						}
 					}
 					if len(m) > 0 {
-						return nil, "", fmt.Errorf("unknown options for requirement %s of bundle %s: %v", *row.reqSrc, bundle.Name, m)
+						return nil, "", fmt.Errorf("unknown options for requirement %s of bundle %s: %v", reqSrc, bundle.Name, m)
 					}
-
 				}
+
 				bundle.Requirements = append(bundle.Requirements, config.Requirement{
-					Source:    row.reqSrc,
-					Git:       config.GitRequirement{Commit: row.reqCommit},
-					Path:      row.reqPath.V, // if null, use ""
-					Prefix:    row.reqPrefix.V,
+					Source:    &reqSrc,
+					Git:       config.GitRequirement{Commit: reqCommit},
+					Path:      reqPath.V, // if null, use ""
+					Prefix:    reqPrefix.V,
 					AutoMount: automount,
 				})
 			}
-
-			if row.id > lastId {
-				lastId = row.id
+			if err := rowsReqs.Err(); err != nil {
+				return nil, "", err
 			}
-		}
-		if err := rows.Err(); err != nil {
-			return nil, "", err
 		}
 
 		sl := slices.Collect(maps.Values(bundleMap))
