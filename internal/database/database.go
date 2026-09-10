@@ -117,6 +117,13 @@ func (d *Database) Dialect() (string, error) {
 }
 
 type ListOptions struct {
+	// Limit caps the number of rows returned, and is also how a caller that
+	// wants a single row says so. That matters beyond the row count: the
+	// planner cannot derive the bound itself, because tenant_id arrives
+	// through JOIN tenants rather than as a constant, so
+	// UNIQUE(tenant_id, name) does not tell it that a name matches at most
+	// one row. Left unbounded it plans for many and hash-joins the attached
+	// tables in full; given the bound it seeks.
 	Limit  int
 	Cursor string
 	name   string
@@ -692,7 +699,7 @@ func (d *Database) LoadConfig(ctx context.Context, bar *progress.Bar, principal,
 }
 
 func (d *Database) GetBundle(ctx context.Context, principal, tenant, name string) (*config.Bundle, error) {
-	bundles, _, err := d.ListBundles(ctx, principal, tenant, ListOptions{name: name})
+	bundles, _, err := d.ListBundles(ctx, principal, tenant, ListOptions{name: name, Limit: 1})
 	if err != nil {
 		return nil, err
 	}
@@ -985,7 +992,7 @@ LEFT JOIN
 }
 
 func (d *Database) GetSource(ctx context.Context, principal, tenant, name string) (*config.Source, error) {
-	sources, _, err := d.ListSources(ctx, principal, tenant, ListOptions{name: name})
+	sources, _, err := d.ListSources(ctx, principal, tenant, ListOptions{name: name, Limit: 1})
 	if err != nil {
 		return nil, err
 	}
@@ -1312,7 +1319,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 }
 
 func (d *Database) GetSecret(ctx context.Context, principal, tenant, name string) (*config.SecretRef, error) {
-	secrets, _, err := d.ListSecrets(ctx, principal, tenant, ListOptions{name: name})
+	secrets, _, err := d.ListSecrets(ctx, principal, tenant, ListOptions{name: name, Limit: 1})
 	if err != nil {
 		return nil, err
 	}
@@ -1410,7 +1417,7 @@ func (d *Database) ListSecrets(ctx context.Context, principal, tenant string, op
 }
 
 func (d *Database) GetStack(ctx context.Context, principal, tenant, name string) (*config.Stack, error) {
-	stacks, _, err := d.ListStacks(ctx, principal, tenant, ListOptions{name: name})
+	stacks, _, err := d.ListStacks(ctx, principal, tenant, ListOptions{name: name, Limit: 1})
 	if err != nil {
 		return nil, err
 	}
