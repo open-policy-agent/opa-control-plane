@@ -1815,7 +1815,7 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 				// If secret not found in DB (sql.ErrNoRows), skip — it will be resolved by the secret provider at sync time
 			}
 			if err := d.upsertRel(ctx, tx, "sources_datasources", []string{"source_id", "name", "type", "path", "config", "transform_query", "secret_id", "credentials_name"},
-				[]string{"source_id", "name"},
+				[]string{"source_id", "name", "path"},
 				id, datasource.Name, datasource.Type, datasource.Path, string(bs), datasource.TransformQuery, secret, credentialsName); err != nil {
 				return fmt.Errorf("upsert of datasource link %s: %w", datasource.Name, err)
 			}
