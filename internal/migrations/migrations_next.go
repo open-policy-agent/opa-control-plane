@@ -158,6 +158,23 @@ func addBundlesStatusesBundleIDIndex(offset int, dialect string) fs.FS {
 	})
 }
 
+// addRequirementsForeignKeyIndexes indexes the cross-table columns that a
+// source's deletion has to check without deleting through: bundles_requirements
+// and stacks_requirements reference sources but are deliberately left alone by
+// DeleteSource, relying on their FOREIGN KEY to reject the delete if a
+// requirement still points at it (see DeleteSource's comment on why). That
+// check, and the equivalent one sources_requirements.requirement_id runs when a
+// source is required by another, filter on a column that is not the leading
+// column of any index on these tables -- PrimaryKey put the other referencing
+// column first -- so every one of those checks scanned the table.
+func addRequirementsForeignKeyIndexes(offset int, dialect string) fs.FS {
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_bundles_requirements_index_source_id.up.sql", offset):        `CREATE INDEX bundles_requirements_source_id_idx ON bundles_requirements (source_id)`,
+		fmt.Sprintf("%03d_stacks_requirements_index_source_id.up.sql", offset+1):       `CREATE INDEX stacks_requirements_source_id_idx ON stacks_requirements (source_id)`,
+		fmt.Sprintf("%03d_sources_requirements_index_requirement_id.up.sql", offset+2): `CREATE INDEX sources_requirements_requirement_id_idx ON sources_requirements (requirement_id)`,
+	})
+}
+
 // NOTE(sr): We create new tables to drop constraints. It's hard to predict constraint names
 // across MySQL and Postgres if they have not been set up at creation time.
 // NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,
