@@ -46,6 +46,8 @@ func Migrations(dialect string) (fs.FS, error) {
 		addSourcesGitCredentialsName(25, dialect),
 		addBundlesStatuses(26, dialect),
 		addBundlesStatusesUpdatedAt(27, dialect), // adds 2, next is 29.
+		addBundlesStatusesBundleIDIndex(29, dialect),
+		addRequirementsForeignKeyIndexes(30, dialect), // adds 3, next is 33.
 	), nil
 }
 

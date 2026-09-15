@@ -120,6 +120,61 @@ func addBundlesStatusesUpdatedAt(offset int, dialect string) fs.FS {
 	})
 }
 
+// addBundlesStatusesBundleIDIndex indexes bundles_statuses by bundle_id.
+//
+// Every lookup of a bundle's statuses filters on bundle_id, either directly
+// (ListBundleStatuses, and the two DELETEs UpsertBundleStatus runs to drop the
+// pre-revision sentinel row and to enforce the retention limit) or via the
+// ON DELETE CASCADE from bundles. None of them could use an index: the only
+// candidate was UNIQUE(tenant_id, bundle_id, revision), whose leading column is
+// tenant_id, so each of those statements scanned the table instead -- a delete
+// of a single bundle was reading hundreds of rows.
+//
+// tenant_id is stored in the index rather than left out because deleting a row
+// also means removing its entry from UNIQUE(tenant_id, bundle_id, revision),
+// which needs the tenant_id; storing it here avoids a second lookup against the
+// primary index to fetch it. Dialects spell that differently, and SQLite and
+// MySQL have no equivalent -- MySQL gets tenant_id as a trailing key column,
+// which covers the same reads, and SQLite is dev/test only.
+func addBundlesStatusesBundleIDIndex(offset int, dialect string) fs.FS {
+	var stmt string
+	switch dialect {
+	case "cockroachdb":
+		stmt = `CREATE INDEX bundles_statuses_bundle_id_revision_idx
+			ON bundles_statuses (bundle_id, revision) STORING (tenant_id)`
+	case "postgresql":
+		stmt = `CREATE INDEX bundles_statuses_bundle_id_revision_idx
+			ON bundles_statuses (bundle_id, revision) INCLUDE (tenant_id)`
+	case "mysql":
+		stmt = `CREATE INDEX bundles_statuses_bundle_id_revision_idx
+			ON bundles_statuses (bundle_id, revision, tenant_id)`
+	case "sqlite":
+		stmt = `CREATE INDEX bundles_statuses_bundle_id_revision_idx
+			ON bundles_statuses (bundle_id, revision)`
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_bundles_statuses_bundle_id_index.up.sql", offset): stmt,
+	})
+}
+
+// addRequirementsForeignKeyIndexes indexes the cross-table columns that a
+// source's deletion has to check without deleting through: bundles_requirements
+// and stacks_requirements reference sources but are deliberately left alone by
+// DeleteSource, relying on their FOREIGN KEY to reject the delete if a
+// requirement still points at it (see DeleteSource's comment on why). That
+// check, and the equivalent one sources_requirements.requirement_id runs when a
+// source is required by another, filter on a column that is not the leading
+// column of any index on these tables -- PrimaryKey put the other referencing
+// column first -- so every one of those checks scanned the table.
+func addRequirementsForeignKeyIndexes(offset int, dialect string) fs.FS {
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_bundles_requirements_index_source_id.up.sql", offset):        `CREATE INDEX bundles_requirements_source_id_idx ON bundles_requirements (source_id)`,
+		fmt.Sprintf("%03d_stacks_requirements_index_source_id.up.sql", offset+1):       `CREATE INDEX stacks_requirements_source_id_idx ON stacks_requirements (source_id)`,
+		fmt.Sprintf("%03d_sources_requirements_index_requirement_id.up.sql", offset+2): `CREATE INDEX sources_requirements_requirement_id_idx ON sources_requirements (requirement_id)`,
+	})
+}
+
 // NOTE(sr): We create new tables to drop constraints. It's hard to predict constraint names
 // across MySQL and Postgres if they have not been set up at creation time.
 // NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,
