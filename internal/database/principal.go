@@ -53,8 +53,10 @@ func (db *Database) upsertTenantTx(ctx context.Context, tx *sql.Tx, tenantName s
 }
 
 func (db *Database) GetPrincipalID(ctx context.Context, apiKey string) (string, error) {
-	query := `SELECT principals.id FROM principals JOIN tokens ON tokens.name = principals.id WHERE tokens.api_key = ` + db.arg(0)
-	row := db.db.QueryRowContext(ctx, query, apiKey)
 	var principalId string
-	return principalId, row.Scan(&principalId)
+	err := tx1(ctx, db, func(tx *sql.Tx) error {
+		query := `SELECT principals.id FROM principals JOIN tokens ON tokens.name = principals.id WHERE tokens.api_key = ` + db.arg(0)
+		return tx.QueryRowContext(ctx, query, apiKey).Scan(&principalId)
+	})
+	return principalId, err
 }
