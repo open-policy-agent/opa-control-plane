@@ -14,6 +14,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -53,6 +54,7 @@ type Database struct {
 	config        *config.Database
 	rawRootConfig []byte
 	kind          int
+	schema        string
 	log           *logging.Logger
 	executeTx     func(context.Context, *sql.DB, *sql.TxOptions, func(*sql.Tx) error) error
 	authorizer    ext_authz.Authorizer
@@ -154,6 +156,26 @@ func (d *Database) WithConfig(config *config.Database) *Database {
 func (d *Database) WithRawRootConfig(rawRootConfig []byte) *Database {
 	d.rawRootConfig = rawRootConfig
 	return d
+}
+
+// schemaIdent bounds a configured schema to a plain SQL identifier so it can be
+// interpolated into search_path safely. Only lowercase is allowed: the
+// identifier is interpolated unquoted, and Postgres/CockroachDB fold unquoted
+// identifiers to lowercase, so a mixed-case name would silently resolve to a
+// different schema than configured.
+var schemaIdent = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
+
+// WithSchema makes OCP's unqualified table names resolve in the named schema
+// (via search_path). Empty (the default) leaves search_path untouched,
+// preserving existing deployments. No-op outside PostgreSQL and CockroachDB.
+// Errors if schema isn't a plain identifier, so a misconfigured schema fails
+// at setup rather than on every query.
+func (d *Database) WithSchema(schema string) (*Database, error) {
+	if schema != "" && !schemaIdent.MatchString(schema) {
+		return nil, fmt.Errorf("invalid schema name %q", schema)
+	}
+	d.schema = schema
+	return d, nil
 }
 
 func (d *Database) WithLogger(log *logging.Logger) *Database {
@@ -1605,11 +1627,14 @@ type Data struct {
 
 func (d *Database) QuerySourceID(ctx context.Context, tenant, sourceName string) (int64, error) {
 	var id int64
-	return id, d.db.QueryRowContext(ctx,
-		fmt.Sprintf("SELECT sources.id FROM sources JOIN tenants ON tenants.id = sources.tenant_id WHERE sources.name = %s AND tenants.name = %s", d.arg(0), d.arg(1)),
-		sourceName,
-		tenant,
-	).Scan(&id)
+	err := tx1(ctx, d, func(tx *sql.Tx) error {
+		return tx.QueryRowContext(ctx,
+			fmt.Sprintf("SELECT sources.id FROM sources JOIN tenants ON tenants.id = sources.tenant_id WHERE sources.name = %s AND tenants.name = %s", d.arg(0), d.arg(1)),
+			sourceName,
+			tenant,
+		).Scan(&id)
+	})
+	return id, err
 }
 
 func (d *Database) QuerySourceData(sourceID int64, sourceName string) func(context.Context) iter.Seq2[Data, error] {
@@ -2192,7 +2217,12 @@ func executeTx(ctx context.Context, db *sql.DB, txOpts *sql.TxOptions, f func(*s
 }
 
 func tx1(ctx context.Context, db *Database, f func(*sql.Tx) error) error {
-	return db.executeTx(ctx, db.db, nil, f)
+	return db.executeTx(ctx, db.db, nil, func(tx *sql.Tx) error {
+		if err := db.applySearchPath(ctx, tx); err != nil {
+			return err
+		}
+		return f(tx)
+	})
 }
 
 func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(*sql.Tx) (T, U, error)) (T, U, error) {
@@ -2202,10 +2232,33 @@ func tx3[T any, U bool | string](ctx context.Context, db *Database, f func(*sql.
 		err error
 	)
 	err = db.executeTx(ctx, db.db, nil, func(tx *sql.Tx) error {
+		if err := db.applySearchPath(ctx, tx); err != nil {
+			return err
+		}
 		t, u, err = f(tx)
 		return err
 	})
 	return t, u, err
+}
+
+// applySearchPath scopes tx to the configured schema so OCP's unqualified
+// table names resolve there. SET LOCAL keeps it to this transaction, so it
+// doesn't leak across a shared pool and stays compatible with a following
+// SET TRANSACTION AS OF SYSTEM TIME.
+func (d *Database) applySearchPath(ctx context.Context, tx *sql.Tx) error {
+	stmt := d.searchPathStmt()
+	if stmt == "" {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, stmt)
+	return err
+}
+
+func (d *Database) searchPathStmt() string {
+	if d.schema == "" || (d.kind != cockroach && d.kind != postgres) {
+		return ""
+	}
+	return "SET LOCAL search_path = " + d.schema
 }
 
 // applyFollowerRead switches tx to read a slightly stale (a few seconds old)
