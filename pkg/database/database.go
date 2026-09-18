@@ -93,6 +93,19 @@ func (d *Database) WithAccessFactory(af ext_authz.AccessFactory) *Database {
 	return d
 }
 
+// WithSchema makes OCP's unqualified table names resolve in the named schema
+// via search_path, applied per transaction. Empty (the default) leaves
+// search_path untouched. No-op outside PostgreSQL and CockroachDB. Errors if
+// schema isn't a plain SQL identifier.
+func (d *Database) WithSchema(schema string) (*Database, error) {
+	idb, err := d.db.WithSchema(schema)
+	if err != nil {
+		return nil, err
+	}
+	d.db = idb
+	return d, nil
+}
+
 // InitDB initializes the database connection from a raw root configuration.
 //
 // Deprecated: prefer InitDBWithConfig for type-safe configuration.
