@@ -1983,7 +1983,7 @@ func (d *Database) UpsertToken(ctx context.Context, principal, tenant string, to
 			return err
 		}
 
-		if err := d.upsertNoID(ctx, tx, "", "tokens", []string{"name", "api_key"}, []string{"name"}, token.Name, token.APIKey); err != nil {
+		if err := d.upsertNoID(ctx, tx, "", "tokens", []string{"name", "api_key"}, []string{"name"}, token.Name, hashAPIKey(token.APIKey)); err != nil {
 			return err
 		}
 

@@ -346,6 +346,8 @@ func TestDatabase(t *testing.T) {
 				// bootstrap operations:
 				newTestCase("load config").LoadConfig(root),
 				newTestCase("check token expansion").GetPrincipalByToken("sesame", "api-token"),
+				newTestCase("api key stored hashed").APIKeyStoredHashed("sesame"),
+				newTestCase("cleartext api key backfilled").BackfillsCleartextAPIKey("legacy-token", "legacy-secret"),
 				// source operations:
 				newTestCase("list sources").ListSources([]*config.Source{
 					root.Sources["system2"], root.Sources["system3"], root.Sources["system5"], root.Sources["system4"], root.Sources["system1"],
@@ -622,6 +624,37 @@ func (tc *testCase) GetPrincipalByToken(token, exp string) *testCase {
 	return tc
 }
 
+// APIKeyStoredHashed guards what GetPrincipalByToken cannot: that round trip
+// would pass just as well if both sides used cleartext.
+func (tc *testCase) APIKeyStoredHashed(apiKey string) *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		rows, err := db.DB().QueryContext(ctx, `SELECT name, api_key FROM tokens`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		var n int
+		for rows.Next() {
+			var name, stored string
+			if err := rows.Scan(&name, &stored); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(stored, apiKey) {
+				t.Fatalf("token %q: expected api_key to hold a digest, got cleartext %q", name, stored)
+			}
+			n++
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if n == 0 {
+			t.Fatal("no tokens found, nothing was asserted")
+		}
+	})
+	return tc
+}
+
 // Sleep pauses before the next operation. Used before the ListOptions.Stale
 // test cases: CockroachDB follower reads read a fixed point a few seconds in
 // the past (follower_read_timestamp()), so a stale read issued too soon
@@ -714,6 +747,54 @@ func (tc *testCase) UpsertSource(source *config.Source) *testCase {
 	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
 		if err := db.UpsertSource(ctx, "admin", tenant, source); err != nil {
 			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+	return tc
+}
+
+// BackfillsCleartextAPIKey covers the upgrade from a version that stored API
+// keys verbatim, for a token absent from the configuration.
+func (tc *testCase) BackfillsCleartextAPIKey(name, apiKey string) *testCase {
+	tc.operations = append(tc.operations, func(ctx context.Context, t *testing.T, db *database.Database) {
+		token := &config.Token{Name: name, APIKey: apiKey, Scopes: []config.Scope{{Role: "viewer"}}}
+		if err := db.UpsertToken(ctx, "admin", tenant, token); err != nil {
+			t.Fatal(err)
+		}
+
+		// Literals, not placeholders: those differ per dialect.
+		if _, err := db.DB().ExecContext(ctx, `UPDATE tokens SET api_key = '`+apiKey+`' WHERE name = '`+name+`'`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.GetPrincipalID(ctx, apiKey); err == nil {
+			t.Fatal("expected a cleartext api key not to authenticate before the backfill")
+		}
+
+		n, err := db.BackfillAPIKeyDigests(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != 1 {
+			t.Fatalf("expected 1 row to be rewritten, got %d", n)
+		}
+
+		act, err := db.GetPrincipalID(ctx, apiKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if act != name {
+			t.Fatalf("expected %q, got %q", name, act)
+		}
+
+		// A second pass must not hash the digest again, which would lock the key out.
+		n, err = db.BackfillAPIKeyDigests(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != 0 {
+			t.Fatalf("expected the backfill to be a no-op, got %d rows rewritten", n)
+		}
+		if _, err := db.GetPrincipalID(ctx, apiKey); err != nil {
+			t.Fatalf("expected the api key to still authenticate: %v", err)
 		}
 	})
 	return tc

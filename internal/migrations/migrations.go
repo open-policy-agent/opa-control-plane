@@ -170,6 +170,17 @@ func (m *Migrator) Run(ctx context.Context) (*database.Database, error) {
 	if err := mi.Up(); err != nil && err != migrate.ErrNoChange {
 		return nil, fmt.Errorf("database migrations: %w", err)
 	}
+
+	// In Go, not SQL: a hash expression per dialect could diverge from what
+	// authentication computes, locking keys out silently.
+	n, err := db.BackfillAPIKeyDigests(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("database migrations: %w", err)
+	}
+	if n > 0 {
+		m.log.Infof("replaced %d cleartext API key(s) in the tokens table with their digest", n)
+	}
+
 	return db, nil
 }
 
