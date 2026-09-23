@@ -352,54 +352,92 @@ func (s *Service) initDB(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) launchWorkers(ctx context.Context) {
+type tenantWorkload struct {
+	tenant     string
+	bundles    []*config.Bundle
+	sourceDefs []*config.Source
+	stacks     []*config.Stack
+}
+
+// collectTenantWorkloads fetches every tenant's bundles, sources and stacks, and
+// derives the set of bundle worker ids that should be running across all tenants.
+// ok is false if listing failed for some tenant (already logged), in which case
+// launchWorkers should skip this round entirely rather than act on partial data.
+func (s *Service) collectTenantWorkloads(ctx context.Context) (workloads []tenantWorkload, activeBundles map[string]struct{}, ok bool) {
+	activeBundles = make(map[string]struct{})
+
 	for tenant, err := range s.database.Tenants(ctx) {
 		if err != nil {
 			s.log.Errorf("error listing tenants: %s", err.Error())
-			return
+			return nil, nil, false
 		}
 		tenant := tenant.Name
 
 		bundles, _, err := s.database.ListBundles(ctx, internalPrincipal, tenant, database.ListOptions{Stale: true})
 		if err != nil {
 			s.log.Errorf("error listing bundles: %s", err.Error())
-			return
+			return nil, nil, false
 		}
 		s.log.Debugf("launchWorkers(%s) for %d bundles", tenant, len(bundles))
 
 		sourceDefs, _, err := s.database.ListSources(ctx, internalPrincipal, tenant, database.ListOptions{Stale: true})
 		if err != nil {
 			s.log.Errorf("error listing sources: %s", err.Error())
-			return
-		}
-
-		sourceDefsByName := make(map[string]*config.Source)
-		for _, src := range sourceDefs {
-			sourceDefsByName[src.Name] = src
+			return nil, nil, false
 		}
 
 		stacks, _, err := s.database.ListStacks(ctx, internalPrincipal, tenant, database.ListOptions{Stale: true})
 		if err != nil {
 			s.log.Errorf("error listing stacks: %s", err.Error())
-			return
+			return nil, nil, false
 		}
 
-		activeBundles := make(map[string]struct{})
+		workloads = append(workloads, tenantWorkload{tenant: tenant, bundles: bundles, sourceDefs: sourceDefs, stacks: stacks})
+
 		for _, b := range bundles {
-			bName := tenant + "_" + b.Name
-			activeBundles[bName] = struct{}{}
+			activeBundles[tenant+"_"+b.Name] = struct{}{}
+		}
+	}
+
+	return workloads, activeBundles, true
+}
+
+// retireStaleWorkers drops already-finished workers from bookkeeping and initiates
+// shutdown for any worker whose bundle is no longer active in any tenant.
+// activeBundles must cover every tenant, not just the one a caller happens to be
+// looking at, or it will retire other tenants' still-valid workers.
+func (s *Service) retireStaleWorkers(activeBundles map[string]struct{}) {
+	for id, w := range s.workers {
+		if w.Done() {
+			delete(s.workers, id)
+			continue
 		}
 
-		// Remove any worker already shutdown from bookkeeping, as well as initiate shutdown for any bundle (worker) not in the current configuration.
-		for id, w := range s.workers {
-			if w.Done() {
-				delete(s.workers, id)
-				continue
-			}
+		if _, ok := activeBundles[id]; !ok {
+			w.UpdateConfig(nil, nil, nil)
+		}
+	}
+}
 
-			if _, ok := activeBundles[id]; !ok {
-				w.UpdateConfig(nil, nil, nil)
-			}
+func (s *Service) launchWorkers(ctx context.Context) {
+	workloads, activeBundles, ok := s.collectTenantWorkloads(ctx)
+	if !ok {
+		return
+	}
+
+	s.retireStaleWorkers(activeBundles)
+
+	failures := make(map[string]Status)
+
+	for _, workload := range workloads {
+		tenant := workload.tenant
+		bundles := workload.bundles
+		sourceDefs := workload.sourceDefs
+		stacks := workload.stacks
+
+		sourceDefsByName := make(map[string]*config.Source)
+		for _, src := range sourceDefs {
+			sourceDefsByName[src.Name] = src
 		}
 
 		// Start any new workers for bundles that are in the current configuration but not yet running. Inform any existing
@@ -418,7 +456,6 @@ func (s *Service) launchWorkers(ctx context.Context) {
 		//             └── repo/              # Source git repository
 
 		bar := progress.New(s.noninteractive, len(bundles), "building and pushing bundles")
-		failures := make(map[string]Status)
 
 		for _, b := range bundles {
 			bName := tenant + "_" + b.Name
@@ -516,9 +553,9 @@ func (s *Service) launchWorkers(ctx context.Context) {
 
 			s.workers[bName] = w
 		}
-
-		s.failures = failures
 	}
+
+	s.failures = failures
 }
 
 func (s *Service) secretProviderForTenant(ctx context.Context, tenant string) pkgsync.SecretProvider {
