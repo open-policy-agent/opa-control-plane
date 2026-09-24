@@ -38,8 +38,8 @@ func init() {
 	build := &cobra.Command{
 		Use:   "build",
 		Short: "Build and distribute configured bundles",
-		Run: func(cmd *cobra.Command, args []string) {
-			ctx := cmd.Context()
+		Run: func(c *cobra.Command, args []string) {
+			ctx := c.Context()
 			lc := params.logging
 			if !params.noninteractive {
 				// interactive sessions get a nice report, so we suppress error logs
@@ -85,6 +85,7 @@ func init() {
 				WithPersistenceDir(params.persistenceDir).
 				WithConfig(config).
 				WithBuiltinFS(libraries.FS).
+				WithSourceProviders(cmd.SourceProviders).
 				WithSingleShot(true).
 				WithLogger(log).
 				WithNoninteractive(params.noninteractive).

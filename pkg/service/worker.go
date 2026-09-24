@@ -5,7 +5,9 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
+	"os"
 	"time"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
@@ -17,6 +19,7 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
 	"github.com/open-policy-agent/opa-control-plane/pkg/metrics"
 	ext_os "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
+	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
 
 var (
@@ -50,16 +53,32 @@ type BundleWorker struct {
 	metrics       *metrics.Metrics
 }
 
-type Synchronizer interface {
-	Execute(ctx context.Context) (map[string]any, error)
-	Close(ctx context.Context)
-}
+// Synchronizer is an alias for pkgsync.Synchronizer, kept for compatibility.
+//
+// Deprecated: use pkgsync.Synchronizer.
+type Synchronizer = pkgsync.Synchronizer
 
 type sourceSynchronizer struct {
-	sync           Synchronizer
-	sourceName     string
-	sourceType     string // "git", "sql", "http", "s3"
-	datasourceName string // For http/s3: the datasource name used as key in metadata
+	sync       pkgsync.Synchronizer
+	sourceName string
+	sourceType string // "git", "sql", "http", "s3", "providers"
+	entryName  string // For datasources and provider entries: the name used as key in metadata
+
+	// For provider entries: the directory to create before Execute (it is
+	// emptied before each sync), and where to keep the entry's contribution.
+	dir     string
+	contrib *contribution
+}
+
+// contribution holds what a provider entry's Synchronizer contributed after
+// its last Execute. The builder reads it through the entry directory's
+// Dir.Contribution.
+type contribution struct {
+	c *builder.Contribution
+}
+
+func (c *contribution) get() *builder.Contribution {
+	return c.c
 }
 
 func NewBundleWorker(bundleDir string, b *config.Bundle, sources []*config.Source, stacks []*config.Stack, logger *logging.Logger, bar *progress.Bar) *BundleWorker {
@@ -154,30 +173,49 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 	// Collect source metadata from synchronizers and structure by source type
 	// Note: Metadata fields to compute are configured at synchronizer construction time
 	sourceMetadata := make(map[string]map[string]any)
+	syncFailed := func(err error) time.Time {
+		w.log.Warnf("failed to synchronize bundle %q: %v", w.bundleConfig.Name, err)
+		state := BuildStateSyncFailed
+		if syncerr.IsUserError(err) {
+			state = BuildStateUserError
+		}
+		return w.report(ctx, state, BuildPhaseSync, database.SentinelRevision, startTime, err)
+	}
 	for _, ss := range w.synchronizers {
+		if ss.dir != "" {
+			if err := os.MkdirAll(ss.dir, 0o755); err != nil {
+				return w.report(ctx, BuildStateInternalError, BuildPhaseSync, database.SentinelRevision, startTime, err)
+			}
+		}
 		metadata, err := ss.sync.Execute(ctx)
 		if err != nil {
-			w.log.Warnf("failed to synchronize bundle %q: %v", w.bundleConfig.Name, err)
-			state := BuildStateSyncFailed
-			if syncerr.IsUserError(err) {
-				state = BuildStateUserError
+			return syncFailed(err)
+		}
+		if ss.contrib != nil {
+			ss.contrib.c = nil
+			if bc, ok := ss.sync.(pkgsync.BundleContributor); ok {
+				c, err := bc.Contribution(ctx)
+				if err != nil {
+					return syncFailed(fmt.Errorf("source %q: provider %q: contribution: %w", ss.sourceName, ss.entryName, err))
+				}
+				ss.contrib.c = &builder.Contribution{Metadata: c.Metadata, Roots: c.Roots, RegoVersion: c.RegoVersion}
 			}
-			return w.report(ctx, state, BuildPhaseSync, database.SentinelRevision, startTime, err)
 		}
 		if metadata != nil {
 			if sourceMetadata[ss.sourceName] == nil {
 				sourceMetadata[ss.sourceName] = make(map[string]any)
 			}
-			// For datasource types (http, s3), nest metadata under datasource name
-			// to support multiple datasources of the same type per source:
+			// For datasources (http, s3) and provider entries, nest metadata
+			// under the entry name to support several per source:
 			//   input.sources["src"].http["ds-name"].hash
-			if ss.datasourceName != "" {
+			//   input.sources["src"].providers["entry-name"].field
+			if ss.entryName != "" {
 				typeMap, ok := sourceMetadata[ss.sourceName][ss.sourceType].(map[string]any)
 				if !ok {
 					typeMap = make(map[string]any)
 					sourceMetadata[ss.sourceName][ss.sourceType] = typeMap
 				}
-				typeMap[ss.datasourceName] = metadata
+				typeMap[ss.entryName] = metadata
 			} else {
 				sourceMetadata[ss.sourceName][ss.sourceType] = metadata
 			}

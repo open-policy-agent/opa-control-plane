@@ -359,6 +359,27 @@ func TestResolveRevision(t *testing.T) {
 			want:     "v1.0.0",
 		},
 		{
+			name:     "provider entry field",
+			revision: `sprintf("%s-%v", [input.sources.app.providers.users.version, input.sources.app.providers.users.count])`,
+			sourceMetadata: map[string]map[string]any{
+				"app": {
+					"providers": map[string]any{"users": map[string]any{"version": "v1", "count": 3}},
+				},
+			},
+			want: "v1-3",
+		},
+		{
+			name:     "unknown provider entry",
+			revision: `input.sources.app.providers.nope.version`,
+			sourceMetadata: map[string]map[string]any{
+				"app": {
+					"providers": map[string]any{"users": map[string]any{"version": "v1"}},
+				},
+			},
+			wantErr:         true,
+			wantErrContains: "undefined ref: input.sources.app.providers.nope",
+		},
+		{
 			name:     "git commit",
 			revision: `input.sources.policies.git.commit`,
 			sourceMetadata: map[string]map[string]any{

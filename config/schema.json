@@ -395,6 +395,33 @@
       },
       "type": "object"
     },
+    "ConfigProvider": {
+      "required": [
+        "name",
+        "type"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "type": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ConfigProviders": {
+      "items": {
+        "$ref": "#/definitions/ConfigProvider"
+      },
+      "type": "array"
+    },
     "ConfigRequirement": {
       "additionalProperties": false,
       "properties": {
@@ -504,6 +531,9 @@
         },
         "paths": {
           "$ref": "#/definitions/ConfigStringSet"
+        },
+        "providers": {
+          "$ref": "#/definitions/ConfigProviders"
         },
         "requirements": {
           "$ref": "#/definitions/ConfigRequirements"

@@ -258,6 +258,7 @@ type Source struct {
 	Builtin       *string      `json:"builtin,omitempty"`
 	Git           Git          `json:"git,omitzero"`
 	Datasources   Datasources  `json:"datasources,omitempty"`
+	Providers     Providers    `json:"providers,omitempty"`
 	EmbeddedFiles Files        `json:"files,omitempty"`
 	Directory     string       `json:"directory,omitempty"`
 	Paths         StringSet    `json:"paths,omitempty"`
@@ -604,6 +605,7 @@ func (s *Source) Equal(other *Source) bool {
 			internalutil.PtrEqual(s.Builtin, other.Builtin) &&
 			s.Git.Equal(&other.Git) &&
 			s.Datasources.Equal(other.Datasources) &&
+			s.Providers.Equal(other.Providers) &&
 			s.EmbeddedFiles.Equal(other.EmbeddedFiles) &&
 			s.Directory == other.Directory &&
 			s.Paths.Equal(other.Paths) &&

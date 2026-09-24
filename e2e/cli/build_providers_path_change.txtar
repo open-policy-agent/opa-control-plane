@@ -1,0 +1,45 @@
+# Changing an entry's path leaves nothing from the old path in the bundle:
+# the entry's directory is emptied before every sync. Both builds share the
+# same data directory.
+exec opactl-with-providers build --config config.d/old.yml --data-dir tmp --non-interactive
+exec tar xf bundles/app/bundle.tar.gz
+exec jq -e '. == {"old": {"v": 1}}' data.json
+
+exec opactl-with-providers build --config config.d/new.yml --data-dir tmp --non-interactive
+! stderr .
+! stdout .
+exec tar xf bundles/app/bundle.tar.gz
+exec jq -e '. == {"new": {"v": 2}}' data.json
+
+-- config.d/old.yml --
+bundles:
+  app:
+    object_storage:
+      filesystem:
+        path: bundles/app/bundle.tar.gz
+    requirements:
+    - source: app
+sources:
+  app:
+    providers:
+    - name: users
+      type: e2e.files
+      path: old
+      files:
+        data.json: '{"v": 1}'
+-- config.d/new.yml --
+bundles:
+  app:
+    object_storage:
+      filesystem:
+        path: bundles/app/bundle.tar.gz
+    requirements:
+    - source: app
+sources:
+  app:
+    providers:
+    - name: users
+      type: e2e.files
+      path: new
+      files:
+        data.json: '{"v": 2}'
