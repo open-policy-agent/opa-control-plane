@@ -15,8 +15,12 @@ type Synchronizer interface {
 	// Execute performs the synchronization operation.
 	// The exact behavior depends on the implementation (git clone/fetch, HTTP GET, etc.).
 	//
+	// The returned map carries metadata about the synchronized content (e.g. a
+	// git commit or a content hash). It is exposed to bundle revision templates
+	// under input.sources, and may be nil when there is nothing to report.
+	//
 	// Returns an error if synchronization fails.
-	Execute(ctx context.Context) error
+	Execute(ctx context.Context) (map[string]any, error)
 
 	// Close releases any resources held by the synchronizer.
 	// It should be called when the synchronizer is no longer needed.

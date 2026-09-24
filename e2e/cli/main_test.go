@@ -17,7 +17,35 @@ import (
 	"time"
 
 	"github.com/rogpeppe/go-internal/testscript"
+
+	"github.com/open-policy-agent/opa-control-plane/cmd"
+	// The same subcommands as opactl's main package.
+	_ "github.com/open-policy-agent/opa-control-plane/cmd/backtest"
+	_ "github.com/open-policy-agent/opa-control-plane/cmd/build"
+	_ "github.com/open-policy-agent/opa-control-plane/cmd/compare"
+	_ "github.com/open-policy-agent/opa-control-plane/cmd/db"
+	_ "github.com/open-policy-agent/opa-control-plane/cmd/migrate"
+	_ "github.com/open-policy-agent/opa-control-plane/cmd/run"
+	_ "github.com/open-policy-agent/opa-control-plane/cmd/version"
 )
+
+// TestMain makes "opactl-with-providers" available to test scripts: OCP's
+// commands, with the E2E test source provider (see provider_test.go)
+// registered. opactl itself registers none, so scripts exercising providers
+// entries use this instead of $OPACTL.
+func TestMain(m *testing.M) {
+	testscript.Main(m, map[string]func(){
+		"opactl-with-providers": func() {
+			if err := cmd.SourceProviders.Register(filesProvider{}); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			if err := cmd.RootCommand.Execute(); err != nil {
+				os.Exit(1)
+			}
+		},
+	})
+}
 
 func testServer() *httptest.Server {
 	mux := http.NewServeMux()

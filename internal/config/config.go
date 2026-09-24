@@ -42,6 +42,8 @@ type (
 	Git               = extconfig.Git
 	Datasource        = extconfig.Datasource
 	Datasources       = extconfig.Datasources
+	Provider          = extconfig.Provider
+	Providers         = extconfig.Providers
 	SecretRef         = extconfig.SecretRef
 	Requirement       = extconfig.Requirement
 	GitRequirement    = extconfig.GitRequirement

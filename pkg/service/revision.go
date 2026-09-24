@@ -150,6 +150,19 @@ func buildInputSchema(sourceMetadata map[string]map[string]any, bundleHash strin
 			}
 		}
 
+		// Provider entries report metadata fields of their own choosing, so
+		// only the entry names are known: any field is allowed under them.
+		if typeData, ok := types["providers"].(map[string]any); ok {
+			entryProps := make(map[string]any, len(typeData))
+			for name := range typeData {
+				entryProps[name] = map[string]any{"type": "object"}
+			}
+			props["providers"] = map[string]any{
+				"type":       "object",
+				"properties": entryProps,
+			}
+		}
+
 		sourceProps[sourceName] = map[string]any{
 			"type":       "object",
 			"properties": props,

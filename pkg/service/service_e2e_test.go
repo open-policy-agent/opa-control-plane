@@ -114,8 +114,12 @@ func TestService(t *testing.T) {
 			}
 
 			obj, err := mock.GetObject("test", "bundle.tar.gz", nil)
-			if obj == nil || err != nil {
+			if err != nil {
 				t.Fatal(err)
+			}
+			if obj == nil {
+				t.Fatal("bundle.tar.gz not found in object storage")
+				return // not reached; lets staticcheck see obj is non-nil below
 			}
 
 			// Once the bundle was downloaded from S3, check the filesystem layout the service used to

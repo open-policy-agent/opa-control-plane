@@ -34,8 +34,8 @@ func init() {
 	run := &cobra.Command{
 		Use:   "run",
 		Short: "Run the OPA Control Plane service",
-		Run: func(cmd *cobra.Command, args []string) {
-			ctx := cmd.Context()
+		Run: func(c *cobra.Command, args []string) {
+			ctx := c.Context()
 
 			log := logging.NewLogger(params.logging)
 
@@ -64,6 +64,7 @@ func init() {
 				WithPersistenceDir(params.persistenceDir).
 				WithConfig(config).
 				WithBuiltinFS(libraries.FS).
+				WithSourceProviders(cmd.SourceProviders).
 				WithLogger(log).
 				WithMigrateDB(params.migrateDB || sqlite) // always run migrations with sqlite
 
@@ -78,6 +79,7 @@ func init() {
 			go func() {
 				if err := server.New().
 					WithDatabase(svc.Database()).
+					WithSourceProviders(svc.SourceProviders()).
 					WithReadiness(svc.Ready).
 					WithConfig(config).
 					WithMetrics(m).

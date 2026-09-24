@@ -1,7 +1,6 @@
 package service
 
 import (
-	"cmp"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -26,11 +25,11 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	ocp_fs "github.com/open-policy-agent/opa-control-plane/internal/fs"
 	"github.com/open-policy-agent/opa-control-plane/internal/gitsync"
-	"github.com/open-policy-agent/opa-control-plane/internal/httpsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
 	"github.com/open-policy-agent/opa-control-plane/internal/migrations"
 	"github.com/open-policy-agent/opa-control-plane/internal/pool"
 	"github.com/open-policy-agent/opa-control-plane/internal/progress"
+	"github.com/open-policy-agent/opa-control-plane/internal/providers"
 	"github.com/open-policy-agent/opa-control-plane/internal/s3"
 	"github.com/open-policy-agent/opa-control-plane/internal/sqlsync"
 	ext_authz "github.com/open-policy-agent/opa-control-plane/pkg/authz"
@@ -71,6 +70,12 @@ type Service struct {
 	secretFactory  pkgsync.SecretProviderFactory
 	authorizer     ext_authz.Authorizer
 	metrics        *metrics.Metrics
+
+	providers *pkgsync.SourceProviderRegistry // custom source types, for providers entries
+
+	builtinsOnce sync.Once
+	builtins     *pkgsync.SourceProviderRegistry // built-in source types
+	builtinsErr  error
 }
 
 type Report struct {
@@ -152,7 +157,26 @@ func New() *Service {
 		failures:       make(map[string]Status),
 		noninteractive: true,
 		migrateDB:      false,
+		providers:      pkgsync.NewSourceProviderRegistry(),
 	}
+}
+
+// WithSourceProviders sets the registry of source types that can be used in
+// sources' providers entries, replacing the service's own (empty) registry.
+// The built-in types (git, http, s3) are not part of it: they are configured
+// through a source's git and datasources fields.
+func (s *Service) WithSourceProviders(reg *pkgsync.SourceProviderRegistry) *Service {
+	if reg == nil {
+		reg = pkgsync.NewSourceProviderRegistry()
+	}
+	s.providers = reg
+	return s
+}
+
+// SourceProviders returns the registry of source types that can be used in
+// sources' providers entries.
+func (s *Service) SourceProviders() *pkgsync.SourceProviderRegistry {
+	return s.providers
 }
 
 func (s *Service) WithPersistenceDir(d string) *Service {
@@ -329,6 +353,14 @@ func (s *Service) initDB(ctx context.Context) error {
 		s.config = cfg
 	}
 
+	if s.config != nil {
+		for _, src := range s.config.Sources {
+			if err := providers.Validate(s.providers, src); err != nil {
+				return fmt.Errorf("invalid configuration: %w", err)
+			}
+		}
+	}
+
 	db, err := migrations.New().
 		WithConfig(s.config.Database).
 		WithLogger(s.log).
@@ -417,6 +449,16 @@ func (s *Service) retireStaleWorkers(activeBundles map[string]struct{}) {
 			w.UpdateConfig(nil, nil, nil)
 		}
 	}
+}
+
+// builtinProviders returns the registry of built-in source types (git, http,
+// s3). It is kept apart from any user-provided registry, since built-in
+// types are configured through a source's git and datasources fields.
+func (s *Service) builtinProviders() (*pkgsync.SourceProviderRegistry, error) {
+	s.builtinsOnce.Do(func() {
+		s.builtins, s.builtinsErr = providers.Builtins(s.metrics)
+	})
+	return s.builtins, s.builtinsErr
 }
 
 func (s *Service) launchWorkers(ctx context.Context) {
@@ -514,6 +556,13 @@ func (s *Service) launchWorkers(ctx context.Context) {
 			bundleDir := join(s.persistenceDir, md5sum(bName))
 			tenantProvider := s.secretProviderForTenant(ctx, tenant)
 
+			builtins, err := s.builtinProviders()
+			if err != nil {
+				failures[b.Name] = Status{State: BuildStateInternalError, Message: fmt.Sprintf("built-in source types: %v", err)}
+				continue
+			}
+
+			var srcErr error
 			for _, dep := range deps {
 				// NB(sr): dep.Name could contain a `:` which cause build errors in OPA's bundle build machinery
 				srcDir := join(bundleDir, "sources", ocp_fs.Escape(dep.Name))
@@ -521,11 +570,20 @@ func (s *Service) launchWorkers(ctx context.Context) {
 				src := newSource(dep.Name).
 					SyncBuiltin(&syncs, dep.Builtin, s.builtinFS, join(srcDir, "builtin")).
 					SyncSourceSQL(&syncs, dep.ID, dep.Name, &s.database, join(srcDir, "database"), metadataFields[dep.Name]).
-					SyncDatasources(&syncs, dep.Name, dep.Datasources, join(srcDir, "datasources"), tenantProvider, metadataFields[dep.Name]).
-					SyncGit(&syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name], tenantProvider, s.metrics).
+					SyncDatasources(ctx, builtins, &syncs, dep.Name, dep.Datasources, join(srcDir, "datasources"), tenantProvider, metadataFields[dep.Name]).
+					SyncGit(ctx, builtins, &syncs, dep.Name, dep.Git, join(srcDir, "repo"), overrides[dep.Name], tenantProvider).
+					SyncProviders(ctx, s.providers, &syncs, dep.Name, dep.Providers, join(srcDir, "providers"), tenantProvider, metadataFields[dep.Name], s.log).
 					AddRequirements(dep.Requirements)
+				if src.err != nil {
+					srcErr = fmt.Errorf("source %q: %w", dep.Name, src.err)
+					break
+				}
 
 				sources = append(sources, &src.Source)
+			}
+			if srcErr != nil {
+				failures[b.Name] = Status{State: BuildStateConfigError, Message: srcErr.Error()}
+				continue
 			}
 
 			w := NewBundleWorker(bundleDir, b, sourceDefs, stacks, s.log, bar).
@@ -618,6 +676,25 @@ func getDeps(rs config.Requirements, byName map[string]*config.Source) ([]*confi
 
 type source struct {
 	builder.Source
+
+	// err records the first error from setting up the source's
+	// synchronizers; later Sync* calls are no-ops once it is set.
+	err error
+}
+
+// newSync creates the synchronizer for a built-in source type.
+func (src *source) newSync(ctx context.Context, builtins *pkgsync.SourceProviderRegistry, t string, p pkgsync.ProviderParams) pkgsync.Synchronizer {
+	prov, ok := builtins.Get(t)
+	if !ok {
+		src.err = fmt.Errorf("unknown source type %q", t)
+		return nil
+	}
+	syncer, err := prov.New(ctx, p)
+	if err != nil {
+		src.err = fmt.Errorf("%s: %w", t, err)
+		return nil
+	}
+	return syncer
 }
 
 func newSource(name string) *source {
@@ -640,23 +717,32 @@ func (src *source) addFS(fsys fs.FS) {
 	src.Source.AddFS(fsys)
 }
 
-func (src *source) SyncGit(syncs *[]sourceSynchronizer, sourceName string, git config.Git, repoDir string, reqCommit string, provider pkgsync.SecretProvider, m *metrics.Metrics) *source {
-	if git.Repo != "" {
-		srcDir := repoDir
-		if git.Path != nil {
-			srcDir = join(srcDir, *git.Path)
-		}
-		src.addDir(srcDir, false, git.IncludedFiles, git.ExcludedFiles, gitsync.MetadataFiles)
-		if reqCommit != "" {
-			git.Commit = &reqCommit
-		}
-		*syncs = append(*syncs, sourceSynchronizer{
-			sync:       gitsync.New(repoDir, git, sourceName).WithSecretProvider(provider).WithMetrics(m),
-			sourceName: sourceName,
-			sourceType: "git",
-		})
+func (src *source) SyncGit(ctx context.Context, builtins *pkgsync.SourceProviderRegistry, syncs *[]sourceSynchronizer, sourceName string, git config.Git, repoDir string, reqCommit string, provider pkgsync.SecretProvider) *source {
+	if src.err != nil || git.Repo == "" {
+		return src
 	}
-
+	srcDir := repoDir
+	if git.Path != nil {
+		srcDir = join(srcDir, *git.Path)
+	}
+	src.addDir(srcDir, false, git.IncludedFiles, git.ExcludedFiles, gitsync.MetadataFiles)
+	if reqCommit != "" {
+		git.Commit = &reqCommit
+	}
+	syncer := src.newSync(ctx, builtins, providers.TypeGit, pkgsync.ProviderParams{
+		SourceName:     sourceName,
+		Config:         git,
+		Dir:            repoDir,
+		SecretProvider: provider,
+	})
+	if syncer == nil {
+		return src
+	}
+	*syncs = append(*syncs, sourceSynchronizer{
+		sync:       syncer,
+		sourceName: sourceName,
+		sourceType: providers.TypeGit,
+	})
 	return src
 }
 
@@ -670,46 +756,29 @@ func (src *source) SyncBuiltin(syncs *[]sourceSynchronizer, builtin *string, fs_
 	return src
 }
 
-func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName string, datasources []config.Datasource, dir string, provider pkgsync.SecretProvider, metadataFields []string) *source {
-	var opts []httpsync.HTTPSyncOption
-	if len(metadataFields) > 0 {
-		opts = append(opts, httpsync.WithMetadataFields(metadataFields))
+func (src *source) SyncDatasources(ctx context.Context, builtins *pkgsync.SourceProviderRegistry, syncs *[]sourceSynchronizer, sourceName string, datasources []config.Datasource, dir string, provider pkgsync.SecretProvider, metadataFields []string) *source {
+	if src.err != nil {
+		return src
 	}
 	for _, datasource := range datasources {
 		switch datasource.Type {
-		case "http":
-			url, _ := datasource.Config["url"].(string)
-			method, _ := datasource.Config["method"].(string)
-			method = cmp.Or(method, "GET")
-
-			body, _ := datasource.Config["body"].(string)
-			headers, _ := datasource.Config["headers"].(map[string]any)
-			*syncs = append(*syncs, sourceSynchronizer{
-				sync:           httpsync.New(join(dir, datasource.Path, "data.json"), url, method, body, headers, datasource.Credentials, opts...).WithSecretProvider(provider),
-				sourceName:     sourceName,
-				sourceType:     "http",
-				datasourceName: datasource.Name,
+		case providers.TypeHTTP, providers.TypeS3:
+			syncer := src.newSync(ctx, builtins, datasource.Type, pkgsync.ProviderParams{
+				SourceName:     sourceName,
+				Name:           datasource.Name,
+				Config:         datasource,
+				Dir:            join(dir, datasource.Path),
+				SecretProvider: provider,
+				MetadataFields: metadataFields,
 			})
-		case "s3":
-			bucket, _ := datasource.Config["bucket"].(string)
-			key, _ := datasource.Config["key"].(string)
-			region, _ := datasource.Config["region"].(string)
-			endpoint, _ := datasource.Config["endpoint"].(string)
-
-			region = cmp.Or(region, "us-east-1")
-
-			var url string
-			if endpoint != "" {
-				url = endpoint + "/" + bucket + "/" + key
-			} else {
-				url = "https://" + bucket + ".s3." + region + ".amazonaws.com/" + key
+			if syncer == nil {
+				return src
 			}
-
 			*syncs = append(*syncs, sourceSynchronizer{
-				sync:           httpsync.NewS3(join(dir, datasource.Path, "data.json"), url, region, endpoint, datasource.Credentials, opts...),
-				sourceName:     sourceName,
-				sourceType:     "s3",
-				datasourceName: datasource.Name,
+				sync:       syncer,
+				sourceName: sourceName,
+				sourceType: datasource.Type,
+				entryName:  datasource.Name,
 			})
 		}
 
@@ -722,6 +791,53 @@ func (src *source) SyncDatasources(syncs *[]sourceSynchronizer, sourceName strin
 	}
 	if len(datasources) > 0 {
 		src.addDir(dir, true, nil, nil, nil)
+	}
+	return src
+}
+
+// SyncProviders sets up the source's provider entries. Each entry gets its
+// own directory under dir, emptied before every sync; the entry's content is
+// written to its path within it.
+func (src *source) SyncProviders(ctx context.Context, reg *pkgsync.SourceProviderRegistry, syncs *[]sourceSynchronizer, sourceName string, entries config.Providers, dir string, provider pkgsync.SecretProvider, metadataFields []string, log *logging.Logger) *source {
+	if src.err != nil {
+		return src
+	}
+	for _, p := range entries {
+		prov, cfg, err := providers.ParseEntry(reg, p)
+		if err != nil {
+			src.err = fmt.Errorf("provider %q: %w", p.Name, err)
+			return src
+		}
+		entryDir := join(dir, ocp_fs.Escape(p.Name))
+		contentDir := join(entryDir, p.Path)
+		syncer, err := prov.New(ctx, pkgsync.ProviderParams{
+			SourceName:     sourceName,
+			Name:           p.Name,
+			Config:         cfg,
+			Dir:            contentDir,
+			SecretProvider: provider,
+			MetadataFields: metadataFields,
+			Logger:         log.Slog(),
+		})
+		if err != nil {
+			src.err = fmt.Errorf("provider %q: %w", p.Name, err)
+			return src
+		}
+
+		contrib := &contribution{}
+		_ = src.Source.AddDir(builder.Dir{
+			Path:         filepath.ToSlash(entryDir),
+			Wipe:         true,
+			Contribution: contrib.get,
+		})
+		*syncs = append(*syncs, sourceSynchronizer{
+			sync:       syncer,
+			sourceName: sourceName,
+			sourceType: "providers",
+			entryName:  p.Name,
+			dir:        contentDir,
+			contrib:    contrib,
+		})
 	}
 	return src
 }

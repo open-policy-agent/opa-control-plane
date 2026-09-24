@@ -1034,6 +1034,9 @@ func (d *Database) DeleteSource(ctx context.Context, principal, tenant, name str
 		if err := d.delete(ctx, tx, "sources_datasources", "source_id", id); err != nil {
 			return err
 		}
+		if err := d.delete(ctx, tx, "sources_providers", "source_id", id); err != nil {
+			return err
+		}
 		if err := d.delete(ctx, tx, "sources_secrets", "source_id", id); err != nil {
 			return err
 		}
@@ -1314,6 +1317,41 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 				}
 			}
 			if err := rows2.Err(); err != nil {
+				return nil, "", err
+			}
+
+			rows3, err := txn.QueryContext(ctx, `SELECT
+		sources_providers.source_id,
+		sources_providers.name,
+		sources_providers.type,
+		sources_providers.path,
+		sources_providers.config
+	FROM
+		sources_providers
+	WHERE sources_providers.source_id IN (`+strings.Join(d.args(len(dsArgs)), ", ")+`)
+	ORDER BY sources_providers.source_id, sources_providers.name
+	`, dsArgs...)
+			if err != nil {
+				return nil, "", err
+			}
+
+			defer rows3.Close()
+
+			for rows3.Next() {
+				var sourceID int64
+				var p config.Provider
+				var configuration string
+				if err := rows3.Scan(&sourceID, &p.Name, &p.Type, &p.Path, &configuration); err != nil {
+					return nil, "", err
+				}
+				if err := json.Unmarshal([]byte(configuration), &p.Config); err != nil {
+					return nil, "", fmt.Errorf("provider %s: %w", p.Name, err)
+				}
+				if src, ok := byID[sourceID]; ok {
+					src.Providers = append(src.Providers, p)
+				}
+			}
+			if err := rows3.Err(); err != nil {
 				return nil, "", err
 			}
 		}
@@ -1843,6 +1881,26 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 				[]string{"source_id", "name"},
 				id, datasource.Name, datasource.Type, datasource.Path, string(bs), datasource.TransformQuery, secret, credentialsName); err != nil {
 				return fmt.Errorf("upsert of datasource link %s: %w", datasource.Name, err)
+			}
+		}
+
+		// Replace the source's provider entries with the given ones. As with
+		// requirements, nil leaves them as they are, so a caller unaware of
+		// providers doesn't remove them; an empty list removes them all.
+		if source.Providers != nil {
+			if err := d.delete(ctx, tx, "sources_providers", "source_id", id); err != nil {
+				return err
+			}
+		}
+		for _, p := range source.Providers {
+			bs, err := json.Marshal(p.Config)
+			if err != nil {
+				return fmt.Errorf("provider %s: %w", p.Name, err)
+			}
+			if err := d.upsertRel(ctx, tx, "sources_providers", []string{"source_id", "name", "type", "path", "config"},
+				[]string{"source_id", "name"},
+				id, p.Name, p.Type, p.Path, string(bs)); err != nil {
+				return fmt.Errorf("upsert of provider %s: %w", p.Name, err)
 			}
 		}
 

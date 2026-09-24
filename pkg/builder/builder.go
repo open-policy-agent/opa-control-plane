@@ -44,7 +44,38 @@ type Source struct {
 
 	// fses are the fs.FS instances used for building the bundle, with per-source
 	// includes/excludes already applied
-	fses []fs.FS
+	fses []sourceFS
+}
+
+// sourceFS is one filesystem of a Source, together with what it contributes
+// to the bundle beyond its files.
+type sourceFS struct {
+	fsys         fs.FS
+	contribution func() *Contribution
+}
+
+func (s *sourceFS) contrib() *Contribution {
+	if s.contribution == nil {
+		return nil
+	}
+	return s.contribution()
+}
+
+// Contribution describes what a single source directory contributes to the
+// bundle beyond its files. It is set per directory so that it only affects the content that produced it, not sibling
+// directories of the same Source.
+type Contribution struct {
+	// Metadata is merged into the bundle manifest's metadata. A top-level key
+	// contributed by two different directories is a build error.
+	Metadata map[string]any
+
+	// Roots are bundle roots claimed by this directory. They are subject to requirement mounts and to the same
+	// overlap checks as roots computed from files.
+	Roots []string
+
+	// RegoVersion sets the Rego version (0 or 1) used to parse this directory's
+	// policies. Nil leaves the default in place.
+	RegoVersion *int
 }
 
 // Transform defines a data transformation operation that uses a Rego query to
@@ -89,12 +120,12 @@ func (s *Source) AddDir(d Dir) error {
 	if err != nil {
 		return err
 	}
-	s.AddFS(f)
+	s.fses = append(s.fses, sourceFS{fsys: f, contribution: d.Contribution})
 	return nil
 }
 
 func (s *Source) AddFS(f fs.FS) {
-	s.fses = append(s.fses, f)
+	s.fses = append(s.fses, sourceFS{fsys: f})
 }
 
 // Transform applies Rego policies to data, replacing the original content with the
@@ -165,6 +196,11 @@ type Dir struct {
 	IncludedFiles         []string // inclusion filter on files to load from path
 	ExcludedFiles         []string // exclusion filter on files to skip from path
 	ExcludedMetadataFiles []string // excludes files that exist in the directory but are not part of its source content (eg. git checkout's .git)
+
+	// Contribution, if set, is called once at the start of every Build to get
+	// what this directory contributes to the bundle beyond its files. It may
+	// return nil.
+	Contribution func() *Contribution
 }
 
 type Builder struct {
@@ -299,6 +335,23 @@ func (b *Builder) Build(ctx context.Context) error {
 	for _, src := range b.sources {
 		sourceMap[src.Name] = src
 	}
+
+	// Snapshot each directory's contribution once, so every pass over a
+	// source sees the same value.
+	contribs := map[*sourceFS]*Contribution{}
+	for _, src := range b.sources {
+		for i := range src.fses {
+			c := src.fses[i].contrib()
+			if c == nil {
+				continue
+			}
+			if c.RegoVersion != nil && *c.RegoVersion != 0 && *c.RegoVersion != 1 {
+				return fmt.Errorf("source %q: unsupported rego version %d", src.Name, *c.RegoVersion)
+			}
+			contribs[&src.fses[i]] = c
+		}
+	}
+
 	var existingRoots []ast.Ref
 
 	// NB(sr): We've accumulated all deps already (service.go#getDeps), but we'll
@@ -314,27 +367,73 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	effectiveRegoVersion := ast.RegoV0
 	var sourceManifests []bundle.Manifest
+	var sourceManifestNames []string // source of each entry in sourceManifests
+
+	// Contributed manifest metadata, and which directory contributed each
+	// top-level key.
+	metadata := map[string]any{}
+	metadataOwner := map[string]*sourceFS{}
+	metadataSource := map[string]string{}
+
+	var claimedRoots []claimedRoot
+	var fileRoots refSet // roots computed from files only, i.e. without claimed roots
 
 	for len(toProcess) > 0 {
 		var next mntSrc
 		next, toProcess = toProcess[0], toProcess[1:]
 		var newRoots refSet
 
-		for _, fs_ := range next.src.fses {
-			fs0, err := ocp_fs.NewFilterFS(fs_, nil, b.excluded)
+		for i := range next.src.fses {
+			sfs := &next.src.fses[i]
+			fs0, err := ocp_fs.NewFilterFS(sfs.fsys, nil, b.excluded)
 			if err != nil {
 				return err
 			}
 
+			contrib := contribs[sfs]
+
 			regoVersion := ast.RegoV0
 			if m, ok := readManifest(fs0); ok {
 				sourceManifests = append(sourceManifests, m)
+				sourceManifestNames = append(sourceManifestNames, next.src.Name)
 				if m.RegoVersion != nil && *m.RegoVersion == 1 {
 					regoVersion = ast.RegoV1
 				}
 			}
+			if contrib != nil && contrib.RegoVersion != nil {
+				// The contribution takes precedence over the directory's .manifest.
+				if *contrib.RegoVersion == 1 {
+					regoVersion = ast.RegoV1
+				} else {
+					regoVersion = ast.RegoV0
+				}
+			}
 			if regoVersion == ast.RegoV1 {
 				effectiveRegoVersion = ast.RegoV1
+			}
+
+			if contrib != nil {
+				for _, r := range contrib.Roots {
+					ref, err := manifestRootToRef(r)
+					if err != nil {
+						return fmt.Errorf("source %q: claimed root %q: %w", next.src.Name, r, err)
+					}
+					if ref = mountRef(ref, next.mounts); ref != nil {
+						newRoots.add(ref)
+						claimedRoots = append(claimedRoots, claimedRoot{ref: ref, src: next.src.Name})
+					}
+				}
+				for k, v := range contrib.Metadata {
+					if owner, ok := metadataOwner[k]; ok {
+						if owner != sfs {
+							return fmt.Errorf("manifest metadata key %q contributed by both source %q and source %q", k, metadataSource[k], next.src.Name)
+						}
+						continue
+					}
+					metadata[k] = v
+					metadataOwner[k] = sfs
+					metadataSource[k] = next.src.Name
+				}
 			}
 
 			if len(next.mounts) > 0 {
@@ -370,6 +469,7 @@ func (b *Builder) Build(ctx context.Context) error {
 				return fmt.Errorf("source %s find roots: %w", next.src.Name, err)
 			}
 			newRoots.add(rs...)
+			fileRoots.add(rs...)
 		}
 
 		hasSourceReqs := slices.ContainsFunc(next.src.Requirements, func(r ext_config.Requirement) bool {
@@ -435,6 +535,7 @@ func (b *Builder) Build(ctx context.Context) error {
 		}
 		rootMap[root.String()] = ms.src
 		existingRoots = append(existingRoots, root)
+		fileRoots.add(root)
 	}
 
 	roots := make([]string, 0, len(existingRoots))
@@ -444,19 +545,64 @@ func (b *Builder) Build(ctx context.Context) error {
 	}
 
 	// If any source manifest specifies roots, use those. Log if they differ from computed.
-	for _, m := range sourceManifests {
+	manifestRootsFrom := "" // source whose .manifest roots replaced the computed ones
+	for i, m := range sourceManifests {
 		if m.Roots != nil {
 			manifestRoots := *m.Roots
-			sortedComputed := slices.Clone(roots)
+			computed := make([]string, 0, len(fileRoots.refs))
+			for _, root := range fileRoots.refs {
+				r, _ := root.Ptr()
+				computed = append(computed, r)
+			}
+			sortedComputed := slices.Clone(computed)
 			slices.Sort(sortedComputed)
 			sortedManifest := slices.Clone(manifestRoots)
 			slices.Sort(sortedManifest)
 			if !slices.Equal(sortedComputed, sortedManifest) {
-				fmt.Fprintf(os.Stderr, "builder: source manifest roots %v differ from computed roots %v; using manifest roots\n", manifestRoots, roots)
+				fmt.Fprintf(os.Stderr, "builder: source manifest roots %v differ from computed roots %v; using manifest roots\n", manifestRoots, computed)
 			}
 			roots = manifestRoots
+			manifestRootsFrom = sourceManifestNames[i]
 			break
 		}
+	}
+
+	// Claimed roots are part of the computed roots, so the replacement above
+	// would drop them. Add each one back unless a root already covers it
+	// (same root or a parent).
+	//
+	// A claimed root that is broader than a manifest root (claimed "app",
+	// manifest "app/x") can't be added: the bundle's own roots would overlap,
+	// which OPA rejects when loading it. Fail the build instead.
+	//
+	// Claimed roots are reduced to a minimal set first (claimed "lazy/users"
+	// and "lazy" is just "lazy"), as computed roots are, and only compared
+	// with the roots from before this loop, not with ones it added.
+	var minimal refSet
+	for _, cr := range claimedRoots {
+		minimal.add(cr.ref)
+	}
+	base := slices.Clone(roots)
+	added := map[string]struct{}{}
+	for _, cr := range claimedRoots {
+		if !slices.ContainsFunc(minimal.refs, func(m ast.Ref) bool { return m.Equal(cr.ref) }) {
+			continue // covered by a broader claimed root
+		}
+		r, err := cr.ref.Ptr() // data.authz.main -> "authz/main"
+		if err != nil {
+			return fmt.Errorf("source %q: claimed root %v: %w", cr.src, cr.ref, err)
+		}
+		if _, ok := added[r]; ok {
+			continue
+		}
+		if slices.ContainsFunc(base, func(s string) bool { return rootCovers(s, r) }) {
+			continue
+		}
+		if i := slices.IndexFunc(base, func(s string) bool { return rootCovers(r, s) }); i >= 0 {
+			return fmt.Errorf("source %q claims root %q, which overlaps root %q from the .manifest of source %q", cr.src, r, base[i], manifestRootsFrom)
+		}
+		roots = append(roots, r)
+		added[r] = struct{}{}
 	}
 
 	fsBuild := mountfs.New(buildSources.fs())
@@ -501,6 +647,12 @@ func (b *Builder) Build(ctx context.Context) error {
 	result := c.Bundle()
 	result.Manifest.SetRegoVersion(effectiveRegoVersion)
 	result.Manifest.Revision = b.revision
+	if len(metadata) > 0 {
+		if result.Manifest.Metadata == nil {
+			result.Manifest.Metadata = make(map[string]any, len(metadata))
+		}
+		maps.Copy(result.Manifest.Metadata, metadata)
+	}
 
 	return bundle.Write(b.output, *result)
 }
@@ -757,6 +909,56 @@ func applyDataMounts(fsys fs.FS, mnts []mount) (fs.FS, error) {
 		fs1 = sub
 	}
 	return fs1, nil
+}
+
+// manifestRootToRef converts a manifest-style root into a data-prefixed ref.
+func manifestRootToRef(root string) (ast.Ref, error) {
+	ref := ast.DefaultRootRef.Copy()
+	if root == "" {
+		return ref, nil
+	}
+	for seg := range strings.SplitSeq(root, "/") {
+		if seg == "" {
+			return nil, errors.New("empty path segment")
+		}
+		ref = append(ref, ast.StringTerm(seg))
+	}
+	return ref, nil
+}
+
+// mountRef applies a mount chain to a claimed root, mirroring what the chain
+// does to files: each mount selects the subtree at path and places it under
+// prefix. A root inside the selected subtree is moved along with it; a root
+// containing the selected subtree becomes the prefix; a root disjoint from it
+// is dropped (nil), just like files outside the selected path.
+func mountRef(ref ast.Ref, mnts []mount) ast.Ref {
+	for _, mnt := range mnts {
+		subRef, prefRef := toRef(mnt.path), toRef(mnt.prefix)
+		if subRef == nil || prefRef == nil {
+			return nil
+		}
+		switch {
+		case ref.HasPrefix(subRef):
+			ref = prefRef.Concat(ref[len(subRef):])
+		case subRef.HasPrefix(ref):
+			ref = prefRef.Copy()
+		default:
+			return nil
+		}
+	}
+	return ref
+}
+
+// claimedRoot is a root claimed through a Contribution, after mounts.
+type claimedRoot struct {
+	ref ast.Ref
+	src string // name of the claiming source
+}
+
+// rootCovers reports whether manifest root covers manifest root r, i.e. r is
+// root itself or below it ("" covers everything).
+func rootCovers(root, r string) bool {
+	return root == "" || r == root || strings.HasPrefix(r, root+"/")
 }
 
 // mountRoot simulates the mount chain on an empty source to determine the

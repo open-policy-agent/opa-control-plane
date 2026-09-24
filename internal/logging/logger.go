@@ -45,6 +45,15 @@ func FromSlog(l *slog.Logger) *Logger {
 	return &Logger{l: l}
 }
 
+// Slog returns the underlying *slog.Logger. For a nil Logger, it returns one
+// that discards everything.
+func (l *Logger) Slog() *slog.Logger {
+	if l == nil {
+		return slog.New(slog.DiscardHandler)
+	}
+	return l.l
+}
+
 func (l *Logger) Debug(msg string, args ...any) {
 	if l == nil || !l.l.Enabled(context.Background(), slog.LevelDebug) {
 		return

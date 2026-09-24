@@ -120,6 +120,37 @@ func addBundlesStatusesUpdatedAt(offset int, dialect string) fs.FS {
 	})
 }
 
+// addSourcesProviders adds the table for sources' `providers:` entries.
+// Entries are keyed by name within their source; config holds the entry's
+// own (non-reserved) keys as JSON.
+func addSourcesProviders(offset int, dialect string) fs.FS {
+	var kind int
+	switch dialect {
+	case "postgresql":
+		kind = postgres
+	case "mysql":
+		kind = mysql
+	case "sqlite":
+		kind = sqlite
+	case "cockroachdb":
+		kind = cockroachdb
+	}
+
+	tbl := createSQLTable("sources_providers").
+		WithIteration("ocp_v2").
+		VarCharNonNullColumn("name").
+		IntegerNonNullColumn("source_id").
+		TextNonNullColumn("type").
+		TextNonNullColumn("path").
+		TextNonNullColumn("config").
+		PrimaryKey("source_id", "name").
+		ForeignKey("source_id", "sources(id)")
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_sources_providers.up.sql", offset): tbl.SQL(kind),
+	})
+}
+
 // NOTE(sr): We create new tables to drop constraints. It's hard to predict constraint names
 // across MySQL and Postgres if they have not been set up at creation time.
 // NOTE(sr): We want this to work, or fail, in one step. So this will all be done in a single migration,

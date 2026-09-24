@@ -21,6 +21,8 @@ import (
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
 
+var _ pkgsync.Synchronizer = (*HttpDataSynchronizer)(nil)
+
 // HttpDataSynchronizer is a struct that implements the Synchronizer interface for downloading JSON from HTTP endpoints.
 type HttpDataSynchronizer struct {
 	path           string // The path where the data will be saved

@@ -8,7 +8,10 @@ import (
 
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	internalfs "github.com/open-policy-agent/opa-control-plane/internal/fs"
+	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
+
+var _ pkgsync.Synchronizer = (*SQLDataSynchronizer)(nil)
 
 // SQLDataSynchronizer is a struct that implements the Synchronizer interface for bundle files stored in SQL database.
 // It is expected that the caller will handle concurrency and parallelism. The Synchronizer is not thread-safe. It

@@ -45,7 +45,8 @@ func Migrations(dialect string) (fs.FS, error) {
 		addDatasourcesCredentialsName(24, dialect),
 		addSourcesGitCredentialsName(25, dialect),
 		addBundlesStatuses(26, dialect),
-		addBundlesStatusesUpdatedAt(27, dialect), // adds 2, next is 29.
+		addBundlesStatusesUpdatedAt(27, dialect),
+		addSourcesProviders(29, dialect),
 	), nil
 }
 

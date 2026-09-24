@@ -1,0 +1,46 @@
+# A git repository and a providers entry in the same source.
+cd repo
+env HOME=.
+exec git init .
+exec git branch -m main
+exec git config --global user.name "botbotbot"
+exec git config --global user.email "bot@bot.bot"
+exec git add .
+exec git commit -m initial-commit
+cd ..
+
+exec opactl-with-providers build --config config.d/bundle.yml --data-dir tmp --non-interactive
+! stderr .
+! stdout .
+
+exec tar xf bundles/app/bundle.tar.gz
+exec jq -e '.revision == "git-v1" and (.roots | sort) == ["rules", "users"]' .manifest
+exec jq -e '. == {"users": {"alice": ["admin"]}}' data.json
+exists app/policy.rego
+
+-- repo/policy.rego --
+package rules
+import rego.v1
+allow if input.user in data.users.alice
+-- config.d/bundle.yml --
+bundles:
+  app:
+    object_storage:
+      filesystem:
+        path: bundles/app/bundle.tar.gz
+    revision: $"git-{input.sources.app.providers.users.version}"
+    requirements:
+    - source: app
+sources:
+  app:
+    git:
+      repo: ./repo/
+      reference: refs/heads/main
+    providers:
+    - name: users
+      type: e2e.files
+      path: users
+      files:
+        data.json: '{"alice": ["admin"]}'
+      metadata:
+        version: v1
