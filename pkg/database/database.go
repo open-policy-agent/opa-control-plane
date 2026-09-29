@@ -261,6 +261,8 @@ func (d *Database) UpsertTenantWithPrincipal(ctx context.Context, tenantName, pr
 
 // UpsertTenantWithPrincipalTx performs the tenant+principal upsert within an existing *sql.Tx.
 // Use this when you need the operation to participate in a transaction managed by the caller.
+// It applies this Database's configured schema (see WithSchema) to tx itself, so it works
+// whether or not the caller's tx has already been scoped.
 func (d *Database) UpsertTenantWithPrincipalTx(ctx context.Context, tx *sql.Tx, tenantName, principalID, role string) error {
 	return d.db.UpsertTenantAndPrincipalTx(ctx, tx, tenantName, principalID, role)
 }

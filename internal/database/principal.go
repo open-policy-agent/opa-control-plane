@@ -35,7 +35,13 @@ func (db *Database) UpsertTenantWithPrincipal(ctx context.Context, tenantName, p
 }
 
 // UpsertTenantAndPrincipalTx performs the tenant+principal upsert within an existing transaction.
+// tx may have been opened by the caller rather than by one of this package's own tx1/tx2/tx3
+// helpers, so this applies the configured schema's search_path itself before touching any
+// unqualified table name, rather than assuming the caller already scoped it.
 func (db *Database) UpsertTenantAndPrincipalTx(ctx context.Context, tx *sql.Tx, tenantName, principalID, role string) error {
+	if err := db.applySearchPath(ctx, tx); err != nil {
+		return err
+	}
 	if err := db.upsertTenantTx(ctx, tx, tenantName); err != nil {
 		return err
 	}

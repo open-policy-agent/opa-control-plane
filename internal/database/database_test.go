@@ -1136,6 +1136,63 @@ func TestNewFromDB(t *testing.T) {
 			if principalCount != 1 {
 				t.Fatalf("expected 1 principal, got %d", principalCount)
 			}
+
+			// Postgres and CockroachDB support additional schemas. Scope a Database
+			// to one and confirm UpsertTenantAndPrincipalTx writes there, not to
+			// "public".
+			if dialect != "postgresql" && dialect != "cockroachdb" {
+				return
+			}
+
+			const otherSchema = "ocp2"
+			if _, err := sqlDB.ExecContext(ctx, "CREATE SCHEMA "+otherSchema); err != nil {
+				t.Fatalf("create schema: %v", err)
+			}
+			if _, err := sqlDB.ExecContext(ctx, "CREATE TABLE "+otherSchema+".tenants (id SERIAL PRIMARY KEY, name VARCHAR UNIQUE NOT NULL)"); err != nil {
+				t.Fatalf("create %s.tenants: %v", otherSchema, err)
+			}
+			if _, err := sqlDB.ExecContext(ctx, "CREATE TABLE "+otherSchema+".principals (id VARCHAR PRIMARY KEY, tenant_id INT NOT NULL, role TEXT NOT NULL, created_at TIMESTAMP DEFAULT current_timestamp, UNIQUE (tenant_id, id))"); err != nil {
+				t.Fatalf("create %s.principals: %v", otherSchema, err)
+			}
+
+			db3, err := database.NewFromDB(sqlDB, dialect)
+			if err != nil {
+				t.Fatalf("NewFromDB: %v", err)
+			}
+			db3, err = db3.WithSchema(otherSchema)
+			if err != nil {
+				t.Fatalf("WithSchema: %v", err)
+			}
+
+			tx3, err := sqlDB.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatalf("begin tx: %v", err)
+			}
+			defer tx3.Rollback() //nolint:errcheck
+
+			if err := db3.UpsertTenantAndPrincipalTx(ctx, tx3, "scoped-tenant", "scoped-principal", "administrator"); err != nil {
+				t.Fatalf("UpsertTenantAndPrincipalTx with schema %q: %v", otherSchema, err)
+			}
+			if err := tx3.Commit(); err != nil {
+				t.Fatalf("commit: %v", err)
+			}
+
+			var scopedCount int
+			if err := sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+otherSchema+".tenants WHERE name = 'scoped-tenant'").Scan(&scopedCount); err != nil {
+				t.Fatalf("query %s.tenants: %v", otherSchema, err)
+			}
+			if scopedCount != 1 {
+				t.Fatalf("expected 1 tenant in %s, got %d -- did UpsertTenantAndPrincipalTx write it elsewhere?", otherSchema, scopedCount)
+			}
+
+			var publicCount int
+			if err := sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM tenants WHERE name = 'scoped-tenant'").Scan(&publicCount); err != nil {
+				t.Fatalf("query public tenants: %v", err)
+			}
+			if publicCount != 0 {
+				t.Fatalf("expected 0 tenants named 'scoped-tenant' in the default schema, got %d -- "+
+					"UpsertTenantAndPrincipalTx wrote to the wrong schema instead of %s", publicCount, otherSchema)
+			}
 		})
 	}
 }
