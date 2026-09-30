@@ -3,10 +3,12 @@ package service
 import (
 	"cmp"
 	"context"
+	"log/slog"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/gitsync"
 	"github.com/open-policy-agent/opa-control-plane/internal/httpsync"
+	"github.com/open-policy-agent/opa-control-plane/internal/providers"
 	"github.com/open-policy-agent/opa-control-plane/internal/syncerr"
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
@@ -55,6 +57,23 @@ type accessChecker interface {
 	Close(ctx context.Context)
 }
 
+// AccessOption configures ValidateSourceAccess.
+type AccessOption func(*accessOptions)
+
+type accessOptions struct {
+	providers *pkgsync.SourceProviderRegistry
+}
+
+// WithAccessSourceProviders makes ValidateSourceAccess also check src's
+// providers entries, through the source providers in reg. Entries whose
+// Synchronizer doesn't implement pkgsync.AccessChecker are skipped. Without
+// this option, providers entries are not checked.
+func WithAccessSourceProviders(reg *pkgsync.SourceProviderRegistry) AccessOption {
+	return func(o *accessOptions) {
+		o.providers = reg
+	}
+}
+
 // ValidateSourceAccess checks whether each of src's git and datasource
 // bindings is reachable and its credentials, if any, are valid, without
 // performing a full clone or download. provider resolves named credentials
@@ -63,7 +82,12 @@ type accessChecker interface {
 // Unlike Service.Run, this does not require Init or a database connection,
 // so it can be called directly against a Source before (or without) it ever
 // being persisted.
-func ValidateSourceAccess(ctx context.Context, src *config.Source, provider pkgsync.SecretProvider) []BindingAccessResult {
+func ValidateSourceAccess(ctx context.Context, src *config.Source, provider pkgsync.SecretProvider, opts ...AccessOption) []BindingAccessResult {
+	var o accessOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	var results []BindingAccessResult
 
 	if checker := gitAccessChecker(src, provider); checker != nil {
@@ -82,7 +106,49 @@ func ValidateSourceAccess(ctx context.Context, src *config.Source, provider pkgs
 		results = append(results, BindingAccessResult{Type: BindingType(ds.Type), Name: ds.Name, Err: newError(err)})
 	}
 
+	if o.providers != nil {
+		for _, p := range src.Providers {
+			result, checker := providerAccessChecker(ctx, o.providers, src.Name, p, provider)
+			if checker != nil {
+				defer checker.Close(ctx)
+				result.Err = newError(checker.CheckAccess(ctx))
+			}
+			if result != nil {
+				results = append(results, *result)
+			}
+		}
+	}
+
 	return results
+}
+
+// providerAccessChecker creates the access checker for a providers entry.
+// An entry that can't be set up is reported as a failed result; one whose
+// Synchronizer doesn't support access checks yields neither.
+func providerAccessChecker(ctx context.Context, reg *pkgsync.SourceProviderRegistry, sourceName string, p config.Provider, secrets pkgsync.SecretProvider) (*BindingAccessResult, accessChecker) {
+	result := &BindingAccessResult{Type: BindingType(p.Type), Name: p.Name}
+	prov, cfg, err := providers.ParseEntry(reg, p)
+	if err != nil {
+		result.Err = &Error{Message: err.Error(), UserError: true}
+		return result, nil
+	}
+	syncer, err := prov.New(ctx, pkgsync.ProviderParams{
+		SourceName:     sourceName,
+		Name:           p.Name,
+		Config:         cfg,
+		SecretProvider: secrets,
+		Logger:         slog.New(slog.DiscardHandler),
+	})
+	if err != nil {
+		result.Err = newError(err)
+		return result, nil
+	}
+	checker, ok := syncer.(accessChecker)
+	if !ok {
+		syncer.Close(ctx)
+		return nil, nil
+	}
+	return result, checker
 }
 
 func gitAccessChecker(src *config.Source, provider pkgsync.SecretProvider) accessChecker {

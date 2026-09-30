@@ -20,9 +20,11 @@ import (
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	"github.com/open-policy-agent/opa-control-plane/internal/jsonpatch"
 	"github.com/open-policy-agent/opa-control-plane/internal/metrics"
+	"github.com/open-policy-agent/opa-control-plane/internal/providers"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/chain"
 	"github.com/open-policy-agent/opa-control-plane/internal/server/types"
 	pkgmetrics "github.com/open-policy-agent/opa-control-plane/pkg/metrics"
+	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 )
 
 const defaultTenant = "default"
@@ -35,6 +37,7 @@ type Server struct {
 	metricsConfig *config.MetricsConfig
 	prometheusReg prometheus.Registerer
 	metrics       *pkgmetrics.Metrics
+	providers     *pkgsync.SourceProviderRegistry
 }
 
 func New() *Server {
@@ -111,6 +114,13 @@ func (s *Server) WithConfig(cfg *config.Root) *Server {
 		s.apiPrefix = cfg.Service.ApiPrefix
 	}
 	s.metricsConfig = cfg.Metrics
+	return s
+}
+
+// WithSourceProviders sets the registry that sources' providers entries are
+// validated against. Without it, no provider types are accepted.
+func (s *Server) WithSourceProviders(reg *pkgsync.SourceProviderRegistry) *Server {
+	s.providers = reg
 	return s
 }
 
@@ -339,6 +349,11 @@ func (s *Server) v1SourcesPut(w http.ResponseWriter, r *http.Request) {
 		src.Name = name
 	} else if src.Name != name {
 		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, errors.New("source name must match path"))
+		return
+	}
+
+	if err := providers.Validate(s.providers, &src); err != nil {
+		writer.ErrorString(w, http.StatusBadRequest, types.CodeInvalidParameter, err)
 		return
 	}
 

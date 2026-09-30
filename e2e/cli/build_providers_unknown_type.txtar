@@ -1,0 +1,20 @@
+# opactl registers no custom source types, so any providers entry is
+# rejected when the configuration is loaded.
+! exec $OPACTL build --config config.d/bundle.yml --data-dir tmp --non-interactive
+stderr '^invalid configuration: source "app": provider "users": unknown type "example.custom-source"'
+! stdout .
+
+-- config.d/bundle.yml --
+bundles:
+  hello-world:
+    object_storage:
+      filesystem:
+        path: bundles/hello-world/bundle.tar.gz
+    requirements:
+    - source: app
+sources:
+  app:
+    providers:
+    - name: users
+      type: example.custom-source
+      param1: value
