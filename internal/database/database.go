@@ -1741,6 +1741,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 			return err
 		}
 
+		var secretIDs []int
 		if bundle.ObjectStorage.AmazonS3 != nil {
 			if cred := bundle.ObjectStorage.AmazonS3.Credentials; cred != nil {
 				secretID, err := d.lookupID(ctx, tx, tenant, "secrets", cred.Name)
@@ -1751,6 +1752,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 					id, secretID, "aws"); err != nil {
 					return fmt.Errorf("table bundles_secrets: %w", err)
 				}
+				secretIDs = append(secretIDs, secretID)
 			}
 		}
 
@@ -1764,6 +1766,7 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 					id, secretID, "gcp"); err != nil {
 					return fmt.Errorf("table bundles_secrets: %w", err)
 				}
+				secretIDs = append(secretIDs, secretID)
 			}
 		}
 
@@ -1777,7 +1780,12 @@ func (d *Database) UpsertBundle(ctx context.Context, principal, tenant string, b
 					id, secretID, "azure"); err != nil {
 					return fmt.Errorf("table bundles_secrets: %w", err)
 				}
+				secretIDs = append(secretIDs, secretID)
 			}
+		}
+
+		if err := d.deleteNotIn(ctx, tx, "bundles_secrets", "bundle_id", id, "secret_id", secretIDs); err != nil {
+			return fmt.Errorf("delete stale bundle secrets: %w", err)
 		}
 
 		sources := make([]int, 0, len(bundle.Requirements))
@@ -1843,6 +1851,7 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 			return err
 		}
 
+		var secretIDs []int
 		if source.Git.Credentials != nil {
 			secretID, err := d.lookupID(ctx, tx, tenant, "secrets", source.Git.Credentials.Name)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -1853,8 +1862,12 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 					id, secretID, "git_credentials"); err != nil {
 					return fmt.Errorf("upsert of secret link %s: %w", source.Git.Credentials.Name, err)
 				}
+				secretIDs = append(secretIDs, secretID)
 			}
 			// If secret not found in DB (sql.ErrNoRows), skip — it will be resolved by the secret provider at sync time
+		}
+		if err := d.deleteNotIn(ctx, tx, "sources_secrets", "source_id", id, "secret_id", secretIDs); err != nil {
+			return fmt.Errorf("delete stale source secrets: %w", err)
 		}
 
 		// Upsert data sources
