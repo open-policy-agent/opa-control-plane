@@ -111,6 +111,32 @@ func resolveRevision(ctx context.Context, revision string, sourceMetadata map[st
 	return result, nil
 }
 
+// datasourceSchemaFor returns the JSON schema for a single datasource entry in
+// sourceMetadata. Normally dsValue is a flat metadata object (e.g. {"hash": "..."})
+// and flatSchema is returned unchanged. When two or more datasources share the
+// same name but differ by path, worker.go nests their metadata one level deeper
+// keyed by path; in that case this returns a schema whose properties are the
+// path keys, each described by flatSchema.
+func datasourceSchemaFor(dsValue any, flatSchema map[string]any) map[string]any {
+	m, ok := dsValue.(map[string]any)
+	if !ok {
+		return flatSchema
+	}
+
+	if _, isFlat := m["hash"]; isFlat {
+		return flatSchema
+	}
+
+	pathProps := make(map[string]any, len(m))
+	for path := range m {
+		pathProps[path] = flatSchema
+	}
+	return map[string]any{
+		"type":       "object",
+		"properties": pathProps,
+	}
+}
+
 func buildInputSchema(sourceMetadata map[string]map[string]any, bundleHash string) *ast.SchemaSet {
 	datasourceEntrySchema := map[string]any{
 		"type": "object",
@@ -140,8 +166,8 @@ func buildInputSchema(sourceMetadata map[string]map[string]any, bundleHash strin
 		for _, sourceType := range []string{"http", "s3"} {
 			if typeData, ok := types[sourceType].(map[string]any); ok {
 				dsProps := make(map[string]any, len(typeData))
-				for dsName := range typeData {
-					dsProps[dsName] = datasourceEntrySchema
+				for dsName, dsValue := range typeData {
+					dsProps[dsName] = datasourceSchemaFor(dsValue, datasourceEntrySchema)
 				}
 				props[sourceType] = map[string]any{
 					"type":       "object",
