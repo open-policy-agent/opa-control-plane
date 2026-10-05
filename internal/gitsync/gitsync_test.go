@@ -11,8 +11,11 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/go-git/go-git/v5"
@@ -647,4 +650,102 @@ func testTokenRetrieval(t *testing.T, secret *config.Secret, expectedPrefix stri
 	}
 
 	return token
+}
+
+// mockOIDCProviderClientAssertion simulates an OIDC provider that authenticates
+// the client with a JWT client assertion (RFC 7523) rather than a client secret.
+// The returned function reports the form of the most recent token request so
+// tests can assert on what was actually sent.
+func mockOIDCProviderClientAssertion(t *testing.T, clientID string) (*httptest.Server, func() url.Values) {
+	t.Helper()
+
+	var (
+		mu   sync.Mutex
+		last url.Values
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+
+		mu.Lock()
+		last = r.Form
+		mu.Unlock()
+
+		if r.Form.Get("client_id") != clientID ||
+			r.Form.Get("client_assertion_type") != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" ||
+			r.Form.Get("client_assertion") == "" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "assertion_token_" + r.Form.Get("client_assertion"),
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	return server, func() url.Values {
+		mu.Lock()
+		defer mu.Unlock()
+		return last
+	}
+}
+
+// TestGitsync_ClientAssertionAuth verifies that a client assertion read from a
+// file is used to authenticate to the token endpoint, and that an externally
+// rotated assertion is picked up on the next token request.
+func TestGitsync_ClientAssertionAuth(t *testing.T) {
+	assertionFile := filepath.Join(t.TempDir(), "azure-identity-token")
+	if err := os.WriteFile(assertionFile, []byte("first.assertion.jwt\n"), 0o600); err != nil {
+		t.Fatalf("failed to write assertion file: %v", err)
+	}
+
+	server, lastForm := mockOIDCProviderClientAssertion(t, "test_client")
+
+	secret := config.Secret{
+		Name: "test_secret",
+		Value: map[string]any{
+			"type":                  "oidc_client_credentials",
+			"token_endpoint":        server.URL + "/token",
+			"client_id":             "test_client",
+			"client_assertion_file": assertionFile,
+			"scopes":                []string{"git"},
+		},
+	}
+
+	token := testTokenRetrieval(t, &secret, "assertion_token_first.assertion.jwt")
+	t.Logf("Got token: %s", token)
+
+	form := lastForm()
+	if got := form.Get("grant_type"); got != "client_credentials" {
+		t.Errorf("expected grant_type %q, got %q", "client_credentials", got)
+	}
+	if got := form.Get("client_assertion"); got != "first.assertion.jwt" {
+		t.Errorf("expected trimmed assertion %q, got %q", "first.assertion.jwt", got)
+	}
+	// There is no client secret to send when authenticating with an assertion.
+	if got := form.Get("client_secret"); got != "" {
+		t.Errorf("expected no client_secret, got %q", got)
+	}
+
+	// Platforms such as Kubernetes rotate the projected token in place, so the
+	// file has to be re-read rather than cached.
+	if err := os.WriteFile(assertionFile, []byte("second.assertion.jwt"), 0o600); err != nil {
+		t.Fatalf("failed to rotate assertion file: %v", err)
+	}
+
+	testTokenRetrieval(t, &secret, "assertion_token_second.assertion.jwt")
+
+	if got := lastForm().Get("client_assertion"); got != "second.assertion.jwt" {
+		t.Errorf("expected rotated assertion %q, got %q", "second.assertion.jwt", got)
+	}
 }
