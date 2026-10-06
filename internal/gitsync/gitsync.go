@@ -87,10 +87,12 @@ func init() {
 //   - token (string, required)
 //
 // Type: "oidc_client_credentials"
-//   - issuer (string, required if token_url not provided)
-//   - token_url (string, required if issuer not provided)
+//   - issuer (string, required if token_endpoint not provided)
+//   - token_endpoint (string, required if issuer not provided)
 //   - client_id (string, required)
-//   - client_secret (string, required)
+//   - client_secret (string, required unless client_assertion_file is set)
+//   - client_assertion_file (string, required unless client_secret is set) - path to a file
+//     holding a JWT client assertion (RFC 7523)
 //   - scopes ([]string, optional)
 //
 // Example:

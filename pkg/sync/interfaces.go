@@ -88,6 +88,9 @@ type SecretProvider interface {
 	//       "client_secret": "client-secret",
 	//       "scopes": ["openid"]  // optional
 	//     }
+	//     "client_secret" may be replaced by "client_assertion_file", the path to a file
+	//     holding a JWT client assertion (RFC 7523), as used with workload identity
+	//     federation. Exactly one of the two is required.
 	//
 	// HTTP Synchronization (httpsync):
 	//   - Bearer Token ("token_auth"):
