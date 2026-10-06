@@ -9,13 +9,16 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/goccy/go-yaml"
 	"github.com/open-policy-agent/opa-control-plane/pkg/util"
+	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
 
@@ -72,7 +75,11 @@ var wellknownFingerprints = []string{
 //   - "azure_auth" for Azure authentication. Values for keys "account_name" and "account_key" are expected.
 //   - "basic_auth" for HTTP basic authentication. Values for keys "username" and "password" are expected.
 //     "headers" (string array) is optional and can be used to set additional headers for the HTTP requests (currently only supported for git).
-//   - "oidc_client_credentials" for OIDC Client Credentials flow. Values for either `issuer` OR `token_url`, and `client_id`, and `client_secret` are expected, `scopes` are optional (currently only supported for HTTP datasource).
+//   - "oidc_client_credentials" for OIDC Client Credentials flow. A `token_endpoint`, or an `issuer` to discover it from, is expected (if both are
+//     given, `token_endpoint` is used), along with `client_id` and exactly one of `client_secret` or `client_assertion_file`; `scopes` are optional.
+//     `client_assertion_file` points to a file holding a JWT client assertion (RFC 7523), for example a projected Kubernetes service account token
+//     used with workload identity federation. The file is re-read whenever a new access token is fetched, so externally rotated assertions are
+//     picked up.
 //   - "gcp_auth" for Google Cloud authentication. Value for a key "api_key" or "credentials" is expected.
 //   - "github_app_auth" for GitHub App authentication. Values for keys "integration_id", "installation_id", and "private_key" are expected.
 //   - "password" for password authentication. Value for key "password" is expected.
@@ -307,14 +314,19 @@ func (s *SecretBasicAuth) Client(context.Context) (*http.Client, error) {
 	}), nil
 }
 
+// clientAssertionTypeJWTBearer is the client assertion type for JWT bearer
+// client authentication, as defined by RFC 7523, section 2.2.
+const clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
 // SecretOIDCClientCredentials represents OIDC Client Credentials flow configuration.
 // It supports both explicit token endpoint configuration and automatic discovery via issuer.
 type SecretOIDCClientCredentials struct {
-	Issuer       string   `json:"issuer"`           // OIDC issuer URL for automatic discovery (required if TokenURL is not provided)
-	TokenURL     string   `json:"token_endpoint"`   // Explicit token endpoint URL (optional if Issuer is provided)
-	ClientID     string   `json:"client_id"`        // OAuth2 client ID (required)
-	ClientSecret string   `json:"client_secret"`    // OAuth2 client secret (required)
-	Scopes       []string `json:"scopes,omitempty"` // Optional OAuth2 scopes
+	Issuer              string   `json:"issuer"`                          // OIDC issuer URL for automatic discovery (required if TokenURL is not provided)
+	TokenURL            string   `json:"token_endpoint"`                  // Explicit token endpoint URL (optional if Issuer is provided)
+	ClientID            string   `json:"client_id"`                       // OAuth2 client ID (required)
+	ClientSecret        string   `json:"client_secret"`                   // OAuth2 client secret (required unless ClientAssertionFile is set; the two are mutually exclusive)
+	ClientAssertionFile string   `json:"client_assertion_file,omitempty"` // Path to a file holding a JWT client assertion, used instead of ClientSecret (mutually exclusive with it)
+	Scopes              []string `json:"scopes,omitempty"`                // Optional OAuth2 scopes
 }
 
 // validate performs upfront validation of the OIDC credentials configuration.
@@ -323,8 +335,11 @@ func (value *SecretOIDCClientCredentials) validate() error {
 	if value.ClientID == "" {
 		return errors.New("client_id is required")
 	}
-	if value.ClientSecret == "" {
-		return errors.New("client_secret is required")
+	if value.ClientSecret == "" && value.ClientAssertionFile == "" {
+		return errors.New("either client_secret or client_assertion_file is required")
+	}
+	if value.ClientSecret != "" && value.ClientAssertionFile != "" {
+		return errors.New("client_secret and client_assertion_file are mutually exclusive")
 	}
 	if value.TokenURL == "" && value.Issuer == "" {
 		return errors.New("either issuer or token_endpoint must be provided")
@@ -355,23 +370,98 @@ func (value *SecretOIDCClientCredentials) getClientCredentialsConfig(ctx context
 		}
 	}
 
-	return &clientcredentials.Config{
+	cfg := &clientcredentials.Config{
 		ClientID:     value.ClientID,
 		ClientSecret: value.ClientSecret,
 		Scopes:       value.Scopes,
 		TokenURL:     tokenURL,
+	}
+
+	if value.ClientAssertionFile != "" {
+		params, err := value.clientAssertionParams()
+		if err != nil {
+			return nil, err
+		}
+
+		// The assertion has to travel in the request body: there is no client
+		// secret to put into an Authorization header.
+		cfg.AuthStyle = oauth2.AuthStyleInParams
+		cfg.EndpointParams = params
+	}
+
+	return cfg, nil
+}
+
+// clientAssertionParams reads the client assertion and returns it as token
+// endpoint parameters. It is called once when the configuration is resolved, so
+// that a missing or empty file fails early, and then again for every token
+// request, because the assertion is typically short-lived and rotated in place
+// by the platform (e.g. a projected Kubernetes service account token).
+func (value *SecretOIDCClientCredentials) clientAssertionParams() (url.Values, error) {
+	bs, err := os.ReadFile(value.ClientAssertionFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read client_assertion_file %q: %w", value.ClientAssertionFile, err)
+	}
+
+	assertion := strings.TrimSpace(string(bs))
+	if assertion == "" {
+		return nil, fmt.Errorf("client_assertion_file %q is empty", value.ClientAssertionFile)
+	}
+
+	return url.Values{
+		"client_assertion_type": {clientAssertionTypeJWTBearer},
+		"client_assertion":      {assertion},
 	}, nil
 }
 
+// assertionTokenSource requests tokens with a client assertion that is re-read
+// for every token request, so that an assertion rotated in place by the
+// platform is picked up without rebuilding the client. The token URL is
+// resolved once by the caller, so issuer discovery is not repeated on refresh.
+type assertionTokenSource struct {
+	ctx      context.Context
+	value    *SecretOIDCClientCredentials
+	tokenURL string
+}
+
+func (s *assertionTokenSource) Token() (*oauth2.Token, error) {
+	params, err := s.value.clientAssertionParams()
+	if err != nil {
+		return nil, err
+	}
+
+	conf := &clientcredentials.Config{
+		ClientID:       s.value.ClientID,
+		Scopes:         s.value.Scopes,
+		TokenURL:       s.tokenURL,
+		AuthStyle:      oauth2.AuthStyleInParams,
+		EndpointParams: params,
+	}
+
+	return conf.TokenSource(s.ctx).Token()
+}
+
 // Client returns an HTTP client configured with OIDC Client Credentials flow authentication.
-// The returned client automatically handles token acquisition and refresh.
+// The returned client acquires an access token on demand and re-acquires it once it expires.
+// When a client assertion is configured, it is re-read from disk each time a new access token
+// is fetched -- not on every HTTP request, since the access token itself is cached until it
+// expires -- so an assertion rotated in place by the platform is picked up without rebuilding
+// the client.
 func (value *SecretOIDCClientCredentials) Client(ctx context.Context) (*http.Client, error) {
 	config, err := value.getClientCredentialsConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure client: %w", err)
 	}
 
-	return config.Client(ctx), nil
+	if value.ClientAssertionFile == "" {
+		return config.Client(ctx), nil
+	}
+
+	// The returned client caches the access token, so the assertion has to be
+	// re-read whenever that token is refreshed, not only once here.
+	src := &assertionTokenSource{ctx: ctx, value: value, tokenURL: config.TokenURL}
+
+	return oauth2.NewClient(ctx, oauth2.ReuseTokenSource(nil, src)), nil
 }
 
 // Token obtains and returns an access token using OIDC Client Credentials flow.
