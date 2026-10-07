@@ -1,8 +1,9 @@
 // Package database provides a public API for OPA Control Plane database operations.
 //
-// This package wraps the internal database layer, exposing Bundle, Source, and
-// Source Data CRUD operations using typed config structs. External consumers
-// work directly with config.Bundle and config.Source types.
+// This package wraps the internal database layer, exposing Bundle, Source,
+// Source Data and Secret CRUD operations using typed config structs. External
+// consumers work directly with config.Bundle and config.Source types, and see
+// secrets by name only.
 //
 // Example usage:
 //
@@ -201,6 +202,36 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 // DeleteSource deletes a source by name.
 func (d *Database) DeleteSource(ctx context.Context, principal, tenant, name string) error {
 	return d.db.DeleteSource(ctx, principal, tenant, name)
+}
+
+// Secret CRUD
+
+// GetSecret retrieves a secret by name. Only the name is returned, never the value.
+func (d *Database) GetSecret(ctx context.Context, principal, tenant, name string) (*config.SecretRef, error) {
+	return d.db.GetSecret(ctx, principal, tenant, name)
+}
+
+// ListSecrets lists the secrets of a tenant by name, returning them and the next cursor.
+func (d *Database) ListSecrets(ctx context.Context, principal, tenant string, limit int, cursor string) ([]*config.SecretRef, string, error) {
+	return d.db.ListSecrets(ctx, principal, tenant, internaldatabase.ListOptions{
+		Limit:  limit,
+		Cursor: cursor,
+	})
+}
+
+// UpsertSecret records a secret by name, without a value. Use it for secrets
+// whose value is held elsewhere and resolved by a SecretProvider, so that they
+// can be listed and referenced by sources and bundles.
+func (d *Database) UpsertSecret(ctx context.Context, principal, tenant, name string) error {
+	if name == "" {
+		return errors.New("secret name is required")
+	}
+	return d.db.UpsertSecret(ctx, principal, tenant, &internalconfig.Secret{Name: name})
+}
+
+// DeleteSecret deletes a secret by name.
+func (d *Database) DeleteSecret(ctx context.Context, principal, tenant, name string) error {
+	return d.db.DeleteSecret(ctx, principal, tenant, name)
 }
 
 // Source Data CRUD
