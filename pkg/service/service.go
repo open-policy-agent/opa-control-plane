@@ -775,10 +775,11 @@ func (src *source) SyncDatasources(ctx context.Context, builtins *pkgsync.Source
 				return src
 			}
 			*syncs = append(*syncs, sourceSynchronizer{
-				sync:       syncer,
-				sourceName: sourceName,
-				sourceType: datasource.Type,
-				entryName:  datasource.Name,
+				sync:           syncer,
+				sourceName:     sourceName,
+				sourceType:     datasource.Type,
+				entryName:      datasource.Name,
+				datasourcePath: datasource.Path,
 			})
 		}
 
