@@ -11,10 +11,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"cloud.google.com/go/storage"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -331,20 +333,74 @@ func (s *GCPCloudStorage) check(ctx context.Context, body io.Reader) ([]byte, bo
 	return digest, attrs.Metadata["sha256"] == hex.EncodeToString(digest), nil
 }
 
+// Upload uploads a bundle to Azure Blob Storage. It computes the SHA256 digest of the bundle and records that to the
+// blob metadata, so that uploading identical content again can be skipped. Skipping is worth the extra round trip
+// here: on a version-enabled container every upload mints a new blob version, and the new ETag it returns also
+// invalidates the bundle cache of every OPA polling the blob.
 func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker, opts ext_os.UploadOptions) error {
-	uploadOpts := &azblob.UploadStreamOptions{}
+	digest, equal, err := s.check(ctx, body)
+	if err != nil {
+		return err
+	}
+	if equal {
+		return ext_os.ErrNotModified
+	}
+
+	if _, err := body.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
+	sha256Hex := hex.EncodeToString(digest)
+	metadata := map[string]*string{
+		"sha256": &sha256Hex,
+	}
 	if opts.Revision != "" {
 		revision := opts.Revision
-		uploadOpts.Metadata = map[string]*string{
-			"revision": &revision,
-		}
+		metadata["revision"] = &revision
 	}
-	_, err := s.client.UploadStream(ctx, s.container, s.path, body, uploadOpts)
+
+	_, err = s.client.UploadStream(ctx, s.container, s.path, body, &azblob.UploadStreamOptions{
+		Metadata: metadata,
+	})
 	return err
 }
 
 func (*AzureBlobStorage) Download(context.Context) (io.Reader, error) {
 	return nil, errors.New("not implemented")
+}
+
+// check computes the SHA256 digest of body and reports whether it matches the digest recorded in the blob's metadata.
+// A missing blob or container, or a blob carrying no digest, counts as modified so that the upload proceeds. Any other
+// error is returned: failing the build is preferable to either skipping or repeating an upload on a guess.
+//
+// Note that this requires the configured credentials to allow reading the blob's properties, not just writing it.
+func (s *AzureBlobStorage) check(ctx context.Context, body io.Reader) ([]byte, bool, error) {
+	d := sha256.New()
+	if _, err := io.Copy(d, body); err != nil {
+		return nil, false, err
+	}
+
+	digest := d.Sum(nil)
+
+	properties, err := s.client.ServiceClient().NewContainerClient(s.container).NewBlobClient(s.path).GetProperties(ctx, nil)
+	if err != nil {
+		if bloberror.HasCode(err, bloberror.BlobNotFound, bloberror.ContainerNotFound, bloberror.ResourceNotFound) {
+			return digest, false, nil
+		}
+		return nil, false, err
+	}
+
+	// The metadata key has to be matched case-insensitively: net/http canonicalizes the response header names, and the
+	// SDK derives the metadata keys from them, so a key written as "sha256" is read back as "Sha256" no matter what
+	// Azure sent. A case-sensitive lookup compiles, round-trips fine against a server that echoes the original casing,
+	// and still re-uploads an unchanged bundle on every interval.
+	for k, v := range properties.Metadata {
+		if strings.EqualFold(k, "sha256") {
+			return digest, v != nil && *v == hex.EncodeToString(digest), nil
+		}
+	}
+
+	return digest, false, nil
 }
 
 func (s *FileSystemStorage) Upload(ctx context.Context, body io.ReadSeeker, _ ext_os.UploadOptions) error {
