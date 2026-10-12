@@ -333,10 +333,7 @@ func (s *GCPCloudStorage) check(ctx context.Context, body io.Reader) ([]byte, bo
 	return digest, attrs.Metadata["sha256"] == hex.EncodeToString(digest), nil
 }
 
-// Upload uploads a bundle to Azure Blob Storage. It computes the SHA256 digest of the bundle and records that to the
-// blob metadata, so that uploading identical content again can be skipped. Skipping is worth the extra round trip
-// here: on a version-enabled container every upload mints a new blob version, and the new ETag it returns also
-// invalidates the bundle cache of every OPA polling the blob.
+// Upload uploads a bundle to Azure Blob Storage. It computes the SHA256 digest of the bundle and records that to the blob metadata.
 func (s *AzureBlobStorage) Upload(ctx context.Context, body io.ReadSeeker, opts ext_os.UploadOptions) error {
 	digest, equal, err := s.check(ctx, body)
 	if err != nil {
@@ -369,11 +366,8 @@ func (*AzureBlobStorage) Download(context.Context) (io.Reader, error) {
 	return nil, errors.New("not implemented")
 }
 
-// check computes the SHA256 digest of body and reports whether it matches the digest recorded in the blob's metadata.
-// A missing blob or container, or a blob carrying no digest, counts as modified so that the upload proceeds. Any other
-// error is returned: failing the build is preferable to either skipping or repeating an upload on a guess.
-//
-// Note that this requires the configured credentials to allow reading the blob's properties, not just writing it.
+// check computes the SHA256 digest of body and compares it to the digest recorded in the blob's metadata. It needs the
+// configured credentials to permit reading the blob, not just writing it.
 func (s *AzureBlobStorage) check(ctx context.Context, body io.Reader) ([]byte, bool, error) {
 	d := sha256.New()
 	if _, err := io.Copy(d, body); err != nil {
@@ -390,10 +384,8 @@ func (s *AzureBlobStorage) check(ctx context.Context, body io.Reader) ([]byte, b
 		return nil, false, err
 	}
 
-	// The metadata key has to be matched case-insensitively: net/http canonicalizes the response header names, and the
-	// SDK derives the metadata keys from them, so a key written as "sha256" is read back as "Sha256" no matter what
-	// Azure sent. A case-sensitive lookup compiles, round-trips fine against a server that echoes the original casing,
-	// and still re-uploads an unchanged bundle on every interval.
+	// net/http canonicalizes the response header names and the SDK derives the metadata keys from them, so a key written
+	// as "sha256" is read back as "Sha256". A case-sensitive lookup would re-upload an unchanged bundle every interval.
 	for k, v := range properties.Metadata {
 		if strings.EqualFold(k, "sha256") {
 			return digest, v != nil && *v == hex.EncodeToString(digest), nil

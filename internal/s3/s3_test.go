@@ -347,9 +347,8 @@ func TestGCSNotModified(t *testing.T) {
 	}
 }
 
-// azureBlobServer is a minimal in-memory stand-in for the Azure Blob Storage REST API. It implements just enough of
-// Put Blob, Put Block, Put Block List and Get Blob Properties to exercise the upload path. Azurite would be more
-// faithful, but it needs a container runtime that the rest of this package's tests do not depend on.
+// azureBlobServer is an in-memory stand-in for the Azure Blob Storage REST API, implementing Put Blob, Put Block, Put
+// Block List and Get Blob Properties. Azurite is more faithful but needs a container runtime these tests do not.
 type azureBlobServer struct {
 	t *testing.T
 
@@ -358,8 +357,7 @@ type azureBlobServer struct {
 	metadata map[string]map[string]string
 	blocks   map[string][]byte
 
-	// getPropertiesStatus and getPropertiesErrorCode, when set, make Get Blob Properties fail. Used to check that
-	// errors other than a missing blob are not mistaken for an unchanged bundle.
+	// getPropertiesStatus and getPropertiesErrorCode, when set, make Get Blob Properties fail.
 	getPropertiesStatus    int
 	getPropertiesErrorCode string
 
@@ -382,7 +380,6 @@ func newAzureBlobServer(t *testing.T) (*azureBlobServer, *httptest.Server) {
 	return s, ts
 }
 
-// writes returns the number of blob writes the server has accepted.
 func (s *azureBlobServer) writes() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -523,7 +520,7 @@ func metadataFromHeader(h http.Header) map[string]string {
 }
 
 // newAzureStorage wires an AzureBlobStorage to url through the New constructor. A shared key credential is used
-// because the alternative, DefaultAzureCredential, probes the environment for real Azure credentials.
+// because DefaultAzureCredential probes the environment for real Azure credentials.
 func newAzureStorage(t *testing.T, url, path string) ext_os.ObjectStorage {
 	t.Helper()
 
@@ -550,9 +547,7 @@ func newAzureStorage(t *testing.T, url, path string) ext_os.ObjectStorage {
 	return storage
 }
 
-// TestAzureNotModified also covers the metadata key casing hazard: net/http canonicalizes the response header names,
-// so the SDK hands back the key as "Sha256" and a case-sensitive lookup for "sha256" would miss, making the second
-// upload proceed and failing this test.
+// TestAzureNotModified also covers the metadata key casing hazard: a case-sensitive digest lookup would make the second upload proceed.
 func TestAzureNotModified(t *testing.T) {
 	server, ts := newAzureBlobServer(t)
 	storage := newAzureStorage(t, ts.URL, "not-modified")
@@ -577,7 +572,7 @@ func TestAzureNotModified(t *testing.T) {
 		t.Fatalf("third upload: %v", err)
 	}
 
-	// The skipped upload should not have reached the server: a new blob version is the cost this avoids.
+	// The skipped upload should not have reached the server.
 	if got := server.writes(); got != 2 {
 		t.Errorf("expected 2 blob writes, got %d", got)
 	}
@@ -587,9 +582,8 @@ func TestAzureNotModified(t *testing.T) {
 	}
 }
 
-// TestAzureNotModifiedMultipleBlocks covers bundles larger than the SDK's 1 MiB block size, which are uploaded as
-// staged blocks committed by Put Block List rather than by a single Put Blob. Real bundles routinely exceed that, and
-// the metadata this relies on travels on a different request in that case.
+// TestAzureNotModifiedMultipleBlocks covers bundles above the SDK's 1 MiB block size, which are uploaded as staged
+// blocks committed by Put Block List, carrying the metadata on a different request than a single Put Blob does.
 func TestAzureNotModifiedMultipleBlocks(t *testing.T) {
 	server, ts := newAzureBlobServer(t)
 	storage := newAzureStorage(t, ts.URL, "not-modified-blocks")
@@ -665,8 +659,8 @@ func TestAzureWithoutRevision(t *testing.T) {
 	}
 }
 
-// TestAzureUploadsBlobWithoutDigest covers the upgrade path: blobs written by earlier releases carry at most a
-// revision, so the first upload after upgrading has no digest to compare against and has to proceed.
+// TestAzureUploadsBlobWithoutDigest covers the upgrade path: blobs written before this change carry no digest, so the
+// first upload after upgrading has nothing to compare against and has to proceed.
 func TestAzureUploadsBlobWithoutDigest(t *testing.T) {
 	server, ts := newAzureBlobServer(t)
 	server.setBlobMetadata("/test/no-digest", map[string]string{"revision": "v1.0.0"})
@@ -682,9 +676,8 @@ func TestAzureUploadsBlobWithoutDigest(t *testing.T) {
 	}
 }
 
-// TestAzureGetPropertiesError checks that an error other than a missing blob is reported rather than being treated as
-// either an unchanged or a changed bundle. Reading the properties needs its own permission, so a credential allowed to
-// write but not read has to fail loudly instead of silently re-uploading every interval.
+// TestAzureGetPropertiesError checks that an error other than a missing blob is reported rather than treated as an
+// unchanged or a changed bundle: a credential allowed to write but not read has to fail rather than re-upload.
 func TestAzureGetPropertiesError(t *testing.T) {
 	server, ts := newAzureBlobServer(t)
 	server.failGetProperties(http.StatusForbidden, "AuthorizationPermissionMismatch")
