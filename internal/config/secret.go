@@ -392,11 +392,10 @@ func (value *SecretOIDCClientCredentials) getClientCredentialsConfig(ctx context
 	return cfg, nil
 }
 
-// clientAssertionParams reads the client assertion and returns it as token
-// endpoint parameters. It is called once when the configuration is resolved, so
-// that a missing or empty file fails early, and then again for every token
-// request, because the assertion is typically short-lived and rotated in place
-// by the platform (e.g. a projected Kubernetes service account token).
+// clientAssertionParams reads the client assertion file and returns the token
+// endpoint parameters carrying it. Assertions are short-lived and rotated in
+// place (e.g. projected Kubernetes service account tokens), so it is called for
+// every token request.
 func (value *SecretOIDCClientCredentials) clientAssertionParams() (url.Values, error) {
 	bs, err := os.ReadFile(value.ClientAssertionFile)
 	if err != nil {
@@ -414,10 +413,9 @@ func (value *SecretOIDCClientCredentials) clientAssertionParams() (url.Values, e
 	}, nil
 }
 
-// assertionTokenSource requests tokens with a client assertion that is re-read
-// for every token request, so that an assertion rotated in place by the
-// platform is picked up without rebuilding the client. The token URL is
-// resolved once by the caller, so issuer discovery is not repeated on refresh.
+// assertionTokenSource re-reads the client assertion for every token request.
+// The token URL is resolved once by the caller, so issuer discovery is not
+// repeated on refresh.
 type assertionTokenSource struct {
 	ctx      context.Context
 	value    *SecretOIDCClientCredentials
@@ -443,10 +441,7 @@ func (s *assertionTokenSource) Token() (*oauth2.Token, error) {
 
 // Client returns an HTTP client configured with OIDC Client Credentials flow authentication.
 // The returned client acquires an access token on demand and re-acquires it once it expires.
-// When a client assertion is configured, it is re-read from disk each time a new access token
-// is fetched -- not on every HTTP request, since the access token itself is cached until it
-// expires -- so an assertion rotated in place by the platform is picked up without rebuilding
-// the client.
+// A configured client assertion is re-read each time a new access token is fetched.
 func (value *SecretOIDCClientCredentials) Client(ctx context.Context) (*http.Client, error) {
 	config, err := value.getClientCredentialsConfig(ctx)
 	if err != nil {
@@ -457,8 +452,7 @@ func (value *SecretOIDCClientCredentials) Client(ctx context.Context) (*http.Cli
 		return config.Client(ctx), nil
 	}
 
-	// The returned client caches the access token, so the assertion has to be
-	// re-read whenever that token is refreshed, not only once here.
+	// config.Client would send the assertion read above on every refresh.
 	src := &assertionTokenSource{ctx: ctx, value: value, tokenURL: config.TokenURL}
 
 	return oauth2.NewClient(ctx, oauth2.ReuseTokenSource(nil, src)), nil
