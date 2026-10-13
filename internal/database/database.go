@@ -411,7 +411,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 			dsn = SQLiteMemoryOnlyDSN
 		}
 		d.kind = sqlite
-		d.db, err = sql.Open("sqlite", dsn)
+		d.db, err = sql.Open("sqlite", withBusyTimeout(dsn))
 		if err != nil {
 			return err
 		}
@@ -2407,4 +2407,14 @@ func (d *Database) applyFollowerRead(ctx context.Context, tx *sql.Tx, stale bool
 	}
 	_, err := tx.ExecContext(ctx, "SET TRANSACTION AS OF SYSTEM TIME follower_read_timestamp()")
 	return err
+}
+
+// withBusyTimeout makes every pooled SQLite connection wait for locks instead
+// of failing immediately with SQLITE_BUSY.
+func withBusyTimeout(dsn string) string {
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	return dsn + sep + "_pragma=busy_timeout(10000)"
 }
