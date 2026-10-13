@@ -64,6 +64,10 @@ type sourceSynchronizer struct {
 	sourceType string // "git", "sql", "http", "s3", "providers"
 	entryName  string // For datasources and provider entries: the name used as key in metadata
 
+	// For http/s3 datasources: the datasource path, used to disambiguate
+	// datasources sharing a name (see #416).
+	datasourcePath string
+
 	// For provider entries: the directory to create before Execute (it is
 	// emptied before each sync), and where to keep the entry's contribution.
 	dir     string
@@ -170,6 +174,19 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		}
 	}
 
+	// Datasources are keyed by name only when building the revision-lookup
+	// tree below, but (like the sources_datasources table, see #416) a source
+	// can legitimately have several datasources sharing the same name as long
+	// as their paths differ. Detect those name collisions up front so we can
+	// disambiguate by path instead of letting one datasource's metadata
+	// silently overwrite the other's.
+	entryNameCounts := make(map[[3]string]int)
+	for _, ss := range w.synchronizers {
+		if ss.entryName != "" {
+			entryNameCounts[[3]string{ss.sourceName, ss.sourceType, ss.entryName}]++
+		}
+	}
+
 	// Collect source metadata from synchronizers and structure by source type
 	// Note: Metadata fields to compute are configured at synchronizer construction time
 	sourceMetadata := make(map[string]map[string]any)
@@ -215,7 +232,23 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 					typeMap = make(map[string]any)
 					sourceMetadata[ss.sourceName][ss.sourceType] = typeMap
 				}
-				typeMap[ss.entryName] = metadata
+				// Datasources (http, s3) sharing a name are disambiguated by
+				// path; provider entries always have unique names, so
+				// datasourcePath is empty for them and this branch is a
+				// no-op.
+				if ss.datasourcePath != "" && entryNameCounts[[3]string{ss.sourceName, ss.sourceType, ss.entryName}] > 1 {
+					// Multiple datasources of this source/type share this name; nest
+					// by path so each one keeps its own metadata:
+					//   input.sources["src"].http["ds-name"]["path"].hash
+					pathMap, ok := typeMap[ss.entryName].(map[string]any)
+					if !ok {
+						pathMap = make(map[string]any)
+						typeMap[ss.entryName] = pathMap
+					}
+					pathMap[ss.datasourcePath] = metadata
+				} else {
+					typeMap[ss.entryName] = metadata
+				}
 			} else {
 				sourceMetadata[ss.sourceName][ss.sourceType] = metadata
 			}

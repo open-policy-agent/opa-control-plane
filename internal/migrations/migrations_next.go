@@ -120,6 +120,87 @@ func addBundlesStatusesUpdatedAt(offset int, dialect string) fs.FS {
 	})
 }
 
+// fixDatasourcesPrimaryKey widens the primary key of sources_datasources from
+// (source_id, name) to (source_id, name, path). Without "path" in the key,
+// two datasources sharing the same "name" but different "path" values collapse
+// into a single row on upsert, silently dropping one of them.
+//
+// Each dialect (other than SQLite) can change the primary key in place, so we
+// use that instead of a rename/create/copy/drop table rebuild:
+//   - postgresql: drop and add the primary key constraint in one statement.
+//   - mysql: drop and add the primary key in one statement. "path" first needs
+//     a bounded length, since MySQL can't use a TEXT column in a key.
+//   - cockroachdb: ALTER PRIMARY KEY is purpose-built for this and runs online.
+//     It demotes the old primary key to a secondary unique index named
+//     "<table>_source_id_name_key" (verified empirically), which still
+//     enforces the old (source_id, name) uniqueness and would defeat the
+//     point of this migration, so we drop that index right after.
+//
+// The current primary key's name, "ocp_v2_sources_datasources_source_id_name_pkey",
+// is predictable: the "ocp_v2" table (see crossTablesWithIDPKeys) always names
+// its own constraints the same way across dialects (sqlTable.SQL), so postgresql
+// can drop it by name; mysql and cockroachdb don't need the name at all.
+//
+// SQLite has no ALTER TABLE support for primary keys, so for that dialect we
+// still rebuild the table: rename it out of the way, recreate it with the new
+// key, copy the data across, and drop the renamed-away copy -- all in one
+// migration file, which SQLite's migrate driver already wraps in its own
+// transaction.
+func fixDatasourcesPrimaryKey(offset int, dialect string) fs.FS {
+	const table = "sources_datasources"
+
+	var stmt string
+	switch dialect {
+	case "postgresql":
+		stmt = fmt.Sprintf(
+			`ALTER TABLE %[1]s DROP CONSTRAINT ocp_v2_%[1]s_source_id_name_pkey, ADD CONSTRAINT ocp_v2_%[1]s_source_id_name_path_pkey PRIMARY KEY (source_id, name, path)`,
+			table,
+		)
+
+	case "mysql":
+		stmt = fmt.Sprintf(
+			`ALTER TABLE %s MODIFY path VARCHAR(255) NOT NULL, DROP PRIMARY KEY, ADD PRIMARY KEY (source_id, name, path)`,
+			table,
+		)
+
+	case "cockroachdb":
+		stmt = fmt.Sprintf(
+			`ALTER TABLE %[1]s ALTER PRIMARY KEY USING COLUMNS (source_id, name, path); DROP INDEX %[1]s@%[1]s_source_id_name_key`,
+			table,
+		)
+
+	case "sqlite":
+		newTbl := createSQLTable(table).
+			WithIteration("ocp_v2_pkfix"). // distinct from "ocp_v2" to avoid clashing with the old table's constraint names while both exist during the migration
+			VarCharNonNullColumn("name").
+			IntegerNonNullColumn("source_id").
+			IntegerColumn("secret_id"). // optional
+			TextNonNullColumn("type").
+			VarCharNonNullColumn("path"). // part of the primary key; needs a bounded length for consistency with the other dialects
+			TextNonNullColumn("config").
+			TextNonNullColumn("transform_query").
+			TextColumn("credentials_name").
+			PrimaryKey("source_id", "name", "path").
+			ForeignKey("secret_id", "secrets(id)").
+			ForeignKey("source_id", "sources(id)")
+
+		oldName := table + "_old"
+		cols := "name, source_id, secret_id, type, path, config, transform_query, credentials_name"
+
+		stmts := []string{
+			fmt.Sprintf("ALTER TABLE %s RENAME TO %s", table, oldName),
+			strings.TrimRight(newTbl.SQL(sqlite), ";"),
+			fmt.Sprintf(`INSERT INTO %s (%s) SELECT %s FROM %s`, table, cols, cols, oldName),
+			"DROP TABLE " + oldName,
+		}
+		stmt = strings.Join(stmts, "; ")
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_fix_datasources_primary_key.up.sql", offset): stmt,
+	})
+}
+
 // addSourcesProviders adds the table for sources' `providers:` entries.
 // Entries are keyed by name within their source; config holds the entry's
 // own (non-reserved) keys as JSON.
