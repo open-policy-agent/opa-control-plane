@@ -45,6 +45,7 @@ type (
 	Provider          = extconfig.Provider
 	Providers         = extconfig.Providers
 	SecretRef         = extconfig.SecretRef
+	SecretInfo        = extconfig.SecretInfo
 	Requirement       = extconfig.Requirement
 	GitRequirement    = extconfig.GitRequirement
 )

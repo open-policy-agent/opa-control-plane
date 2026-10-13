@@ -506,6 +506,13 @@ type Datasource struct {
 // Datasources is a slice of Datasource.
 type Datasources []Datasource
 
+// SecretInfo is a secret's name, type and metadata, without its value.
+type SecretInfo struct {
+	Name     string
+	Type     string
+	Metadata map[string]any
+}
+
 // SecretRef is a reference to a named secret. External consumers see only
 // the secret name; secret resolution is handled internally.
 type SecretRef struct {

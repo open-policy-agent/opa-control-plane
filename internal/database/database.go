@@ -1398,8 +1398,8 @@ func (d *Database) DeleteSecret(ctx context.Context, principal, tenant, name str
 	})
 }
 
-func (d *Database) ListSecrets(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.SecretRef, string, error) {
-	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.SecretRef, string, error) {
+func (d *Database) listSecretInfos(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.SecretInfo, string, error) {
+	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.SecretInfo, string, error) {
 
 		ad := d.accessFactory().WithPrincipal(principal).WithTenant(tenant).WithResource("secrets").WithPermission("secrets.view")
 		expr, err := d.authorizer.Partial(ctx, ad, map[string]ext_authz.SQLColumnRef{
@@ -1412,7 +1412,9 @@ func (d *Database) ListSecrets(ctx context.Context, principal, tenant string, op
 		conditions, args := expr.SQL(d.arg, nil)
 		query := `SELECT
         secrets.id,
-        secrets.name
+        secrets.name,
+        secrets.type,
+        secrets.metadata
     FROM
         secrets
     JOIN tenants ON secrets.tenant_id = tenants.id
@@ -1441,21 +1443,29 @@ func (d *Database) ListSecrets(ctx context.Context, principal, tenant string, op
 		defer rows.Close()
 
 		type secretRow struct {
-			id   int64
-			name string
+			id       int64
+			name     string
+			typ      sql.NullString
+			metadata sql.NullString
 		}
 
-		var sl []*config.SecretRef
+		var sl []*config.SecretInfo
 		var lastId int64
 		for rows.Next() {
 			var row secretRow
-			if err := rows.Scan(&row.id, &row.name); err != nil {
+			if err := rows.Scan(&row.id, &row.name, &row.typ, &row.metadata); err != nil {
 				return nil, "", err
 			}
 			if row.id > lastId {
 				lastId = row.id
 			}
-			sl = append(sl, &config.SecretRef{Name: row.name})
+			info := &config.SecretInfo{Name: row.name, Type: row.typ.String}
+			if row.metadata.Valid && row.metadata.String != "" {
+				if err := json.Unmarshal([]byte(row.metadata.String), &info.Metadata); err != nil {
+					return nil, "", fmt.Errorf("secret %s: invalid metadata: %w", row.name, err)
+				}
+			}
+			sl = append(sl, info)
 		}
 		if err := rows.Err(); err != nil {
 			return nil, "", err
@@ -1466,6 +1476,60 @@ func (d *Database) ListSecrets(ctx context.Context, principal, tenant string, op
 			nextCursor = encodeCursor(lastId)
 		}
 		return sl, nextCursor, nil
+	})
+}
+
+// ListSecretInfos lists the secrets of a tenant with their type and metadata, never their value.
+func (d *Database) ListSecretInfos(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.SecretInfo, string, error) {
+	return d.listSecretInfos(ctx, principal, tenant, opts)
+}
+
+// ListSecrets lists the names of the secrets of a tenant.
+func (d *Database) ListSecrets(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.SecretRef, string, error) {
+	infos, next, err := d.listSecretInfos(ctx, principal, tenant, opts)
+	if err != nil {
+		return nil, "", err
+	}
+
+	refs := make([]*config.SecretRef, len(infos))
+	for i, info := range infos {
+		refs[i] = &config.SecretRef{Name: info.Name}
+	}
+	return refs, next, nil
+}
+
+// GetSecretInfo retrieves a secret by name with its type and metadata, never its value.
+func (d *Database) GetSecretInfo(ctx context.Context, principal, tenant, name string) (*config.SecretInfo, error) {
+	infos, _, err := d.listSecretInfos(ctx, principal, tenant, ListOptions{name: name})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(infos) == 0 {
+		return nil, ErrNotFound
+	}
+
+	return infos[0], nil
+}
+
+// UpsertSecretInfo records a secret's name, type and metadata, leaving any stored value alone.
+func (d *Database) UpsertSecretInfo(ctx context.Context, principal, tenant string, info *config.SecretInfo) error {
+	return tx1(ctx, d, func(tx *sql.Tx) error {
+		if err := d.prepareUpsert(ctx, tx, principal, tenant, "secrets", info.Name, "secrets.create", "secrets.manage"); err != nil {
+			return err
+		}
+
+		var metadata any
+		if len(info.Metadata) > 0 {
+			bs, err := json.Marshal(info.Metadata)
+			if err != nil {
+				return err
+			}
+			metadata = string(bs)
+		}
+
+		_, err := d.upsert(ctx, tx, tenant, "secrets", []string{"name", "type", "metadata"}, []string{"name"}, info.Name, info.Type, metadata)
+		return err
 	})
 }
 
