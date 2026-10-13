@@ -120,6 +120,16 @@ func addBundlesStatusesUpdatedAt(offset int, dialect string) fs.FS {
 	})
 }
 
+// addSecretsTypeMetadata adds a secret's type and metadata, so that a secret whose
+// value is held elsewhere can still be described by its record here. Neither is
+// secret; metadata holds JSON.
+func addSecretsTypeMetadata(offset int, _ string) fs.FS {
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_secrets_type.up.sql", offset):       `ALTER TABLE secrets ADD type TEXT`,
+		fmt.Sprintf("%03d_add_secrets_metadata.up.sql", offset+1): `ALTER TABLE secrets ADD metadata TEXT`,
+	})
+}
+
 // addSourcesProviders adds the table for sources' `providers:` entries.
 // Entries are keyed by name within their source; config holds the entry's
 // own (non-reserved) keys as JSON.

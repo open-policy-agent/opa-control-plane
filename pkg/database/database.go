@@ -3,7 +3,7 @@
 // This package wraps the internal database layer, exposing Bundle, Source,
 // Source Data and Secret CRUD operations using typed config structs. External
 // consumers work directly with config.Bundle and config.Source types, and see
-// secrets by name only.
+// secrets by name, type and metadata, never by value.
 //
 // Example usage:
 //
@@ -227,6 +227,28 @@ func (d *Database) UpsertSecret(ctx context.Context, principal, tenant, name str
 		return errors.New("secret name is required")
 	}
 	return d.db.UpsertSecret(ctx, principal, tenant, &internalconfig.Secret{Name: name})
+}
+
+// GetSecretInfo retrieves a secret by name with its type and metadata, never its value.
+func (d *Database) GetSecretInfo(ctx context.Context, principal, tenant, name string) (*config.SecretInfo, error) {
+	return d.db.GetSecretInfo(ctx, principal, tenant, name)
+}
+
+// ListSecretInfos lists the secrets of a tenant with their type and metadata, returning them
+// and the next cursor.
+func (d *Database) ListSecretInfos(ctx context.Context, principal, tenant string, limit int, cursor string) ([]*config.SecretInfo, string, error) {
+	return d.db.ListSecretInfos(ctx, principal, tenant, internaldatabase.ListOptions{
+		Limit:  limit,
+		Cursor: cursor,
+	})
+}
+
+// UpsertSecretInfo records a secret's name, type and metadata, leaving any stored value alone.
+func (d *Database) UpsertSecretInfo(ctx context.Context, principal, tenant string, info *config.SecretInfo) error {
+	if info.Name == "" {
+		return errors.New("secret name is required")
+	}
+	return d.db.UpsertSecretInfo(ctx, principal, tenant, info)
 }
 
 // DeleteSecret deletes a secret by name.
