@@ -120,6 +120,21 @@ func addBundlesStatusesUpdatedAt(offset int, dialect string) fs.FS {
 	})
 }
 
+// addBundlesStatusesIndex adds an index leading with bundle_id: bundles_statuses
+// is deleted by (bundle_id, revision) and by the cascade from bundles, and its
+// unique index leads with tenant_id. On CockroachDB, STORING tenant_id lets the
+// delete maintain the unique index without a primary-index lookup.
+func addBundlesStatusesIndex(offset int, dialect string) fs.FS {
+	stmt := `CREATE INDEX ocp_v2_bundles_statuses_bundle_id_revision ON bundles_statuses (bundle_id, revision)`
+	if dialect == "cockroachdb" {
+		stmt += ` STORING (tenant_id)`
+	}
+
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_bundles_statuses_bundle_id_revision_index.up.sql", offset): stmt,
+	})
+}
+
 // addSecretsTypeMetadata adds a secret's type and metadata, so that a secret whose
 // value is held elsewhere can still be described by its record here. Neither is
 // secret; metadata holds JSON.
