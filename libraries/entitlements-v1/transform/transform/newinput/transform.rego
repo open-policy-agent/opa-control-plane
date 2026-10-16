@@ -5,7 +5,7 @@ package transform.newinput
 # This is done by creating a rule here named "newinput" that
 # translates the input to the Styra schema
 #
-# import future.keywords
+# import rego.v1
 #
 # decoded_jwt := io.jwt.decode(input.jwt)
 #
@@ -18,6 +18,6 @@ package transform.newinput
 #     }
 # }
 #
-# newinput = obj {
+# newinput = obj if {
 #     obj = object.union(input, {"context": jwt_context})
 # } else = input

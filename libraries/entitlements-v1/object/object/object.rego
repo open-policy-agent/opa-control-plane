@@ -1,5 +1,7 @@
 package object
 
+import rego.v1
+
 sample_package := "car_info_store"
 
 actions := data.global.systemtypes["entitlements:1.0"].library.sample[sample_package].actions

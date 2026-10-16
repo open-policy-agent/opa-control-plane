@@ -1,8 +1,9 @@
 package global.systemtypes["entitlements:1.0"].library.policy.rbac.test_v1
 
+import rego.v1
 import data.global.systemtypes["entitlements:1.0"].library.policy.rbac.v1 as actions
 
-mock_request(action, subject, resource) = x {
+mock_request(action, subject, resource) = x if {
 	x := {
 		"action": action,
 		"subject": subject,
@@ -29,7 +30,7 @@ mock_actions_resources_selectors(actions, resources) = {
 	"resources": resources,
 }
 
-test_any_role_allows_access_negative {
+test_any_role_allows_access_negative if {
 	# no role binding for some-user
 	msg_no_role_binding_match := actions.any_role_allows_access with input as mock_request("some-action", "some-user", "some-resource")
 		with data.object.role_bindings as mock_role_binding_by_ids("no-matching-role", ["some-user"])
@@ -52,7 +53,7 @@ test_any_role_allows_access_negative {
 	msg_no_action_match == set()
 }
 
-test_any_role_allows_access_simple {
+test_any_role_allows_access_simple if {
 	msg := actions.any_role_allows_access with input as mock_request("some-action", "some-user", "some-resource")
 		with data.object.role_bindings as mock_role_binding_by_ids("some-role", ["some-user"])
 		with data.object.roles as mock_allow_role("some-role", ["some-action"], ["some-resource"])
@@ -60,7 +61,7 @@ test_any_role_allows_access_simple {
 	msg == {"Access is allowed by roles some-role"}
 }
 
-test_any_role_allows_access_with_group {
+test_any_role_allows_access_with_group if {
 	msg := actions.any_role_allows_access with input as mock_request("some-action", "some-user", "some-resource")
 		with data.object.role_bindings as mock_role_binding_by_ids("some-role", ["some-group"])
 		with data.object.users as {}
@@ -73,7 +74,7 @@ test_any_role_allows_access_with_group {
 	msg == {"Access is allowed by roles some-role"}
 }
 
-test_any_role_allows_access_multiple_roles {
+test_any_role_allows_access_multiple_roles if {
 	roles := object.union(
 		mock_allow_role("role-a", ["a-action"], ["a-resource"]),
 		mock_allow_role("role-allow-all", ["a-action", "b-action"], ["a-resource", "b-resource"]),
@@ -99,7 +100,7 @@ test_any_role_allows_access_multiple_roles {
 	msg_both_allows == {"Access is allowed by roles role-a, role-allow-all"}
 }
 
-test_any_role_denies_access_multiple_roles {
+test_any_role_denies_access_multiple_roles if {
 	roles := object.union(
 		mock_deny_role_with_exclude("role-a", ["a-action"], ["a-resource", "exclude-resource"], [], []),
 		mock_deny_role_with_exclude("role-deny-all", ["a-action", "b-action"], ["a-resource", "b-resource"], ["exclude-action"], ["exclude-resource"]),
@@ -125,7 +126,7 @@ test_any_role_denies_access_multiple_roles {
 	msg_both_denies == {"Access is denied by roles role-a, role-deny-all"}
 }
 
-test_any_role_denies_access_with_group {
+test_any_role_denies_access_with_group if {
 	msg := actions.any_role_denies_access with input as mock_request("some-action", "some-user", "some-resource")
 		with data.object.users as {}
 		with data.object.role_bindings as mock_role_binding_by_ids("some-role", ["some-group"])
@@ -149,7 +150,7 @@ test_any_role_denies_access_with_group {
 	no_match == set()
 }
 
-test_role_allows_access {
+test_role_allows_access if {
 	roledef := {"allow": {"include": [
 		{"actions": ["*"], "resources": ["any-action"]},
 		{"actions": ["read"], "resources": ["read-only", "read-only-2"]},
@@ -158,7 +159,7 @@ test_role_allows_access {
 	actions.role_allows_access(roledef, {"action": "read", "resource": "read-only-2"}) == true
 }
 
-test_roles_bound_to_request_subject {
+test_roles_bound_to_request_subject if {
 	role_bindings := {
 		"role-1": {"subjects": {"ids": ["alice"]}},
 		"role-2": {"subjects": {"ids": ["b", "group"]}},
@@ -189,7 +190,7 @@ test_roles_bound_to_request_subject {
 	roles3 == {{"roles": set(), "snippet": "global/systemtypes/entitlements:1.0/library/policy/rbac/v1/roles_bound_to_request_subject"}}
 }
 
-test_dynamic_groups {
+test_dynamic_groups if {
 	# Case where the user and the group have identical attributes
 	groups1 := actions.groups_for_subject("alice") with data.object.groups as {"some-group": {"membership-attributes": {"foo": "bar"}}}
 		with data.object.users as {"alice": {"foo": "bar"}}
@@ -261,7 +262,7 @@ test_dynamic_groups {
 	groups10 == {"group1"}
 }
 
-test_dynamic_roles {
+test_dynamic_roles if {
 	role_bindings := {
 		"role-1": {"subjects": {"membership-attributes": {"foo": "bar"}}},
 		"role-2": {"subjects": {"membership-attributes": {"foo": "baz"}}},
@@ -294,7 +295,7 @@ test_dynamic_roles {
 	roles4 == {"role-3", "role-2"}
 }
 
-test_subject_type {
+test_subject_type if {
 	users := {"alice": {"name": "Alice"}, "bob": {}}
 	groups := {"sales": {}, "IT": {}}
 	service_accounts := {"cicd_bot": {}}
@@ -327,7 +328,7 @@ test_subject_type {
 		with data.object.users as {}
 }
 
-test_complicated_1 {
+test_complicated_1 if {
 	# This test is intended to exercise a more sophisticated, complex
 	# example where multiple features are exercised in tandem.
 	#
@@ -551,7 +552,7 @@ test_complicated_1 {
 	msg4 == {"Access is allowed by roles car-updaters"}
 }
 
-test_ucdw_1 {
+test_ucdw_1 if {
 	role_bindings := {
 		"role-1": {"subjects": {"membership-attributes": {"foo": "bar"}}},
 		"role-2": {"subjects": {"membership-attributes": {"baz": "quux"}}},
@@ -797,7 +798,7 @@ test_ucdw_1 {
 	ucdw == expect
 }
 
-test_wcdt_1 {
+test_wcdt_1 if {
 	role_bindings := {
 		"role-1": {"subjects": {"membership-attributes": {"foo": "bar"}}},
 		"role-2": {"subjects": {"membership-attributes": {"baz": "quux"}}},

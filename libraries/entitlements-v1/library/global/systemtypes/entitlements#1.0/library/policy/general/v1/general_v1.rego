@@ -1,5 +1,6 @@
 package global.systemtypes["entitlements:1.0"].library.policy.general.v1
 
+import rego.v1
 import data.library.parameters
 
 # METADATA: library-snippet
@@ -42,7 +43,7 @@ import data.library.parameters
 #         package: "completions"
 #         query: "subjects"
 
-match_glob_action_subject_resource[msg] {
+match_glob_action_subject_resource contains msg if {
 	optional_array_parameter("action", "actions")
 	optional_array_parameter("subject", "subjects")
 	optional_array_parameter("resource", "resources")
@@ -55,29 +56,29 @@ match_glob_action_subject_resource[msg] {
 # description: >-
 #   Match all requests.  Generally used along with filters to do exact matching.
 
-match_requests[msg] {
+match_requests contains msg if {
 	msg := "Match all requests snippet"
 }
 
-input_field_matches_some_array_value_or_is_undefined(fieldname, array) {
+input_field_matches_some_array_value_or_is_undefined(fieldname, array) if {
 	# input.fieldname is undefined, return true
 	not input[fieldname] == input[fieldname]
-} else {
+} else if {
 	input[fieldname] == array[_]
 }
 
-optional_array_parameter(input_field, param) {
+optional_array_parameter(input_field, param) if {
 	# If the parameter is undefined, then return true.
 	not data.library.parameters[param] == data.library.parameters[param]
 }
 
-optional_array_parameter(input_field, param) {
+optional_array_parameter(input_field, param) if {
 	# If the parameter is the empty set, then return true.
 	is_set(data.library.parameters[param])
 	count(data.library.parameters[param]) == 0
 }
 
-optional_array_parameter(input_field, param) {
+optional_array_parameter(input_field, param) if {
 	# If the parameter is defined and non-empty, then return true.
 	glob.match(data.library.parameters[param][_], [".", "/"], input[input_field])
 }
@@ -103,7 +104,7 @@ optional_array_parameter(input_field, param) {
 #       uniqueItems: true
 #   required:
 #     - unmatch_actions
-action_not_excluded[msg] {
+action_not_excluded contains msg if {
 	# This is still confusing, even after trying to make it less so. To
 	# formalize what's going on a bit, this rule is equivalent to:
 	#
@@ -114,7 +115,7 @@ action_not_excluded[msg] {
 	msg := sprintf("Action %s is not excluded", [input.action])
 }
 
-action_not_excluded[msg] {
+action_not_excluded contains msg if {
 	# input.action is undefined
 	not input.action == input.action
 	msg := "Action is not specified in the request"
@@ -129,14 +130,14 @@ action_not_excluded[msg] {
 # description: >-
 #   Matches requests where the input action is missing or is NOT contained
 #   within the object model's user list.
-action_is_not_valid[msg] {
+action_is_not_valid contains msg if {
 	# equivalent to 'not input.action in data.object.actions',
 	#   but written this way to avoid requiring new OPAs
 	count({1 | input.action == data.object.actions[_]}) == 0
 	msg := sprintf("Action %s is not valid", [input.action])
 }
 
-action_is_not_valid[msg] {
+action_is_not_valid contains msg if {
 	# input.action is undefined
 	not input.action == input.action
 	msg := "Action is not specified in the request"
@@ -151,12 +152,12 @@ action_is_not_valid[msg] {
 # description: >-
 #   Matches requests where the input subject is missing or is NOT contained
 #   within the object model's user list.
-user_is_not_valid[msg] {
+user_is_not_valid contains msg if {
 	not data.object.users[input.subject]
 	msg := sprintf("User %s is not valid", [input.subject])
 }
 
-user_is_not_valid[msg] {
+user_is_not_valid contains msg if {
 	not input.subject == input.subject
 	msg := "No subject found in the input request"
 }
