@@ -211,6 +211,7 @@ type Builder struct {
 	optimizationLevel int
 	revision          string
 	revisionFunc      func(fs.FS) (string, error)
+	manifestMetadata  map[string]any
 }
 
 func New() *Builder {
@@ -251,6 +252,13 @@ func (b *Builder) WithRevision(revision string) *Builder {
 // bundle filesystem. It is called after FS assembly and before compilation.
 func (b *Builder) WithRevisionFunc(fn func(fs.FS) (string, error)) *Builder {
 	b.revisionFunc = fn
+	return b
+}
+
+// WithManifestMetadata sets top-level manifest metadata keys that are written to
+// the bundle. Building fails if a key is also set by the bundle's sources.
+func (b *Builder) WithManifestMetadata(m map[string]any) *Builder {
+	b.manifestMetadata = m
 	return b
 }
 
@@ -652,6 +660,15 @@ func (b *Builder) Build(ctx context.Context) error {
 			result.Manifest.Metadata = make(map[string]any, len(metadata))
 		}
 		maps.Copy(result.Manifest.Metadata, metadata)
+	}
+	for k, v := range b.manifestMetadata {
+		if _, ok := result.Manifest.Metadata[k]; ok {
+			return fmt.Errorf("manifest metadata key %q is reserved but already set by a source", k)
+		}
+		if result.Manifest.Metadata == nil {
+			result.Manifest.Metadata = make(map[string]any, len(b.manifestMetadata))
+		}
+		result.Manifest.Metadata[k] = v
 	}
 
 	return bundle.Write(b.output, *result)

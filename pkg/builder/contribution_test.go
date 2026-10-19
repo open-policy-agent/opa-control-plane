@@ -559,3 +559,54 @@ func TestManifestRootsWarningIgnoresClaimedRoots(t *testing.T) {
 		}
 	})
 }
+
+func TestManifestMetadata(t *testing.T) {
+	build := func(contrib *builder.Contribution, meta map[string]any) (*bundle.Bundle, error) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "a.rego"), []byte("package a\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s := builder.NewSource("src")
+		d := builder.Dir{Path: filepath.ToSlash(dir)}
+		if contrib != nil {
+			d.Contribution = func() *builder.Contribution { return contrib }
+		}
+		if err := s.AddDir(d); err != nil {
+			t.Fatal(err)
+		}
+		buf := bytes.NewBuffer(nil)
+		if err := builder.New().WithSources([]*builder.Source{s}).WithManifestMetadata(meta).WithOutput(buf).Build(t.Context()); err != nil {
+			return nil, err
+		}
+		b, err := bundle.NewReader(buf).Read()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &b, nil
+	}
+
+	t.Run("written next to contributed metadata", func(t *testing.T) {
+		b, err := build(
+			&builder.Contribution{Metadata: map[string]any{"a": "v"}},
+			map[string]any{"ocp": map[string]any{"sources": map[string]any{"src": map[string]any{"commit": "abc"}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		exp := map[string]any{
+			"a":   "v",
+			"ocp": map[string]any{"sources": map[string]any{"src": map[string]any{"commit": "abc"}}},
+		}
+		if diff := cmp.Diff(exp, b.Manifest.Metadata); diff != "" {
+			t.Errorf("metadata (-want,+got):\n%s", diff)
+		}
+	})
+
+	t.Run("key already contributed by a source", func(t *testing.T) {
+		_, err := build(
+			&builder.Contribution{Metadata: map[string]any{"ocp": 1}},
+			map[string]any{"ocp": map[string]any{}})
+		if err == nil || !strings.Contains(err.Error(), `manifest metadata key "ocp" is reserved`) {
+			t.Fatalf("expected reserved key error, got %v", err)
+		}
+	})
+}
