@@ -281,6 +281,15 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 				w.log.Debugf("Bundle %q built, not modified.", w.bundleConfig.Name)
 				return w.report(ctx, BuildStateSuccess, BuildPhasePush, resolvedRevision, startTime, nil)
 			}
+			if errors.Is(err, ext_os.ErrPending) {
+				// Record nothing: the push may still land, and the next cycle
+				// reports the outcome.
+				w.log.Infof("Bundle %q upload still pending.", w.bundleConfig.Name)
+				if w.singleShot {
+					return w.die(ctx)
+				}
+				return time.Now().Add(errorInterval)
+			}
 			w.log.Warnf("failed to upload bundle %q: %v", w.bundleConfig.Name, err)
 			return w.report(ctx, BuildStatePushFailed, BuildPhasePush, resolvedRevision, startTime, err)
 		}
