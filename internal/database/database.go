@@ -370,18 +370,7 @@ func (d *Database) InitDB(ctx context.Context) error {
 				cfg.MultiStatements = true // required for migrations to work
 				cfg.ParseTime = true       // required for scanning time.Time columns
 			} else {
-				cfg = &mysqldriver.Config{
-					User:                    dbUser,
-					Net:                     "tcp",
-					Addr:                    endpoint,
-					DBName:                  dbName,
-					AllowCleartextPasswords: true,
-					AllowNativePasswords:    true,
-					AllowOldPasswords:       true,
-					TLSConfig:               tlsConfigName,
-					MultiStatements:         true, // required for migrations
-					ParseTime:               true, // required for scanning time.Time columns
-				}
+				cfg = newRDSMySQLConfig(dbUser, endpoint, dbName, tlsConfigName)
 
 				_ = cfg.Apply(mysqldriver.BeforeConnect(func(ctx context.Context, config *mysqldriver.Config) error {
 					config.Passwd, err = authCallback(ctx)
@@ -2417,4 +2406,22 @@ func withBusyTimeout(dsn string) string {
 		sep = "&"
 	}
 	return dsn + sep + "_pragma=busy_timeout(10000)"
+}
+
+// newRDSMySQLConfig builds the connection config for IAM-authenticated RDS MySQL. It starts from
+// [mysqldriver.NewConfig] rather than a struct literal: the zero-value Config has a nil Loc, which
+// makes the driver panic when binding any time.Time argument.
+func newRDSMySQLConfig(user, addr, dbName, tlsConfigName string) *mysqldriver.Config {
+	cfg := mysqldriver.NewConfig()
+	cfg.User = user
+	cfg.Net = "tcp"
+	cfg.Addr = addr
+	cfg.DBName = dbName
+	cfg.AllowCleartextPasswords = true // IAM auth tokens are sent as cleartext over TLS
+	cfg.AllowNativePasswords = true
+	cfg.AllowOldPasswords = true
+	cfg.TLSConfig = tlsConfigName
+	cfg.MultiStatements = true // required for migrations
+	cfg.ParseTime = true       // required for scanning time.Time columns
+	return cfg
 }
