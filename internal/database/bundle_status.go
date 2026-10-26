@@ -133,10 +133,19 @@ func (d *Database) GetBundleStatus(ctx context.Context, id int) (*config.BundleS
 	return &s, err
 }
 
-// GetLatestBundleStatus returns the most recent status record for the given tenant and bundle
-// across all revisions. Returns nil and ErrNotFound if no records exist.
+// Orderings for listing status rows. They are constants spliced into the query,
+// never user input.
+const (
+	orderByCreation   = "bundles_statuses.id DESC"
+	orderByLastUpdate = "COALESCE(bundles_statuses.updated_at, bundles_statuses.created_at) DESC, bundles_statuses.id DESC"
+)
+
+// GetLatestBundleStatus returns the status record written last for the given tenant and bundle
+// across all revisions, which is the revision built most recently. A row is rewritten on every
+// build of its revision, so this is not necessarily the row with the highest id.
+// Returns nil and ErrNotFound if no records exist.
 func (d *Database) GetLatestBundleStatus(ctx context.Context, principal, tenant, bundle string) (*config.BundleStatus, error) {
-	statuses, err := d.ListBundleStatuses(ctx, principal, tenant, bundle, "", 1)
+	statuses, err := d.listBundleStatuses(ctx, principal, tenant, bundle, "", 1, orderByLastUpdate)
 	if err != nil {
 		return nil, err
 	}
@@ -153,6 +162,10 @@ func (d *Database) GetLatestBundleStatus(ctx context.Context, principal, tenant,
 // If revision is empty, returns records across all revisions.
 // A limit of 0 defaults to MaxBundleStatusRetention; values above MaxBundleStatusRetention are capped.
 func (d *Database) ListBundleStatuses(ctx context.Context, principal, tenant, bundle, revision string, limit int) ([]*config.BundleStatus, error) {
+	return d.listBundleStatuses(ctx, principal, tenant, bundle, revision, limit, orderByCreation)
+}
+
+func (d *Database) listBundleStatuses(ctx context.Context, principal, tenant, bundle, revision string, limit int, orderBy string) ([]*config.BundleStatus, error) {
 
 	// Apply default and cap for limit.
 	if limit <= 0 {
@@ -184,9 +197,9 @@ func (d *Database) ListBundleStatuses(ctx context.Context, principal, tenant, bu
 				 FROM bundles_statuses
 				 JOIN tenants ON tenants.id = bundles_statuses.tenant_id
 				 WHERE tenants.name = %s AND bundle_id = %s AND revision = %s
-				 ORDER BY bundles_statuses.id DESC
+				 ORDER BY %s
 				 LIMIT %s`,
-				d.arg(0), d.arg(1), d.arg(2), d.arg(3),
+				d.arg(0), d.arg(1), d.arg(2), orderBy, d.arg(3),
 			)
 			args = []any{tenant, bundleID, revision, limit}
 		} else {
@@ -195,9 +208,9 @@ func (d *Database) ListBundleStatuses(ctx context.Context, principal, tenant, bu
 				 FROM bundles_statuses
 				 JOIN tenants ON tenants.id = bundles_statuses.tenant_id
 				 WHERE tenants.name = %s AND bundle_id = %s
-				 ORDER BY bundles_statuses.id DESC
+				 ORDER BY %s
 				 LIMIT %s`,
-				d.arg(0), d.arg(1), d.arg(2),
+				d.arg(0), d.arg(1), orderBy, d.arg(2),
 			)
 			args = []any{tenant, bundleID, limit}
 		}

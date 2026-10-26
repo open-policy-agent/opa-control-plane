@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -615,6 +616,34 @@ func TestGetLatestBundleStatus(t *testing.T) {
 				assert.Equal(t, "rev-2", latest.Revision)
 				assert.Equal(t, PhasePushBundle, latest.Phase)
 				assert.Equal(t, StatusInProgress, latest.Status)
+			})
+
+			t.Run("get latest follows the last write, not the last created row", func(t *testing.T) {
+				// Content goes from rev-a to rev-b and back to rev-a. The row of rev-a is
+				// older than the row of rev-b, but it is the one written last.
+				_, err := db.UpsertBundleStatus(ctx, tenant, "bundle-b", "rev-a", PhasePushBundle, StatusFailed, "push failed")
+				require.NoError(t, err)
+
+				_, err = db.UpsertBundleStatus(ctx, tenant, "bundle-b", "rev-b", PhasePushBundle, StatusFailed, "push failed")
+				require.NoError(t, err)
+
+				// MySQL timestamps have a resolution of one second.
+				time.Sleep(1100 * time.Millisecond)
+
+				revID, err := db.UpsertBundleStatus(ctx, tenant, "bundle-b", "rev-a", PhasePushBundle, StatusCompleted, "")
+				require.NoError(t, err)
+
+				latest, err := db.GetLatestBundleStatus(ctx, "admin", tenant, "bundle-b")
+				require.NoError(t, err)
+				assert.Equal(t, revID, int(latest.ID))
+				assert.Equal(t, "rev-a", latest.Revision)
+				assert.Equal(t, StatusCompleted, latest.Status)
+
+				// Listing is still ordered by creation.
+				listed, err := db.ListBundleStatuses(ctx, "admin", tenant, "bundle-b", "", 2)
+				require.NoError(t, err)
+				require.Len(t, listed, 2)
+				assert.Equal(t, "rev-b", listed[0].Revision)
 			})
 		})
 	}
