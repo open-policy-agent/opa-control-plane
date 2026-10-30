@@ -1,11 +1,10 @@
 package global.systemtypes["entitlements:1.0"].library.diagnostics.test_v1
 
 import data.global.systemtypes["entitlements:1.0"].library.diagnostics.v1 as diagnostics
-import future.keywords.every
-import future.keywords.in
+import rego.v1
 
 # check that the result from running a diagnostic has the proper schema.
-result_check(obj) {
+result_check(obj) if {
 	print("=== schema check for object:", obj)
 	is_string(obj.message)
 	print("message is a string")
@@ -27,7 +26,7 @@ result_check(obj) {
 	print("if severity was non-OK, suggestion is present and a string")
 }
 
-test_duplicate_subject_check_1 {
+test_duplicate_subject_check_1 if {
 	# test the case where there are duplicate subjects
 	diag := diagnostics.diagnostics.duplicate_subject_check with input as {"enable_diagnostics": true}
 		with data.object.users as {"foo": {}}
@@ -40,7 +39,7 @@ test_duplicate_subject_check_1 {
 	result_check(diag)
 }
 
-test_duplicate_subject_check_2 {
+test_duplicate_subject_check_2 if {
 	# test the case where there are no duplicate subjects
 	diag := diagnostics.diagnostics.duplicate_subject_check with input as {"enable_diagnostics": true}
 		with data.object.users as {"foo": {}}
@@ -52,7 +51,7 @@ test_duplicate_subject_check_2 {
 	result_check(diag)
 }
 
-test_entz_object_check_1 {
+test_entz_object_check_1 if {
 	# case where fields are not defined
 	#
 	fields := {"actions", "resources", "roles", "role_bindings", "users", "groups", "service_accounts"}
@@ -65,7 +64,7 @@ test_entz_object_check_1 {
 	}
 }
 
-test_entz_object_check_2 {
+test_entz_object_check_2 if {
 	# case where fields are defined
 
 	fields := {"actions", "resources", "roles", "role_bindings", "users", "groups", "service_accounts"}
@@ -85,7 +84,7 @@ test_entz_object_check_2 {
 	}
 }
 
-test_subject_exists_1 {
+test_subject_exists_1 if {
 	# case where subject does not exist
 	diag := diagnostics.diagnostics.subject_exists with input as {"enable_diagnostics": true, "subject": "bar"}
 		with data.object.users as {"foo": {}}
@@ -94,7 +93,7 @@ test_subject_exists_1 {
 	result_check(diag)
 }
 
-test_subject_exists_2 {
+test_subject_exists_2 if {
 	# case where subject does exist
 	diag := diagnostics.diagnostics.subject_exists with input as {"enable_diagnostics": true, "subject": "bar"}
 		with data.object.users as {"bar": {}}
@@ -103,7 +102,7 @@ test_subject_exists_2 {
 	result_check(diag)
 }
 
-test_subject_has_roles_1 {
+test_subject_has_roles_1 if {
 	# case where subject does not have roles
 	diag := diagnostics.diagnostics.subject_has_roles with input as {"enable_diagnostics": true, "subject": "user1"}
 		with data.object.users as {"user1": {}, "user2": {}}
@@ -114,7 +113,7 @@ test_subject_has_roles_1 {
 	result_check(diag)
 }
 
-test_subject_has_roles_2 {
+test_subject_has_roles_2 if {
 	# case where subject does not have roles
 	diag := diagnostics.diagnostics.subject_has_roles with input as {"enable_diagnostics": true, "subject": "user2"}
 		with data.object.users as {"user1": {}, "user2": {}}
@@ -125,7 +124,7 @@ test_subject_has_roles_2 {
 	result_check(diag)
 }
 
-test_resource_exists_1 {
+test_resource_exists_1 if {
 	# case where resource does not exist
 	diag := diagnostics.diagnostics.resource_exists with input as {"enable_diagnostics": true, "resource": "resource2"}
 		with data.object.resources as {"resource1": {}}
@@ -134,7 +133,7 @@ test_resource_exists_1 {
 	result_check(diag)
 }
 
-test_resource_exists_2 {
+test_resource_exists_2 if {
 	# case where resource does not exist
 	diag := diagnostics.diagnostics.resource_exists with input as {"enable_diagnostics": true, "resource": "resource1"}
 		with data.object.resources as {"resource1": {}}
@@ -143,7 +142,7 @@ test_resource_exists_2 {
 	result_check(diag)
 }
 
-test_action_exists_1 {
+test_action_exists_1 if {
 	# case where action does not exist
 	diag := diagnostics.diagnostics.action_exists with input as {"enable_diagnostics": true, "action": "action2"}
 		with data.object.actions as {"action1"}
@@ -152,7 +151,7 @@ test_action_exists_1 {
 	result_check(diag)
 }
 
-test_action_exists_2 {
+test_action_exists_2 if {
 	# case where action does not exist
 	diag := diagnostics.diagnostics.action_exists with input as {"enable_diagnostics": true, "action": "action1"}
 		with data.object.actions as {"action1"}
@@ -161,7 +160,7 @@ test_action_exists_2 {
 	result_check(diag)
 }
 
-test_role_resource_action_1 {
+test_role_resource_action_1 if {
 	# case where a relevant role is found
 	diag := diagnostics.diagnostics.role_resource_action with input as {"enable_diagnostics": true, "action": "action1", "resource": "resource2"}
 		with data.object.roles as {"role1": {"allow": {"include": [{
@@ -177,7 +176,7 @@ test_role_resource_action_1 {
 	result_check(diag)
 }
 
-test_role_resource_action_2 {
+test_role_resource_action_2 if {
 	# case where a relevant role is not found
 	diag := diagnostics.diagnostics.role_resource_action with input as {"enable_diagnostics": true, "action": "action1", "resource": "resource3"}
 		with data.object.roles as {"role1": {"allow": {"include": [{
@@ -192,7 +191,7 @@ test_role_resource_action_2 {
 	result_check(diag)
 }
 
-test_role_resource_action_3 {
+test_role_resource_action_3 if {
 	# Check to make sure we can find actions that show up in role/deny.
 	# Notice that action1 is not in data.object.actions, so that if
 	# our logic to collect up all the actions is wrong, the test will fail.
@@ -209,7 +208,7 @@ test_role_resource_action_3 {
 	result_check(diag)
 }
 
-test_role_resource_action_4 {
+test_role_resource_action_4 if {
 	# Check to make sure that we are searching for actions under both
 	# roles/{allow,deny}/include and .../exclude
 	diag := diagnostics.diagnostics.role_resource_action with input as {"enable_diagnostics": true, "action": "action1", "resource": "resource1"}
@@ -226,7 +225,7 @@ test_role_resource_action_4 {
 	result_check(diag)
 }
 
-test_role_resource_action_5 {
+test_role_resource_action_5 if {
 	# Check to make sure that we are searching for resources under both
 	# roles/{allow,deny}/include and .../exclude
 	diag := diagnostics.diagnostics.role_resource_action with input as {"enable_diagnostics": true, "action": "action1", "resource": "resource1"}
@@ -242,7 +241,7 @@ test_role_resource_action_5 {
 	result_check(diag)
 }
 
-test_subject_has_attributes_1 {
+test_subject_has_attributes_1 if {
 	# case where subject does not have attributes
 	diag := diagnostics.diagnostics.subject_has_attributes with input as {"enable_diagnostics": true, "subject": "subject1"}
 		with data.object.users as {"subject1": {}}
@@ -251,7 +250,7 @@ test_subject_has_attributes_1 {
 	result_check(diag)
 }
 
-test_subject_has_attributes_2 {
+test_subject_has_attributes_2 if {
 	# case where subject does have attributes
 	diag := diagnostics.diagnostics.subject_has_attributes with input as {"enable_diagnostics": true, "subject": "subject1"}
 		with data.object.users as {"subject1": {"attr1": "val1"}}
@@ -261,7 +260,7 @@ test_subject_has_attributes_2 {
 	result_check(diag)
 }
 
-test_resource_has_attributes_1 {
+test_resource_has_attributes_1 if {
 	# case where resource does not have attributes
 	diag := diagnostics.diagnostics.resource_has_attributes with input as {"enable_diagnostics": true, "resource": "resource1"}
 		with data.object.resources as {"resource1": {}}
@@ -270,7 +269,7 @@ test_resource_has_attributes_1 {
 	result_check(diag)
 }
 
-test_resource_has_attributes_2 {
+test_resource_has_attributes_2 if {
 	# case where resource does have attributes
 	diag := diagnostics.diagnostics.resource_has_attributes with input as {"enable_diagnostics": true, "resource": "resource1"}
 		with data.object.resources as {"resource1": {"attr1": "val1"}}
@@ -279,7 +278,7 @@ test_resource_has_attributes_2 {
 	result_check(diag)
 }
 
-test_resource_action_for_role_1 {
+test_resource_action_for_role_1 if {
 	# case where all roles are valid
 	diag := diagnostics.diagnostics.resource_action_for_role with input as {"enable_diagnostics": true}
 		with data.object.roles as {"role1": {"allow": {"include": [{
@@ -293,7 +292,7 @@ test_resource_action_for_role_1 {
 	result_check(diag)
 }
 
-test_resource_action_for_role_2 {
+test_resource_action_for_role_2 if {
 	# case where a role references missing actions
 	diag := diagnostics.diagnostics.resource_action_for_role with input as {"enable_diagnostics": true}
 		with data.object.roles as {"role1": {"allow": {"include": [{
@@ -308,7 +307,7 @@ test_resource_action_for_role_2 {
 	result_check(diag)
 }
 
-test_resource_action_for_role_3 {
+test_resource_action_for_role_3 if {
 	# case where a role references missing resources
 	diag := diagnostics.diagnostics.resource_action_for_role with input as {"enable_diagnostics": true}
 		with data.object.roles as {"role1": {"allow": {"include": [{
@@ -322,7 +321,7 @@ test_resource_action_for_role_3 {
 	diag.severity == "WARNING"
 }
 
-test_subjects_for_role_binding_1 {
+test_subjects_for_role_binding_1 if {
 	# case where all is well
 
 	diag := diagnostics.diagnostics.subjects_for_role_binding with input as {"enable_diagnostics": true}
@@ -339,7 +338,7 @@ test_subjects_for_role_binding_1 {
 	result_check(diag)
 }
 
-test_subjects_for_role_binding_2 {
+test_subjects_for_role_binding_2 if {
 	# if a role binding has no subjects, it should cause a warning
 
 	diag := diagnostics.diagnostics.subjects_for_role_binding with input as {"enable_diagnostics": true}
@@ -357,7 +356,7 @@ test_subjects_for_role_binding_2 {
 	result_check(diag)
 }
 
-test_subjects_for_role_binding_3 {
+test_subjects_for_role_binding_3 if {
 	# all subjects mentioned in the role binding should be extant
 
 	diag := diagnostics.diagnostics.subjects_for_role_binding with input as {"enable_diagnostics": true}
@@ -375,7 +374,7 @@ test_subjects_for_role_binding_3 {
 	result_check(diag)
 }
 
-test_object_model_schema_1 {
+test_object_model_schema_1 if {
 	# Case where everything is fine
 
 	diag := diagnostics.diagnostics.object_model_schema with input as {"enable_diagnostics": true}
@@ -396,7 +395,7 @@ test_object_model_schema_1 {
 	result_check(diag)
 }
 
-test_object_model_schema_2 {
+test_object_model_schema_2 if {
 	# Invalid role
 
 	diag := diagnostics.diagnostics.object_model_schema with input as {"enable_diagnostics": true}
@@ -418,7 +417,7 @@ test_object_model_schema_2 {
 	result_check(diag)
 }
 
-test_object_model_schema_3 {
+test_object_model_schema_3 if {
 	# Bad resource
 
 	diag := diagnostics.diagnostics.object_model_schema with input as {"enable_diagnostics": true}
@@ -439,7 +438,7 @@ test_object_model_schema_3 {
 	result_check(diag)
 }
 
-test_object_model_schema_4 {
+test_object_model_schema_4 if {
 	# bad action
 
 	diag := diagnostics.diagnostics.object_model_schema with input as {"enable_diagnostics": true}
@@ -460,7 +459,7 @@ test_object_model_schema_4 {
 	result_check(diag)
 }
 
-test_object_model_schema_5 {
+test_object_model_schema_5 if {
 	# bad role binding
 
 	diag := diagnostics.diagnostics.object_model_schema with input as {"enable_diagnostics": true}
@@ -546,7 +545,7 @@ test_object_model_schema_5 {
 #        diag.severity == "PROBLEM"
 # }
 
-test_ucdw_for_request_1 {
+test_ucdw_for_request_1 if {
 	# bad role binding
 
 	diag := diagnostics.diagnostics.ucdw_for_request with input as {
@@ -646,7 +645,7 @@ test_ucdw_for_request_1 {
 	result_check(diag)
 }
 
-test_wcdt_for_request_1 {
+test_wcdt_for_request_1 if {
 	# bad role binding
 
 	diag := diagnostics.diagnostics.wcdt_for_request with input as {
@@ -685,7 +684,7 @@ test_wcdt_for_request_1 {
 	result_check(diag)
 }
 
-test_wcdt_for_request_2 {
+test_wcdt_for_request_2 if {
 	# bad role binding
 
 	diag := diagnostics.diagnostics.wcdt_for_request with input as {

@@ -1,5 +1,6 @@
 package global.systemtypes["entitlements:1.0"].library.policy.locations.v1
 
+import rego.v1
 import data.library.parameters
 
 # METADATA: library-snippet
@@ -19,7 +20,7 @@ import data.library.parameters
 #       uniqueItems: true
 #   required:
 #     - locations
-match_exact[msg] {
+match_exact contains msg if {
 	input.context.location == parameters.regions[_]
 	msg := sprintf("User is from matching location %s", [input.context.location])
 }
