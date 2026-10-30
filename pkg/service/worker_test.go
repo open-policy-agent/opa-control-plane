@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/database"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
@@ -214,5 +215,59 @@ func TestBundleWorkerExecute_SyncFailurePersisted(t *testing.T) {
 	}
 	if status.Revision != database.SentinelRevision {
 		t.Fatalf("expected sentinel revision %q, got %q", database.SentinelRevision, status.Revision)
+	}
+}
+
+func TestGitManifestMetadata(t *testing.T) {
+	ref, path := "main", "policies"
+	syncs := []sourceSynchronizer{
+		{
+			sourceName: "with-all",
+			sourceType: "git",
+			git:        &config.Git{Repo: "https://user:secret@example.com/org/repo", Reference: &ref, Path: &path},
+		},
+		{sourceName: "minimal", sourceType: "git", git: &config.Git{Repo: "https://example.com/org/other"}},
+		{sourceName: "not-git", sourceType: "http"},
+	}
+	meta := map[string]map[string]any{
+		"with-all": {"git": map[string]any{"commit": "aaa"}},
+		"minimal":  {"git": map[string]any{"commit": "bbb"}},
+	}
+
+	got := gitManifestMetadata(syncs, meta)
+	want := map[string]any{"ocp": map[string]any{"sources": map[string]any{
+		"with-all": map[string]any{"repo": "https://example.com/org/repo", "reference": "main", "commit": "aaa", "path": "policies"},
+		"minimal":  map[string]any{"repo": "https://example.com/org/other", "commit": "bbb"},
+	}}}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("metadata (-want,+got):\n%s", diff)
+	}
+
+	if got := gitManifestMetadata(syncs[2:], meta); got != nil {
+		t.Errorf("expected nil without git sources, got %v", got)
+	}
+}
+
+func TestHashWithMetadata(t *testing.T) {
+	meta := func(commit string) map[string]any {
+		return map[string]any{"ocp": map[string]any{"sources": map[string]any{"s": map[string]any{"commit": commit}}}}
+	}
+
+	same := func(a, b string) bool { return a == b }
+	h1, err := hashWithMetadata("abc", meta("c1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h1again, _ := hashWithMetadata("abc", meta("c1"))
+	h2, _ := hashWithMetadata("abc", meta("c2"))
+
+	if !same(h1, h1again) {
+		t.Error("hash is not deterministic")
+	}
+	if same(h1, h2) {
+		t.Error("a different commit must change the hash")
+	}
+	if got, _ := hashWithMetadata("abc", nil); got != "abc" {
+		t.Errorf("without metadata the hash must be unchanged, got %q", got)
 	}
 }
