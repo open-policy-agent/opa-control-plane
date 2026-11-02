@@ -2283,7 +2283,7 @@ func (d *Database) upsertReturning(ctx context.Context, returning, returningLast
 func (d *Database) delete(ctx context.Context, tx *sql.Tx, table, keyColumn string, keyValue any) error {
 	query := fmt.Sprintf("DELETE FROM %s WHERE %s = %s", table, keyColumn, d.arg(0))
 	_, err := tx.ExecContext(ctx, query, keyValue)
-	return err
+	return translateStoreError(err)
 }
 
 func (d *Database) deleteNotIn(ctx context.Context, tx *sql.Tx, table, keyColumn string, keyValue any, column string, values []int) error {
