@@ -484,6 +484,7 @@ type Git struct {
 	Reference     *string    `json:"reference,omitempty"`
 	Commit        *string    `json:"commit,omitempty"`
 	Path          *string    `json:"path,omitempty"`
+	Depth         int        `json:"depth,omitempty" minimum:"0"` // shallow clone depth; 0 clones full history, ignored with commit
 	IncludedFiles StringSet  `json:"included_files,omitempty"`
 	ExcludedFiles StringSet  `json:"excluded_files,omitempty"`
 	Credentials   *SecretRef `json:"credentials,omitempty"`
@@ -652,6 +653,7 @@ func (g *Git) Equal(other *Git) bool {
 		return internalutil.PtrEqual(g.Reference, other.Reference) &&
 			internalutil.PtrEqual(g.Commit, other.Commit) &&
 			internalutil.PtrEqual(g.Path, other.Path) &&
+			g.Depth == other.Depth &&
 			g.Credentials.Equal(other.Credentials) &&
 			g.IncludedFiles.Equal(other.IncludedFiles) &&
 			g.ExcludedFiles.Equal(other.ExcludedFiles)

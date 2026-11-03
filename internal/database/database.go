@@ -1064,6 +1064,7 @@ func (d *Database) ListSources(ctx context.Context, principal, tenant string, op
 	sources.ref,
 	sources.gitcommit,
 	sources.path,
+	sources.git_depth,
 	sources.git_included_files,
 	sources.git_excluded_files,
 	sources.git_credentials_name
@@ -1121,6 +1122,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 			builtin                                          *string
 			repo                                             string
 			ref, gitCommit, path, includePaths, excludePaths *string
+			gitDepth                                         sql.Null[int64]
 			gitCredentialsName                               *string
 			secretName, secretRefType, secretValue           *string
 			requirementName, requirementCommit               *string
@@ -1141,6 +1143,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 				&row.ref,
 				&row.gitCommit,
 				&row.path,
+				&row.gitDepth,
 				&row.includePaths,
 				&row.excludePaths,
 				&row.gitCredentialsName,
@@ -1178,6 +1181,7 @@ WHERE (sources_secrets.ref_type = 'git_credentials' OR sources_secrets.ref_type 
 				if row.path != nil {
 					src.Git.Path = row.path
 				}
+				src.Git.Depth = int(row.gitDepth.V)
 				if row.includePaths != nil {
 					if err := json.Unmarshal([]byte(*row.includePaths), &src.Git.IncludedFiles); err != nil {
 						return nil, "", fmt.Errorf("failed to unmarshal include paths for %q: %w", src.Name, err)
@@ -1898,8 +1902,8 @@ func (d *Database) UpsertSource(ctx context.Context, principal, tenant string, s
 			gitCredentialsName = &source.Git.Credentials.Name
 		}
 
-		id, err := d.upsert(ctx, tx, tenant, "sources", []string{"name", "builtin", "repo", "ref", "gitcommit", "path", "git_included_files", "git_excluded_files", "git_credentials_name"}, []string{"name"},
-			source.Name, source.Builtin, source.Git.Repo, source.Git.Reference, source.Git.Commit, source.Git.Path, string(includedFiles), string(excludedFiles), gitCredentialsName)
+		id, err := d.upsert(ctx, tx, tenant, "sources", []string{"name", "builtin", "repo", "ref", "gitcommit", "path", "git_depth", "git_included_files", "git_excluded_files", "git_credentials_name"}, []string{"name"},
+			source.Name, source.Builtin, source.Git.Repo, source.Git.Reference, source.Git.Commit, source.Git.Path, source.Git.Depth, string(includedFiles), string(excludedFiles), gitCredentialsName)
 		if err != nil {
 			return err
 		}

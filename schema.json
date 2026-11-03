@@ -214,6 +214,10 @@
         "credentials": {
           "type": "string"
         },
+        "depth": {
+          "minimum": 0,
+          "type": "integer"
+        },
         "excluded_files": {
           "$ref": "#/definitions/ConfigStringSet"
         },
