@@ -49,6 +49,7 @@ func Migrations(dialect string) (fs.FS, error) {
 		addSourcesProviders(29, dialect),
 		addSecretsTypeMetadata(30, dialect),
 		addBundlesStatusesIndex(32, dialect),
+		addSourcesGitDepth(33, dialect),
 	), nil
 }
 

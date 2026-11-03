@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/gitsync"
@@ -119,6 +120,72 @@ func TestGitsyncLocal(t *testing.T) {
 
 	if string(data) != "second commit" {
 		t.Fatalf("expected file content to be 'second commit', got: %s", string(data))
+	}
+}
+
+func TestGitsyncDepth(t *testing.T) {
+	srcPath := t.TempDir() + "/testing"
+	repository, err := git.PlainInitWithOptions(srcPath, &git.PlainInitOptions{
+		InitOptions: git.InitOptions{DefaultBranch: plumbing.Main},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := repository.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit := func(content string) {
+		t.Helper()
+		if err := os.WriteFile(srcPath+"/README", []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Add("README"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Commit(content, &git.CommitOptions{Author: &object.Signature{}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history := func(path string) int {
+		t.Helper()
+		r, err := git.PlainOpen(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		head, err := r.Head()
+		if err != nil {
+			t.Fatal(err)
+		}
+		iter, err := r.Log(&git.LogOptions{From: head.Hash()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var n int
+		_ = iter.ForEach(func(*object.Commit) error { n++; return nil })
+		return n
+	}
+
+	commit("one")
+	commit("two")
+
+	ref := "refs/heads/main"
+	dst := t.TempDir() + "/test-repo"
+	s := gitsync.New(dst, config.Git{Repo: srcPath, Reference: &ref, Depth: 1}, "test-source")
+
+	for i, content := range []string{"two", "three", "four"} {
+		if i > 0 {
+			commit(content)
+		}
+		if _, err := s.Execute(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if data, err := os.ReadFile(dst + "/README"); err != nil || string(data) != content {
+			t.Fatalf("expected %q, got %q (err: %v)", content, data, err)
+		}
+		if n := history(dst); i == 0 && n != 1 {
+			t.Fatalf("expected 1 commit in history, got %d", n)
+		}
 	}
 }
 
@@ -747,5 +814,14 @@ func TestGitsync_ClientAssertionAuth(t *testing.T) {
 
 	if got := lastForm().Get("client_assertion"); got != "second.assertion.jwt" {
 		t.Errorf("expected rotated assertion %q, got %q", "second.assertion.jwt", got)
+	}
+}
+
+func TestGitsyncNegativeDepth(t *testing.T) {
+	ref := "refs/heads/main"
+	s := gitsync.New(t.TempDir()+"/test-repo", config.Git{Repo: t.TempDir(), Reference: &ref, Depth: -1}, "test-source")
+	_, err := s.Execute(t.Context())
+	if !syncerr.IsUserError(err) {
+		t.Fatalf("expected user error, got %v", err)
 	}
 }
