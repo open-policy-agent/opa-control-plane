@@ -742,6 +742,7 @@ func (src *source) SyncGit(ctx context.Context, builtins *pkgsync.SourceProvider
 		sync:       syncer,
 		sourceName: sourceName,
 		sourceType: providers.TypeGit,
+		git:        &git,
 	})
 	return src
 }

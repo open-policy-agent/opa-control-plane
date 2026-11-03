@@ -19,7 +19,8 @@ exec tar tf bundles/a.tar.gz
 
 exec tar xf bundles/a.tar.gz
 cmp data.json exp/data.json
-cmp .manifest exp/.manifest
+exec jq -e 'del(.metadata) == {"revision":"","roots":["authz","users","on/authz"],"rego_version":0}' .manifest
+exec jq -e '[.metadata.ocp.sources[].commit | test("^[0-9a-f]{40}$")] | length == 1 and all' .manifest
 cmp git-local/nested/policies/authz.rego exp/policy.rego
 cmp git-local1/other/policies/authz.rego exp/policy2.rego
 
@@ -79,8 +80,6 @@ sources:
 /.manifest
 -- exp/data.json --
 {"users":[{"id":"alice"},{"id":"bob"}]}
--- exp/.manifest --
-{"revision":"","roots":["authz","users","on/authz"],"rego_version":0}
 -- exp/policy.rego --
 package authz
 
