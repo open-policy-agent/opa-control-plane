@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	gohttp "net/http"
 	"os"
@@ -207,6 +208,16 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {
 		referenceName = plumbing.ReferenceName(*s.config.Reference)
 	}
 
+	if s.config.Depth < 0 {
+		return false, "", syncerr.UserError{Cause: fmt.Errorf("invalid depth %d: must not be negative", s.config.Depth)}
+	}
+
+	// Pinned commits need history to be reachable.
+	depth := s.config.Depth
+	if s.config.Commit != nil {
+		depth = 0
+	}
+
 	// A configuration change may necessitate wiping an earlier clone: in particular, re-cloning
 	// is the easiest option if the repository URL has changed. For simplicity, follow the same
 	// logic with any config change EXCEPT for credentials. That's because it's harder to do, the
@@ -235,6 +246,10 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {
 			return false, "", err
 		}
 
+		if s.config.Commit != nil && s.config.Depth > 0 {
+			slog.Warn("git depth is ignored when a commit is set", "source", s.sourceName, "depth", s.config.Depth)
+		}
+
 		fetched = true
 		repository, err = git.PlainCloneContext(ctx, s.path, false, &git.CloneOptions{
 			URL:               s.config.Repo,
@@ -242,6 +257,7 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			ReferenceName:     referenceName,
 			SingleBranch:      true,
+			Depth:             depth,
 			NoCheckout:        true, // We will checkout later
 		})
 		if err != nil {
@@ -291,14 +307,21 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {
 
 	remote := "origin"
 	fetched = true
+	refSpecs := []gitconfig.RefSpec{
+		gitconfig.RefSpec(fmt.Sprintf("+refs/heads/*:refs/remotes/%s/refs/heads/*", remote)),
+		gitconfig.RefSpec(fmt.Sprintf("+refs/tags/*:refs/remotes/%s/refs/tags/*", remote)),
+	}
+	if depth > 0 { // only the configured reference, to keep the clone shallow
+		refSpecs = []gitconfig.RefSpec{
+			gitconfig.RefSpec(fmt.Sprintf("+%[2]s:refs/remotes/%[1]s/%[2]s", remote, *s.config.Reference)),
+		}
+	}
 	if err := repository.FetchContext(ctx, &git.FetchOptions{
 		RemoteName: remote,
 		Auth:       authMethod,
 		Force:      true,
-		RefSpecs: []gitconfig.RefSpec{
-			gitconfig.RefSpec(fmt.Sprintf("+refs/heads/*:refs/remotes/%s/refs/heads/*", remote)),
-			gitconfig.RefSpec(fmt.Sprintf("+refs/tags/*:refs/remotes/%s/refs/tags/*", remote)),
-		},
+		Depth:      depth,
+		RefSpecs:   refSpecs,
 	}); err != nil && err != git.NoErrAlreadyUpToDate {
 		return false, "", err
 	}

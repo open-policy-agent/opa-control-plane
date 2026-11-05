@@ -37,6 +37,12 @@ func addSourcesGitCredentialsName(offset int, dialect string) fs.FS {
 	})
 }
 
+func addSourcesGitDepth(offset int, _ string) fs.FS {
+	return ocp_fs.MapFS(map[string]string{
+		fmt.Sprintf("%03d_add_sources_git_depth.up.sql", offset): `ALTER TABLE sources ADD git_depth INTEGER`,
+	})
+}
+
 func addDatasourcesCredentialsName(offset int, dialect string) fs.FS {
 	var stmt string
 	switch dialect {

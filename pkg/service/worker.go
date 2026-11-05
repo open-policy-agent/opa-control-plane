@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"time"
 
@@ -61,8 +65,9 @@ type Synchronizer = pkgsync.Synchronizer
 type sourceSynchronizer struct {
 	sync       pkgsync.Synchronizer
 	sourceName string
-	sourceType string // "git", "sql", "http", "s3", "providers"
-	entryName  string // For datasources and provider entries: the name used as key in metadata
+	sourceType string      // "git", "sql", "http", "s3", "providers"
+	git        *config.Git // set for git sources
+	entryName  string      // For datasources and provider entries: the name used as key in metadata
 
 	// For provider entries: the directory to create before Execute (it is
 	// emptied before each sync), and where to keep the entry's contribution.
@@ -237,17 +242,26 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 
 	_, needsBundleHash, _ := extractRevisionRefs(w.bundleConfig.Revision)
 
+	gitMetadata := gitManifestMetadata(w.synchronizers, sourceMetadata)
+
 	var resolvedRevision string
 	b := builder.New().
 		WithSources(w.sources).
 		WithExcluded(w.bundleConfig.ExcludedFiles).
 		WithTarget(w.bundleConfig.Options.Target).
+		WithManifestMetadata(gitMetadata).
 		WithOutput(buffer).
 		WithRevisionFunc(func(fsys fs.FS) (string, error) {
 			var bundleHash string
 			if needsBundleHash {
 				var err error
 				bundleHash, err = ocp_fs.HashFS(fsys)
+				if err != nil {
+					return "", err
+				}
+				// The metadata is in the archive, so it has to be in the revision too:
+				// the same files at another commit must not reuse a revision.
+				bundleHash, err = hashWithMetadata(bundleHash, gitMetadata)
 				if err != nil {
 					return "", err
 				}
@@ -366,4 +380,59 @@ func (w *BundleWorker) die(ctx context.Context) time.Time {
 
 	var zero time.Time
 	return zero
+}
+
+// gitManifestMetadata describes the Git sources of a build under the reserved
+// "ocp" manifest metadata key, or returns nil if there are none.
+func gitManifestMetadata(syncs []sourceSynchronizer, sourceMetadata map[string]map[string]any) map[string]any {
+	sources := map[string]any{}
+	for _, ss := range syncs {
+		if ss.git == nil {
+			continue
+		}
+		info := map[string]any{"repo": redactedRepoURL(ss.git.Repo)}
+		if ss.git.Reference != nil {
+			info["reference"] = *ss.git.Reference
+		}
+		if m, ok := sourceMetadata[ss.sourceName][ss.sourceType].(map[string]any); ok {
+			if commit, ok := m["commit"].(string); ok && commit != "" {
+				info["commit"] = commit
+			}
+		}
+		if ss.git.Path != nil {
+			info["path"] = *ss.git.Path
+		}
+		sources[ss.sourceName] = info
+	}
+	if len(sources) == 0 {
+		return nil
+	}
+	return map[string]any{"ocp": map[string]any{"sources": sources}}
+}
+
+// hashWithMetadata extends a content hash with the manifest metadata that is
+// written into the bundle, or returns it unchanged if there is none.
+func hashWithMetadata(hash string, metadata map[string]any) (string, error) {
+	if len(metadata) == 0 {
+		return hash, nil
+	}
+	buf, err := json.Marshal(metadata) // map keys are sorted, so this is deterministic
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	h.Write([]byte(hash))
+	h.Write([]byte{0})
+	h.Write(buf)
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// redactedRepoURL drops any user info embedded in a repository URL.
+func redactedRepoURL(repo string) string {
+	u, err := url.Parse(repo)
+	if err != nil || u.User == nil {
+		return repo
+	}
+	u.User = nil
+	return u.String()
 }
