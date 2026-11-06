@@ -1,5 +1,7 @@
 package global.systemtypes["entitlements:1.0"].library.transform.openapi.v1
 
+import rego.v1
+
 # METADATA: transform-snippet
 # version: v1
 # title: "OpenAPI spec to resources"
@@ -13,7 +15,7 @@ package global.systemtypes["entitlements:1.0"].library.transform.openapi.v1
 #    - rest
 #    - git/content
 
-openapi_resources[id] = attributes {
+openapi_resources[id] = attributes if {
 	# openapi v2
 	input.swagger == "2.0"
 	base_attributes := input.paths[path]
@@ -22,7 +24,7 @@ openapi_resources[id] = attributes {
 	attributes := add_variables_attribute(base_attributes, parsed)
 }
 
-openapi_resources[id] = attributes {
+openapi_resources[id] = attributes if {
 	# openapi v3
 	input.openapi == ["3.0", "3.0.1", "3.0.2", "3.0.3"][_]
 	base_attributes := input.paths[path]
@@ -31,7 +33,7 @@ openapi_resources[id] = attributes {
 	attributes := add_variables_attribute(base_attributes, parsed)
 }
 
-add_variables_attribute(base_attributes, parsed_path) = attributes {
+add_variables_attribute(base_attributes, parsed_path) = attributes if {
 	parsed_path.variables != {}
 	attributes := object.union(base_attributes, {"_variables": parsed_path.variables})
 } else = base_attributes
@@ -40,7 +42,7 @@ add_variables_attribute(base_attributes, parsed_path) = attributes {
 # e.g., /shelves/{shelf}/books/{book} to /shelves/*/books/*
 # and returns a map with position indices mapping to variable names
 # e.g., {1: shelf, 3: book} for above
-replace_path_templates_with_globs(path) = {"path": rewritten_path, "variables": vars} {
+replace_path_templates_with_globs(path) = {"path": rewritten_path, "variables": vars} if {
 	segments := split(path, "/")
 	rewritten_segments := [rewritten |
 		original := segments[_]
@@ -55,7 +57,7 @@ replace_path_templates_with_globs(path) = {"path": rewritten_path, "variables": 
 	rewritten_path := concat("/", rewritten_segments)
 }
 
-replace_segment_with_globs(segment) = {"segment": rewritten_segment, "variable": variable} {
+replace_segment_with_globs(segment) = {"segment": rewritten_segment, "variable": variable} if {
 	startswith(segment, "{")
 	endswith(segment, "}")
 	rewritten_segment := "*"

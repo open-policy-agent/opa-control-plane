@@ -1,8 +1,9 @@
 package conflicts.test
 
+import rego.v1
 import data.global.systemtypes["entitlements:1.0"].conflicts.entry
 
-test_system_no_stacks {
+test_system_no_stacks if {
 	allowed_answer := entry.main with data.policy as {"enforce": {{"allowed": true, "message": "abc"}}}
 		with data.stacks as {}
 
@@ -52,7 +53,7 @@ test_system_no_stacks {
 
 # test_system_with_nested_packages validates that enforce and monitor rules can be
 # in packages policy and policy.*
-test_system_with_nested_packages {
+test_system_with_nested_packages if {
 	got := entry.main with data.policy as system_nested_packages.policy
 		with data.stacks as {}
 
@@ -89,7 +90,7 @@ system_nested_packages := {"policy": {
 	"abac": {"enforce": {{"allowed": true, "message": "abac allowed"}}},
 }}
 
-test_deny_stack {
+test_deny_stack if {
 	# system allows, stack overrides with a deny
 
 	answer_stack_deny := entry.main with data.policy as systems.system_allow.policy
@@ -100,7 +101,7 @@ test_deny_stack {
 	answer_stack_deny.outcome.enforced == union({systems.system_allow.policy.enforce, stacks.stack_deny.policy.enforce})
 }
 
-test_allow_stack {
+test_allow_stack if {
 	# system denies, stack allows but system deny overrides
 
 	answer := entry.main with data.policy as systems.system_deny.policy
@@ -111,7 +112,7 @@ test_allow_stack {
 	answer.outcome.enforced == union({systems.system_deny.policy.enforce, stacks.stack_allow.policy.enforce})
 }
 
-test_undefined_stack {
+test_undefined_stack if {
 	# system allows, stack is undefined
 
 	answer := entry.main with data.policy as systems.system_allow.policy
@@ -122,7 +123,7 @@ test_undefined_stack {
 	answer.outcome.stacks.stack_undefined
 }
 
-test_undefined_system_and_stack {
+test_undefined_system_and_stack if {
 	# system is undefined, stack is undefined
 
 	answer := entry.main with data.policy as systems.system_undefined.policy
@@ -133,7 +134,7 @@ test_undefined_system_and_stack {
 	answer.outcome.stacks.stack_undefined
 }
 
-test_mixed_stacks {
+test_mixed_stacks if {
 	# system allows, one stack allows, one stack denies, one stack undefined
 
 	answer := entry.main with data.policy as systems.system_allow.policy
@@ -163,14 +164,14 @@ test_mixed_stacks {
 	}
 }
 
-test_entz_object_no_stacks {
+test_entz_object_no_stacks if {
 	entz := {{"foo": "bar", "a": 1}}
 
 	allowed_answer := entry.main with data.policy as {"enforce": {{"allowed": true, "entz": entz}}}
 	allowed_answer.entz == entz
 }
 
-test_entz_object_one_stack {
+test_entz_object_one_stack if {
 	entz := {"foo", "system", {"a": 1}}
 
 	answer := entry.main with data.policy as {"enforce": {{"allowed": true, "entz": entz}}}
@@ -181,7 +182,7 @@ test_entz_object_one_stack {
 	answer.entz == union({entz, stacks.stack_entz1.policy.enforce[_].entz})
 }
 
-test_entz_object_multiple_stacks {
+test_entz_object_multiple_stacks if {
 	system_entz := {"system_field", "abc", {"nested": "object"}}
 
 	answer := entry.main with data.policy as {"enforce": {{"allowed": true, "entz": system_entz}}}
@@ -196,7 +197,7 @@ test_entz_object_multiple_stacks {
 	})
 }
 
-test_applicable_stacks {
+test_applicable_stacks if {
 	ans := entry.applicable_stacks with data.styra.stacks.stack1.config.type as "entitlements"
 		with data.styra.stacks.stack2.config.type as "entitlements"
 		with data.styra.stacks.stack3.config.type as "envoy"
@@ -214,7 +215,7 @@ test_applicable_stacks {
 
 # notifications
 
-test_system_notifications {
+test_system_notifications if {
 	# three notifications: one from the system's metadata policy, one from a system's monitor rule, and the
 	# third from the system's enforce rule
 	n := entry.main.outcome.notifications with data.metadata.mock_system_id.notifications as {"notify": {{"channel": "system", "type": "slack"}}}
@@ -235,7 +236,7 @@ test_system_notifications {
 	}
 }
 
-system_and_stack_rule_notifications = x {
+system_and_stack_rule_notifications = x if {
 	x := entry.main.outcome.notifications with data.context as {
 		"system_id": "mock_system_id",
 		"system_type": "mock_system_type",
@@ -249,7 +250,7 @@ system_and_stack_rule_notifications = x {
 		with entry.applicable_stacks as {"stack123"}
 }
 
-test_system_and_stack_notifications {
+test_system_and_stack_notifications if {
 	system_and_stack_rule_notifications == {
 		{"channel": "system deny rule", "type": "slack"},
 		{"channel": "system monitor rule", "type": "slack"},

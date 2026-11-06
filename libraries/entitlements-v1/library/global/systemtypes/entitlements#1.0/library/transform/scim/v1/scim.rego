@@ -1,5 +1,7 @@
 package global.systemtypes["entitlements:1.0"].library.transform.scim.v1
 
+import rego.v1
+
 # METADATA: transform-snippet
 # version: v1
 # title: "SCIM records to users"
@@ -12,7 +14,7 @@ package global.systemtypes["entitlements:1.0"].library.transform.scim.v1
 #    - aws/s3
 #    - git/content
 
-users[id] = attributes {
+users[id] = attributes if {
 	record := input[_]
 	record.schemas[_] == "urn:ietf:params:scim:schemas:core:2.0:User"
 
@@ -32,7 +34,7 @@ users[id] = attributes {
 #    - aws/s3
 #    - git/content
 
-groups[id] = attributes {
+groups[id] = attributes if {
 	record := input[_]
 	record.schemas[_] == "urn:ietf:params:scim:schemas:core:2.0:Group"
 

@@ -1,13 +1,15 @@
 package global.systemtypes["entitlements:1.0"].library.utils.v1
 
-input_includes_requirements(filters) {
+import rego.v1
+
+input_includes_requirements(filters) if {
 	new_filters := rewrite_known_filters(filters)
 	matches := [m | m := glob.match(new_filters[field][_], [".", "/"], input[field]); m == true]
 	count(matches) == count(new_filters)
 } else = false
 
 # rewrite_known_filters maps the known fields actions, resources, subjects to their singular values
-rewrite_known_filters(filters) = filters_updated {
+rewrite_known_filters(filters) = filters_updated if {
 	known_filters := {new_key: value |
 		value := filters[key]
 		key_matches_well_known_filter(key)
@@ -22,11 +24,11 @@ rewrite_known_filters(filters) = filters_updated {
 	filters_updated := object.union(known_filters, unknown_filters)
 }
 
-key_matches_well_known_filter(key) {
+key_matches_well_known_filter(key) if {
 	key == ["actions", "subjects", "resources"][_]
 } else = false
 
-object_get_empty(obj, key, defaultVal) = result {
+object_get_empty(obj, key, defaultVal) = result if {
 	# This helper function behaves like object.get(), but treats the value
 	# being the empty string the same as it being omitted entirely.
 
@@ -34,21 +36,21 @@ object_get_empty(obj, key, defaultVal) = result {
 	result := defaultVal
 }
 
-object_get_empty(obj, key, defaultVal) = result {
+object_get_empty(obj, key, defaultVal) = result if {
 	obj[key] != ""
 	result := obj[key]
 }
 
-object_contains_key(obj, key) {
+object_contains_key(obj, key) if {
 	_ := obj[key]
 }
 
-object_get_empty(obj, key, defaultVal) = result {
+object_get_empty(obj, key, defaultVal) = result if {
 	not object_contains_key(obj, key)
 	result := defaultVal
 }
 
-object_super_sub_compare(super, sub) {
+object_super_sub_compare(super, sub) if {
 	# For this function to return true, the object super must contain
 	# all of the keys in object sub (though sub need not contain every
 	# key in super), and in all cases where both objects contain the same
@@ -57,7 +59,7 @@ object_super_sub_compare(super, sub) {
 	object.union(super, sub) == super
 }
 
-resource_glob(pattern, match) = result {
+resource_glob(pattern, match) = result if {
 	# Globs against resources should use this, because it means we can
 	# manage the delimiters all in one place.
 	#
@@ -94,6 +96,6 @@ resource_glob(pattern, match) = result {
 # of the type checker, `obj` is dynamic by the time `obj.foo.bar` gets
 # evaluated. You could also put the call to `identity()` inside of your
 # `my_cool_func()` declaration; which approach is appropriate is situational.
-identity(x) = result {
+identity(x) = result if {
 	result := x
 }

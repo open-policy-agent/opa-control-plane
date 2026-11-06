@@ -1,8 +1,9 @@
 package global.systemtypes["entitlements:1.0"].library.policy.general.test_v1
 
+import rego.v1
 import data.global.systemtypes["entitlements:1.0"].library.policy.general.v1 as general
 
-test_match_glob_action_subject_resource {
+test_match_glob_action_subject_resource if {
 	req := {"subject": "alice", "action": "read", "resource": "foo"}
 
 	# no params, everything is matched
@@ -44,7 +45,7 @@ test_match_glob_action_subject_resource {
 	count(result_emptyset_nomatch) == 0
 }
 
-test_action_not_excluded_1 {
+test_action_not_excluded_1 if {
 	# Requests with no action should be allowed even if the unmatch list is
 	# empty.
 
@@ -56,7 +57,7 @@ test_action_not_excluded_1 {
 	msg == "Action is not specified in the request"
 }
 
-test_action_not_excluded_2 {
+test_action_not_excluded_2 if {
 	# Requests with no action should be allowed.
 
 	result := general.action_not_excluded with input as {}
@@ -67,7 +68,7 @@ test_action_not_excluded_2 {
 	msg == "Action is not specified in the request"
 }
 
-test_action_not_excluded_3 {
+test_action_not_excluded_3 if {
 	# Requests with an action should always be matched if the unmatch list
 	# is empty.
 
@@ -79,7 +80,7 @@ test_action_not_excluded_3 {
 	msg == "Action foo is not excluded"
 }
 
-test_action_not_excluded_4 {
+test_action_not_excluded_4 if {
 	# Requests with an action can't have that action be in the unmatch
 	# list.
 
@@ -89,7 +90,7 @@ test_action_not_excluded_4 {
 	count(result) == 0
 }
 
-test_action_not_excluded_5 {
+test_action_not_excluded_5 if {
 	# Requests with an action can't have that action be in the unmatch
 	# list even if there are multiple entries in the unmatch list..
 
@@ -99,13 +100,13 @@ test_action_not_excluded_5 {
 	count(result) == 0
 }
 
-test_match_requests {
+test_match_requests if {
 	count(general.match_requests) == 1 with input as {"foo": "bar"}
 
 	count(general.match_requests) == 1 with input as {"subject": "alice", "action": "read", "resource": "foo"}
 }
 
-test_action_is_not_valid {
+test_action_is_not_valid if {
 	count(general.action_is_not_valid) == 0 with input as {"action": "bar"}
 		with data.object.actions as ["foo", "bar", "baz"]
 
@@ -116,7 +117,7 @@ test_action_is_not_valid {
 		with data.object.actions as ["foo", "bar", "baz"]
 }
 
-test_user_is_not_valid {
+test_user_is_not_valid if {
 	count(general.user_is_not_valid) == 0 with input as {"subject": "alice"}
 		with data.object.users as {"alice": true, "bob": true}
 

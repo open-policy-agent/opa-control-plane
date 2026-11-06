@@ -1,8 +1,9 @@
 package global.systemtypes["entitlements:1.0"].library.transform.scim.test_v1
 
+import rego.v1
 import data.global.systemtypes["entitlements:1.0"].library.transform.scim.v1 as scim
 
-test_scim_users {
+test_scim_users if {
 	id := "8F12B67E-456D-4941-B99B-9975932B69EF"
 	user := {
 		"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
@@ -29,7 +30,7 @@ test_scim_users {
 	u.userName == "test@styra.local"
 }
 
-test_scim_groups {
+test_scim_groups if {
 	group := {
 		"schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
 		"id": "abf4dd94-a4c0-4f67-89c9-76b03340cb9b",

@@ -1,5 +1,6 @@
 package global.systemtypes["entitlements:1.0"].library.policy.calendar.test_v1
 
+import rego.v1
 import data.global.systemtypes["entitlements:1.0"].library.policy.calendar.v1 as calendar
 
 # This timestamp corresponds to 2021-12-21T23:04:49+00:00. This is simply an
@@ -8,7 +9,7 @@ sample_timestamp_1_ns := 1640127889000000000
 
 ns_per_day := 86400000000000
 
-test_match_day_of_week {
+test_match_day_of_week if {
 	got := calendar.match_day_of_week with data.library.parameters as {"days": ["tUesDay", "wedNESday"], "timezone": "America/Los_Angeles"}
 		with calendar.now as 1640128124769342000
 
@@ -17,14 +18,14 @@ test_match_day_of_week {
 	msg == "Weekday is Tuesday"
 }
 
-test_ns_to_rfc3339_1 {
+test_ns_to_rfc3339_1 if {
 	# Check that a known RFC3339 timestamp is obtained from a known ns
 	# count
 	result := calendar.ns_to_rfc3339(sample_timestamp_1_ns)
 	result == "2021-12-21T23:04:49+00:00"
 }
 
-test_ns_to_rfc3339_2 {
+test_ns_to_rfc3339_2 if {
 	# Test that we can roundtrip from ns -> RFC3339 -> ns.
 	#
 	# Note that information is lost -- any time smaller than 1 second is
@@ -35,7 +36,7 @@ test_ns_to_rfc3339_2 {
 	t == t_parsed
 }
 
-test_match_request_by_time_range_1 {
+test_match_request_by_time_range_1 if {
 	# This test asserts that if the present time is within the allowed
 	# range, then the rule matches
 
@@ -54,7 +55,7 @@ test_match_request_by_time_range_1 {
 	msg == sprintf("Request occurred between %s and %s", [calendar.ns_to_rfc3339(start_time), calendar.ns_to_rfc3339(end_time)])
 }
 
-test_match_request_by_time_range_2 {
+test_match_request_by_time_range_2 if {
 	# This test assets that if the present time is not within the allowed
 	# range, then the rule does not matches
 
@@ -71,7 +72,7 @@ test_match_request_by_time_range_2 {
 	count(result) == 0
 }
 
-test_match_request_by_time_range_3 {
+test_match_request_by_time_range_3 if {
 	# Check that if the end time is not specified, then any request after
 	# the given start time should be allowed.
 
@@ -86,7 +87,7 @@ test_match_request_by_time_range_3 {
 	msg == sprintf("Request occurred after %s", [calendar.ns_to_rfc3339(start_time)])
 }
 
-test_match_request_by_time_range_4 {
+test_match_request_by_time_range_4 if {
 	# Check that if the end time is not specified, then any request before
 	# the given start time should not be allowed.
 
@@ -99,7 +100,7 @@ test_match_request_by_time_range_4 {
 	count(result) == 0
 }
 
-test_match_request_by_time_range_5 {
+test_match_request_by_time_range_5 if {
 	# Check that if the start time is not specified, then any request
 	# before the given end time should be allowed.
 
@@ -114,7 +115,7 @@ test_match_request_by_time_range_5 {
 	msg == sprintf("Request occurred before %s", [calendar.ns_to_rfc3339(end_time)])
 }
 
-test_match_request_by_time_range_6 {
+test_match_request_by_time_range_6 if {
 	# Check that if the start time is not specified, then any request
 	# after the given end time should not be allowed.
 
@@ -127,7 +128,7 @@ test_match_request_by_time_range_6 {
 	count(result) == 0
 }
 
-test_match_request_by_time_range_7 {
+test_match_request_by_time_range_7 if {
 	# If neither the start nor end time is specified, then any request
 	# should be allowed.
 
@@ -142,7 +143,7 @@ test_match_request_by_time_range_7 {
 	msg == "Request allowed because neither start_time nor end_time specified"
 }
 
-test_match_request_by_time_range_8 {
+test_match_request_by_time_range_8 if {
 	# Check that if the end time is not specified, then any request after
 	# the given start time should be allowed.
 	#
@@ -162,7 +163,7 @@ test_match_request_by_time_range_8 {
 	msg == sprintf("Request occurred after %s", [calendar.ns_to_rfc3339(start_time)])
 }
 
-test_match_request_by_time_range_9 {
+test_match_request_by_time_range_9 if {
 	# Check that if the end time is not specified, then any request before
 	# the given start time should not be allowed.
 	#
@@ -180,7 +181,7 @@ test_match_request_by_time_range_9 {
 	count(result) == 0
 }
 
-test_match_request_by_time_range_10 {
+test_match_request_by_time_range_10 if {
 	# Check that if the start time is not specified, then any request
 	# before the given end time should be allowed.
 	#
@@ -200,7 +201,7 @@ test_match_request_by_time_range_10 {
 	msg == sprintf("Request occurred before %s", [calendar.ns_to_rfc3339(end_time)])
 }
 
-test_match_request_by_time_range_11 {
+test_match_request_by_time_range_11 if {
 	# Check that if the start time is not specified, then any request
 	# after the given end time should not be allowed.
 	#
@@ -218,7 +219,7 @@ test_match_request_by_time_range_11 {
 	count(result) == 0
 }
 
-test_string_to_month_number {
+test_string_to_month_number if {
 	1 == calendar.string_to_month_number("january")
 	1 == calendar.string_to_month_number("jan")
 	1 == calendar.string_to_month_number("January")
@@ -319,7 +320,7 @@ test_string_to_month_number {
 	not calendar.string_to_month_number(-1)
 }
 
-test_match_month_1 {
+test_match_month_1 if {
 	# simple test with one month to be matched
 
 	date := time.date(time.now_ns())
@@ -333,7 +334,7 @@ test_match_month_1 {
 	msg == sprintf("Request occurred in %s", [calendar.month_number_to_string(month)])
 }
 
-test_match_month_2 {
+test_match_month_2 if {
 	# test with multiple months to be matched
 
 	date := time.date(time.now_ns())
@@ -347,7 +348,7 @@ test_match_month_2 {
 	msg == sprintf("Request occurred in %s", [calendar.month_number_to_string(month)])
 }
 
-test_match_month_3 {
+test_match_month_3 if {
 	# test with multiple months to be matched, and where the one that matches
 	# isn't the first one
 
@@ -362,7 +363,7 @@ test_match_month_3 {
 	msg == sprintf("Request occurred in %s", [calendar.month_number_to_string(month)])
 }
 
-test_match_month_4 {
+test_match_month_4 if {
 	# Now we want to not match, so we want to explicitly NOT choose
 	# the current month in our input.
 
@@ -378,7 +379,7 @@ test_match_month_4 {
 	count(result) == 0
 }
 
-test_month_number_to_string {
+test_month_number_to_string if {
 	calendar.month_number_to_string(1) == "January"
 	calendar.month_number_to_string(2) == "February"
 	calendar.month_number_to_string(3) == "March"
