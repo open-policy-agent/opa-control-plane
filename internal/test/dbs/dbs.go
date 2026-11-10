@@ -147,11 +147,11 @@ func Configs(t *testing.T) map[string]Setup {
 			},
 			Cleanup: tcCleanup,
 			Database: func(t *testing.T, ctr testcontainers.Container) *config.Root {
-				cc, err := ctr.(*crdb.CockroachDBContainer).ConnectionConfig(t.Context())
+				connStr, err := ctr.(*crdb.CockroachDBContainer).ConnectionString(t.Context())
 				if err != nil {
 					t.Fatalf("failed to get crdb connection string: %v", err)
 				}
-				dsn := "cockroachdb" + cc.ConnString()[8:]
+				dsn := "cockroachdb" + connStr[8:]
 
 				return &config.Root{
 					Database: &config.Database{
