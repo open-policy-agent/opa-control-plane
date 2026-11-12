@@ -256,6 +256,12 @@ func (d *Database) DeleteSecret(ctx context.Context, principal, tenant, name str
 	return d.db.DeleteSecret(ctx, principal, tenant, name)
 }
 
+// SecretInUse reports whether any source or bundle references the secret, so that callers
+// holding the value elsewhere can refuse to destroy it before deleting the secret.
+func (d *Database) SecretInUse(ctx context.Context, principal, tenant, name string) (bool, error) {
+	return d.db.SecretInUse(ctx, principal, tenant, name)
+}
+
 // Source Data CRUD
 
 // SourcesDataGet retrieves source data at the given path.
