@@ -4,16 +4,19 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"text/template"
 	"time"
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/internal/logging"
+	objectstore "github.com/open-policy-agent/opa-control-plane/pkg/objectstorage"
 	"github.com/open-policy-agent/opa-control-plane/pkg/service"
 	pkgsync "github.com/open-policy-agent/opa-control-plane/pkg/sync"
 	"golang.org/x/sync/errgroup"
@@ -312,6 +315,77 @@ func TestBundleStatusPushFailed(t *testing.T) {
 
 	if status.Status != service.BuildStatePushFailed.String() {
 		t.Fatalf("expected bundle status %v but got %v", service.BuildStatePushFailed.String(), status.Status)
+	}
+}
+
+type pendingStorage struct{ calls atomic.Int32 }
+
+func (p *pendingStorage) Upload(context.Context, io.ReadSeeker, objectstore.UploadOptions) error {
+	p.calls.Add(1)
+	return objectstore.ErrPending
+}
+
+func (*pendingStorage) Download(context.Context) (io.Reader, error) { return nil, nil }
+
+func TestBundleUploadPendingRecordsNoStatus(t *testing.T) {
+	tempDir := t.TempDir()
+
+	h := writeGitRepo(t, filepath.Join(tempDir, "remotegit"), map[string]string{
+		"foo.rego": "package foo\n\np := 7\n",
+	}, nil)
+
+	bs := render(t, `{
+		bundles: {
+			test_bundle: {
+				object_storage: {filesystem: {path: "{{ .Path }}/out"}},
+				requirements: [{source: test_src, git: {commit: "{{ .GitHash }}"}}],
+			},
+		},
+		sources: {
+			test_src: {git: {repo: "{{ .Path }}/remotegit", reference: refs/heads/master}},
+		},
+	}`, struct {
+		Path    string
+		GitHash string
+	}{Path: tempDir, GitHash: h.String()})
+
+	cfg, err := config.Parse(bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	storage := &pendingStorage{}
+	svc := service.New().
+		WithConfig(cfg).
+		WithPersistenceDir(filepath.Join(tempDir, "data")).
+		WithMigrateDB(true).
+		WithStorage(storage).
+		WithLogger(logging.NewLogger(logging.Config{Level: logging.LevelDebug}))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		_ = svc.Run(ctx)
+	}()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for storage.calls.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for upload attempt")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	status, err := svc.Database().GetLatestBundleStatus(ctx, "internal", "default", "test_bundle")
+	cancel()
+	<-stopped
+
+	if err == nil && status != nil {
+		t.Fatalf("expected no bundle status for a pending upload, got %v", status.Status)
 	}
 }
 
