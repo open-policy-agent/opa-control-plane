@@ -60,3 +60,63 @@ func TestDeleteSecretInUse(t *testing.T) {
 		})
 	}
 }
+
+func TestSecretInUse(t *testing.T) {
+	ctx := t.Context()
+
+	for databaseType, databaseConfig := range dbs.Configs(t) {
+		t.Run(databaseType, func(t *testing.T) {
+			t.Parallel()
+
+			var ctr testcontainers.Container
+			if databaseConfig.Setup != nil {
+				ctr = databaseConfig.Setup(t)
+				if databaseConfig.Cleanup != nil {
+					t.Cleanup(databaseConfig.Cleanup(t, ctr))
+				}
+			}
+
+			db, err := migrations.New().
+				WithConfig(databaseConfig.Database(t, ctr).Database).
+				WithMigrate(true).
+				Run(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(db.CloseDB)
+
+			if err := db.UpsertPrincipal(ctx, principal); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"in-use", "unused"} {
+				if err := db.UpsertSecret(ctx, "admin", tenant, tokenSecret(name)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			source := &config.Source{
+				Name: "uses-secret",
+				Git: config.Git{
+					Repo:        "https://github.com/example/repo",
+					Credentials: &config.SecretRef{Name: "in-use"},
+				},
+			}
+			if err := db.UpsertSource(ctx, "admin", tenant, source); err != nil {
+				t.Fatal(err)
+			}
+
+			for name, want := range map[string]bool{"in-use": true, "unused": false} {
+				got, err := db.SecretInUse(ctx, "admin", tenant, name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got != want {
+					t.Errorf("SecretInUse(%q) = %v, want %v", name, got, want)
+				}
+			}
+
+			if _, err := db.SecretInUse(ctx, "admin", tenant, "missing"); !errors.Is(err, database.ErrNotFound) {
+				t.Fatalf("expected ErrNotFound, got %v", err)
+			}
+		})
+	}
+}

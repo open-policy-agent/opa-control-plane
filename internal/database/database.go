@@ -1391,6 +1391,40 @@ func (d *Database) DeleteSecret(ctx context.Context, principal, tenant, name str
 	})
 }
 
+// SecretInUse reports whether any source, source datasource or bundle references the secret.
+// It is a read-only pre-check; DeleteSecret still enforces the references.
+func (d *Database) SecretInUse(ctx context.Context, principal, tenant, name string) (bool, error) {
+	var inUse bool
+	err := tx1(ctx, d, func(tx *sql.Tx) error {
+		ad := d.accessFactory().WithPrincipal(principal).WithTenant(tenant).WithResource("secrets").WithPermission("secrets.view").WithName(name)
+		if !d.authorizer.Check(ctx, tx, d.arg, ad) {
+			return ErrNotAuthorized
+		}
+		if err := d.resourceExists(ctx, tx, tenant, "secrets", name); err != nil {
+			return err
+		}
+
+		id, err := d.lookupID(ctx, tx, tenant, "secrets", name)
+		if err != nil {
+			return fmt.Errorf("lookup secret %s: %w", name, err)
+		}
+		for _, table := range []string{"sources_secrets", "sources_datasources", "bundles_secrets"} {
+			var exists any
+			err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT 1 FROM %s WHERE secret_id = %s LIMIT 1", table, d.arg(0)), id).Scan(&exists)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			inUse = true
+			return nil
+		}
+		return nil
+	})
+	return inUse, err
+}
+
 func (d *Database) listSecretInfos(ctx context.Context, principal, tenant string, opts ListOptions) ([]*config.SecretInfo, string, error) {
 	return tx3(ctx, d, func(txn *sql.Tx) ([]*config.SecretInfo, string, error) {
 
