@@ -249,6 +249,8 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		WithSources(w.sources).
 		WithExcluded(w.bundleConfig.ExcludedFiles).
 		WithTarget(w.bundleConfig.Options.Target).
+		WithGenerated(w.bundleConfig.Options.Generated).
+		WithCompiled(w.bundleConfig.Options.Compiled).
 		WithManifestMetadata(gitMetadata).
 		WithOutput(buffer).
 		WithRevisionFunc(func(fsys fs.FS) (string, error) {

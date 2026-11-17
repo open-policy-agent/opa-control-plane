@@ -212,6 +212,8 @@ type Builder struct {
 	revision          string
 	revisionFunc      func(fs.FS) (string, error)
 	manifestMetadata  map[string]any
+	generated         bool
+	compiled          bool
 }
 
 func New() *Builder {
@@ -240,6 +242,20 @@ func (b *Builder) WithTarget(target string) *Builder {
 
 func (b *Builder) WithOptimizationLevel(level int) *Builder {
 	b.optimizationLevel = level
+	return b
+}
+
+// WithGenerated marks the bundle's policies as generated code, which OPA parses
+// without locations, as a source's .manifest with "generated": true does.
+func (b *Builder) WithGenerated(yes bool) *Builder {
+	b.generated = yes
+	return b
+}
+
+// WithCompiled compiles the bundle's large rule sets into it, as a source's
+// .manifest with "compiled": true does.
+func (b *Builder) WithCompiled(yes bool) *Builder {
+	b.compiled = yes
 	return b
 }
 
@@ -375,6 +391,7 @@ func (b *Builder) Build(ctx context.Context) error {
 
 	effectiveRegoVersion := ast.RegoV0
 	var sourceManifests []bundle.Manifest
+	generated, compiled := b.generated, b.compiled
 	var sourceManifestNames []string // source of each entry in sourceManifests
 
 	// Contributed manifest metadata, and which directory contributed each
@@ -401,7 +418,9 @@ func (b *Builder) Build(ctx context.Context) error {
 			contrib := contribs[sfs]
 
 			regoVersion := ast.RegoV0
-			if m, ok := readManifest(fs0); ok {
+			if m, flags, ok := readManifest(fs0); ok {
+				generated = generated || flags.Generated
+				compiled = compiled || flags.Compiled
 				sourceManifests = append(sourceManifests, m)
 				sourceManifestNames = append(sourceManifestNames, next.src.Name)
 				if m.RegoVersion != nil && *m.RegoVersion == 1 {
@@ -648,6 +667,15 @@ func (b *Builder) Build(ctx context.Context) error {
 		WithOptimizationLevel(b.optimizationLevel).
 		WithRegoAnnotationEntrypoints(true).
 		WithPaths(paths...)
+	// The compiler doesn't read the sources' manifests. OPA versions without
+	// these options build the bundle without the flags.
+	if o, ok := any(c).(interface {
+		WithGenerated(bool) *compile.Compiler
+		WithCompiledRules(bool) *compile.Compiler
+	}); ok {
+		o.WithGenerated(generated)
+		o.WithCompiledRules(compiled)
+	}
 	if err := c.Build(ctx); err != nil {
 		return fmt.Errorf("build: %w", err)
 	}
@@ -1033,16 +1061,29 @@ func offlineCapabilities() *ast.Capabilities {
 	return caps
 }
 
+// manifestFlags are the flags of a source's .manifest that apply to the whole
+// bundle. They're read on their own, as the bundle.Manifest of older OPA
+// versions doesn't have them.
+type manifestFlags struct {
+	Generated bool `json:"generated"`
+	Compiled  bool `json:"compiled"`
+}
+
 // readManifest reads a .manifest file from the FS root and returns the parsed
-// bundle.Manifest and true, or an empty manifest and false if absent or unparseable.
-func readManifest(fsys fs.FS) (bundle.Manifest, bool) {
+// bundle.Manifest, its flags and true, or empty ones and false if absent or
+// unparseable.
+func readManifest(fsys fs.FS) (bundle.Manifest, manifestFlags, bool) {
 	content, err := fs.ReadFile(fsys, ".manifest")
 	if err != nil {
-		return bundle.Manifest{}, false
+		return bundle.Manifest{}, manifestFlags{}, false
 	}
 	var m bundle.Manifest
+	var flags manifestFlags
 	if err := json.Unmarshal(content, &m); err != nil {
-		return bundle.Manifest{}, false
+		return bundle.Manifest{}, manifestFlags{}, false
 	}
-	return m, true
+	if err := json.Unmarshal(content, &flags); err != nil {
+		return bundle.Manifest{}, manifestFlags{}, false
+	}
+	return m, flags, true
 }

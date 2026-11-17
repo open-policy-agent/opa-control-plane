@@ -1,8 +1,13 @@
 package builder_test
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,7 +16,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/open-policy-agent/opa/bundle" // nolint:staticcheck
+	"github.com/open-policy-agent/opa/bundle"  // nolint:staticcheck
+	"github.com/open-policy-agent/opa/compile" // nolint:staticcheck
 
 	"github.com/open-policy-agent/opa-control-plane/internal/config"
 	"github.com/open-policy-agent/opa-control-plane/pkg/builder"
@@ -609,4 +615,86 @@ func TestManifestMetadata(t *testing.T) {
 			t.Fatalf("expected reserved key error, got %v", err)
 		}
 	})
+}
+
+func TestManifestCompiledGenerated(t *testing.T) {
+	// OPA versions without these compile options build bundles without the flags.
+	_, supported := any(compile.New()).(interface {
+		WithGenerated(bool) *compile.Compiler
+		WithCompiledRules(bool) *compile.Compiler
+	})
+
+	var src strings.Builder
+	src.WriteString("package authz\n\n")
+	for i := range 12 {
+		fmt.Fprintf(&src, "allow if input.user == \"user-%d\"\n", i)
+	}
+	for _, tc := range []struct {
+		note                      string
+		manifest                  string
+		generated, compiled       bool // builder options
+		expGenerated, expCompiled bool
+	}{
+		{note: "neither", manifest: `{"rego_version": 1}`},
+		{note: "source manifest compiled", manifest: `{"rego_version": 1, "compiled": true}`, expCompiled: true},
+		{note: "source manifest generated", manifest: `{"rego_version": 1, "generated": true}`, expGenerated: true},
+		{note: "source manifest both", manifest: `{"rego_version": 1, "generated": true, "compiled": true}`, expGenerated: true, expCompiled: true},
+		{note: "options", manifest: `{"rego_version": 1}`, generated: true, compiled: true, expGenerated: true, expCompiled: true},
+	} {
+		t.Run(tc.note, func(t *testing.T) {
+			dir := t.TempDir()
+			for name, content := range map[string]string{"authz.rego": src.String(), ".manifest": tc.manifest} {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			s := builder.NewSource("src")
+			if err := s.AddDir(builder.Dir{Path: filepath.ToSlash(dir)}); err != nil {
+				t.Fatal(err)
+			}
+			buf := bytes.NewBuffer(nil)
+			if err := builder.New().WithSources([]*builder.Source{s}).WithGenerated(tc.generated).WithCompiled(tc.compiled).
+				WithOutput(buf).Build(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+
+			raw := buf.Bytes()
+			files := untarFiles(t, bytes.NewReader(raw))
+			var manifest struct{ Generated, Compiled bool }
+			if err := json.Unmarshal(files["/.manifest"], &manifest); err != nil {
+				t.Fatal(err)
+			}
+			_, hasRules := files["/compiled_rules.bin"]
+			expGenerated, expCompiled := tc.expGenerated && supported, tc.expCompiled && supported
+			if manifest.Generated != expGenerated || manifest.Compiled != expCompiled || hasRules != expCompiled {
+				t.Errorf("expected generated %v and compiled %v, got manifest %+v and compiled rules %v",
+					expGenerated, expCompiled, manifest, hasRules)
+			}
+			if _, err := bundle.NewReader(bytes.NewReader(raw)).Read(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func untarFiles(t *testing.T, r io.Reader) map[string][]byte {
+	t.Helper()
+	gz, err := gzip.NewReader(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{}
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return files
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if files[h.Name], err = io.ReadAll(tr); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
