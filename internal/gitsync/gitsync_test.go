@@ -825,3 +825,50 @@ func TestGitsyncNegativeDepth(t *testing.T) {
 		t.Fatalf("expected user error, got %v", err)
 	}
 }
+
+// TestGitsyncShortReference verifies that a short branch name ("main") follows
+// the remote like the full name ("refs/heads/main") does, for full and shallow clones.
+func TestGitsyncShortReference(t *testing.T) {
+	for _, ref := range []string{"main", "refs/heads/main"} {
+		for _, depth := range []int{0, 1} {
+			t.Run(fmt.Sprintf("%s/depth=%d", ref, depth), func(t *testing.T) {
+				srcPath := t.TempDir()
+				repository, err := git.PlainInitWithOptions(srcPath, &git.PlainInitOptions{
+					InitOptions: git.InitOptions{DefaultBranch: plumbing.Main},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				w, err := repository.Worktree()
+				if err != nil {
+					t.Fatal(err)
+				}
+				commit := func(content string) {
+					t.Helper()
+					if err := os.WriteFile(srcPath+"/README", []byte(content), 0644); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := w.Add("README"); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := w.Commit(content, &git.CommitOptions{Author: &object.Signature{}}); err != nil {
+						t.Fatal(err)
+					}
+				}
+
+				dst := t.TempDir() + "/test-repo"
+				s := gitsync.New(dst, config.Git{Repo: srcPath, Reference: &ref, Depth: depth}, "test-source")
+
+				for _, content := range []string{"one", "two", "three"} {
+					commit(content)
+					if _, err := s.Execute(t.Context()); err != nil {
+						t.Fatal(err)
+					}
+					if data, err := os.ReadFile(dst + "/README"); err != nil || string(data) != content {
+						t.Fatalf("expected %q, got %q (err: %v)", content, data, err)
+					}
+				}
+			})
+		}
+	}
+}
