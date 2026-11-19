@@ -205,7 +205,7 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {
 
 	var referenceName plumbing.ReferenceName
 	if s.config.Reference != nil {
-		referenceName = plumbing.ReferenceName(*s.config.Reference)
+		referenceName = plumbing.ReferenceName(fullReference(*s.config.Reference))
 	}
 
 	if s.config.Depth < 0 {
@@ -313,7 +313,7 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {
 	}
 	if depth > 0 { // only the configured reference, to keep the clone shallow
 		refSpecs = []gitconfig.RefSpec{
-			gitconfig.RefSpec(fmt.Sprintf("+%[2]s:refs/remotes/%[1]s/%[2]s", remote, *s.config.Reference)),
+			gitconfig.RefSpec(fmt.Sprintf("+%[2]s:refs/remotes/%[1]s/%[2]s", remote, referenceName)),
 		}
 	}
 	if err := repository.FetchContext(ctx, &git.FetchOptions{
@@ -333,7 +333,7 @@ func (s *Synchronizer) execute(ctx context.Context) (bool, string, error) {
 	case s.config.Commit != nil:
 		opts.Hash = plumbing.NewHash(*s.config.Commit)
 	case s.config.Reference != nil:
-		ref := fmt.Sprintf("refs/remotes/%s/%s", remote, *s.config.Reference)
+		ref := fmt.Sprintf("refs/remotes/%s/%s", remote, referenceName)
 		opts.Branch = plumbing.ReferenceName(ref)
 	}
 
@@ -575,4 +575,14 @@ func isGitUserError(err error) bool {
 		errors.Is(err, transport.ErrAuthorizationFailed) ||
 		errors.Is(err, transport.ErrAuthenticationRequired) ||
 		errors.Is(err, transport.ErrEmptyRemoteRepository)
+}
+
+// fullReference expands a short branch name such as "main" to "refs/heads/main".
+// The fetch refspecs and the checkout lookup are built from the full name, so a
+// short name would be checked out from a ref that fetch never updates.
+func fullReference(ref string) string {
+	if strings.HasPrefix(ref, "refs/") {
+		return ref
+	}
+	return "refs/heads/" + ref
 }
