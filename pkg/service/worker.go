@@ -238,6 +238,15 @@ func (w *BundleWorker) Execute(ctx context.Context) time.Time {
 		}
 	}
 
+	// A source's files are re-read from the database on every run, and a deleted
+	// source reads as empty rather than as an error. Without this check a bundle
+	// deleted mid-run would build empty and fail to push.
+	if w.bundleDeleted(ctx) {
+		w.log.Debugf("bundle %q was deleted during the run, skipping the build", w.bundleConfig.Name)
+		w.reported = true // the status row is gone with the bundle
+		return w.die(ctx)
+	}
+
 	buffer := bytes.NewBuffer(nil)
 
 	_, needsBundleHash, _ := extractRevisionRefs(w.bundleConfig.Revision)
@@ -356,6 +365,15 @@ func (w *BundleWorker) writeStatus(ctx context.Context, state BuildState, phase 
 			w.log.Warnf("failed to track bundle status %q: %v", w.bundleConfig.Name, uerr)
 		}
 	}
+}
+
+// bundleDeleted reports whether the bundle no longer exists in the database.
+func (w *BundleWorker) bundleDeleted(ctx context.Context) bool {
+	if w.database == nil {
+		return false
+	}
+	_, err := w.database.GetBundle(ctx, internalPrincipal, w.tenant, w.bundleConfig.Name)
+	return errors.Is(err, database.ErrNotFound)
 }
 
 func (w *BundleWorker) changeConfiguration() {
