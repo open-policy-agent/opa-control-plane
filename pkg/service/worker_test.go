@@ -147,6 +147,58 @@ func TestBundleWorkerExecute_CancelledBeforeReportPersisted(t *testing.T) {
 	}
 }
 
+// TestBundleWorkerExecute_BundleDeletedDuringRun verifies that a worker whose
+// bundle was deleted from the database stops without building: a deleted
+// source reads as empty, so building would push an empty bundle.
+func TestBundleWorkerExecute_BundleDeletedDuringRun(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := migrations.New().
+		WithConfig(&config.Database{
+			SQL: &config.SQLDatabase{Driver: "sqlite3", DSN: dbs.MemoryDBName()},
+		}).
+		WithLogger(logging.NewLogger(logging.Config{})).
+		WithMigrate(true).Run(ctx)
+	if err != nil {
+		t.Fatalf("failed to init database: %v", err)
+	}
+	defer db.CloseDB()
+
+	const tenant = "default"
+	principal := database.Principal{Id: "admin", Role: "administrator", Tenant: tenant}
+	if err := db.UpsertPrincipal(ctx, principal); err != nil {
+		t.Fatal(err)
+	}
+
+	root := config.Root{
+		Bundles: map[string]*config.Bundle{
+			"test_bundle": {Name: "test_bundle"},
+		},
+		Database: &config.Database{SQL: &config.SQLDatabase{Driver: "sqlite3", DSN: database.SQLiteMemoryOnlyDSN}},
+	}
+	if err := root.Unmarshal(); err != nil {
+		t.Fatalf("failed to unmarshal config: %v", err)
+	}
+	if err := db.LoadConfig(ctx, nil, principal.Id, tenant, &root); err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	worker := NewBundleWorker(t.TempDir(), root.Bundles["test_bundle"], nil, nil,
+		logging.NewLogger(logging.Config{}), progress.New(true, 1, "test")).
+		WithDatabase(db).
+		WithTenant(tenant)
+
+	if err := db.DeleteBundle(ctx, principal.Id, tenant, "test_bundle"); err != nil {
+		t.Fatalf("failed to delete bundle: %v", err)
+	}
+
+	worker.Execute(ctx)
+
+	if !worker.Done() {
+		t.Fatal("expected the worker to stop when its bundle is gone")
+	}
+}
+
 // TestBundleWorkerExecute_SyncFailurePersisted verifies that a git-sync failure
 // produces a queryable SYNC_FAILED status row (persisted under the pre-revision
 // sentinel), proving report() centralizes the write for pre-revision phases.
