@@ -179,6 +179,11 @@ type Options struct {
 	NoDefaultStackMount bool          `json:"no_default_stack_mount"`
 	Optimization        *Optimization `json:"optimization,omitempty"`
 	Target              string        `json:"target,omitzero" enum:"rego,ir,plan,wasm"`
+	// Generated and Compiled set the bundle manifest's flags of the same names,
+	// as "generated": true and "compiled": true in a source's .manifest do.
+	// Compiled only applies to the rego target.
+	Generated bool `json:"generated,omitempty"`
+	Compiled  bool `json:"compiled,omitempty"`
 
 	_ struct{} `additionalProperties:"false"`
 }

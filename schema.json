@@ -381,6 +381,12 @@
     "ConfigOptions": {
       "additionalProperties": false,
       "properties": {
+        "compiled": {
+          "type": "boolean"
+        },
+        "generated": {
+          "type": "boolean"
+        },
         "no_default_stack_mount": {
           "type": "boolean"
         },

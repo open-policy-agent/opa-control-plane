@@ -896,3 +896,33 @@ func TestSourceFilesWithGlobs(t *testing.T) {
 		})
 	}
 }
+
+func TestBundleOptionsGeneratedCompiledParsing(t *testing.T) {
+	for _, tt := range []struct {
+		name                string
+		options             string
+		generated, compiled bool
+		hasError            bool
+	}{
+		{name: "not specified", options: `{}`},
+		{name: "both", options: `{generated: true, compiled: true}`, generated: true, compiled: true},
+		{name: "compiled only", options: `{compiled: true}`, compiled: true},
+		{name: "not a boolean", options: `{compiled: "yes"}`, hasError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Parse([]byte(`{bundles: {test: {options: ` + tt.options + `}}}`))
+			if tt.hasError {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+			if o := cfg.Bundles["test"].Options; o.Generated != tt.generated || o.Compiled != tt.compiled {
+				t.Errorf("expected generated %v and compiled %v, got %+v", tt.generated, tt.compiled, o)
+			}
+		})
+	}
+}
