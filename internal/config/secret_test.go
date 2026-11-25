@@ -1,12 +1,12 @@
 package config_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -18,8 +18,6 @@ import (
 // errors of client assertion based client authentication. The error surfaces
 // when a token is requested, which is where the configuration is resolved.
 func TestSecretOIDCClientCredentialsClientAssertion(t *testing.T) {
-	ctx := context.Background()
-
 	dir := t.TempDir()
 	emptyFile := filepath.Join(dir, "empty")
 	if err := os.WriteFile(emptyFile, []byte("  \n"), 0o600); err != nil {
@@ -75,19 +73,9 @@ func TestSecretOIDCClientCredentialsClientAssertion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			secret := config.Secret{Name: "test_secret", Value: tt.value}
+			creds := oidcCredentials(t, tt.value)
 
-			resolved, err := secret.Typed(ctx)
-			if err != nil {
-				t.Fatalf("failed to resolve secret: %v", err)
-			}
-
-			creds, ok := resolved.(*config.SecretOIDCClientCredentials)
-			if !ok {
-				t.Fatalf("unexpected secret type: %T", resolved)
-			}
-
-			_, err = creds.Token(ctx)
+			_, err := creds.Token(t.Context())
 			if err == nil {
 				t.Fatal("expected an error, got none")
 			}
@@ -98,19 +86,38 @@ func TestSecretOIDCClientCredentialsClientAssertion(t *testing.T) {
 	}
 }
 
-// TestSecretOIDCClientCredentialsClientAssertionRotation verifies that the HTTP
-// client returned by Client() re-reads the client assertion when it refreshes
-// the access token, rather than reusing the assertion read at construction
-// time. The token endpoint returns a token whose lifetime is below the
-// oauth2 reuse threshold, so every request forces a refresh and the test does
-// not have to wait for a real expiry.
-func TestSecretOIDCClientCredentialsClientAssertionRotation(t *testing.T) {
-	ctx := context.Background()
+func oidcCredentials(t *testing.T, value map[string]any) *config.SecretOIDCClientCredentials {
+	t.Helper()
 
-	assertionFile := filepath.Join(t.TempDir(), "azure-identity-token")
-	if err := os.WriteFile(assertionFile, []byte("first.assertion.jwt"), 0o600); err != nil {
-		t.Fatalf("failed to write assertion file: %v", err)
+	secret := config.Secret{Name: "test_secret", Value: value}
+
+	resolved, err := secret.Typed(t.Context())
+	if err != nil {
+		t.Fatalf("failed to resolve secret: %v", err)
 	}
+
+	creds, ok := resolved.(*config.SecretOIDCClientCredentials)
+	if !ok {
+		t.Fatalf("unexpected secret type: %T", resolved)
+	}
+
+	return creds
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write %s: %v", path, err)
+	}
+}
+
+// newAssertionServer serves /token, issuing access tokens that live for
+// expiresIn seconds, and /resource. The returned function reports the client
+// assertions received so far. An expiresIn below the oauth2 reuse threshold
+// forces a token refresh on every request.
+func newAssertionServer(t *testing.T, expiresIn int) (*httptest.Server, func() []string) {
+	t.Helper()
 
 	var (
 		mu         sync.Mutex
@@ -132,7 +139,7 @@ func TestSecretOIDCClientCredentialsClientAssertionRotation(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "access_" + r.Form.Get("client_assertion"),
 			"token_type":   "Bearer",
-			"expires_in":   1,
+			"expires_in":   expiresIn,
 		})
 	})
 	mux.HandleFunc("/resource", func(w http.ResponseWriter, _ *http.Request) {
@@ -142,27 +149,42 @@ func TestSecretOIDCClientCredentialsClientAssertionRotation(t *testing.T) {
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
-	secret := config.Secret{
-		Name: "test_secret",
-		Value: map[string]any{
-			"type":                  "oidc_client_credentials",
-			"token_endpoint":        server.URL + "/token",
-			"client_id":             "test_client",
-			"client_assertion_file": assertionFile,
-		},
+	return server, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(assertions)
 	}
+}
 
-	resolved, err := secret.Typed(ctx)
-	if err != nil {
-		t.Fatalf("failed to resolve secret: %v", err)
+func assertionCredentials(t *testing.T, server *httptest.Server, assertionFile string) *config.SecretOIDCClientCredentials {
+	t.Helper()
+
+	return oidcCredentials(t, map[string]any{
+		"type":                  "oidc_client_credentials",
+		"token_endpoint":        server.URL + "/token",
+		"client_id":             "test_client",
+		"client_assertion_file": assertionFile,
+	})
+}
+
+func assertAssertions(t *testing.T, got, want []string) {
+	t.Helper()
+
+	if !slices.Equal(got, want) {
+		t.Fatalf("expected token requests with assertions %v, got %v", want, got)
 	}
+}
 
-	creds, ok := resolved.(*config.SecretOIDCClientCredentials)
-	if !ok {
-		t.Fatalf("unexpected secret type: %T", resolved)
-	}
+// TestSecretOIDCClientCredentialsClientAssertionRotation verifies that the HTTP
+// client returned by Client() re-reads the client assertion when it refreshes
+// the access token, rather than reusing the assertion read at construction time.
+func TestSecretOIDCClientCredentialsClientAssertionRotation(t *testing.T) {
+	assertionFile := filepath.Join(t.TempDir(), "azure-identity-token")
+	writeFile(t, assertionFile, "first.assertion.jwt")
 
-	client, err := creds.Client(ctx)
+	server, assertions := newAssertionServer(t, 1)
+
+	client, err := assertionCredentials(t, server, assertionFile).Client(t.Context())
 	if err != nil {
 		t.Fatalf("failed to build client: %v", err)
 	}
@@ -174,7 +196,7 @@ func TestSecretOIDCClientCredentialsClientAssertionRotation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
 		}
-		defer resp.Body.Close()
+		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("unexpected status: %d", resp.StatusCode)
@@ -182,91 +204,22 @@ func TestSecretOIDCClientCredentialsClientAssertionRotation(t *testing.T) {
 	}
 
 	get()
-
-	// The platform rewrites the projected token in place.
-	if err := os.WriteFile(assertionFile, []byte("second.assertion.jwt"), 0o600); err != nil {
-		t.Fatalf("failed to rotate assertion file: %v", err)
-	}
-
+	writeFile(t, assertionFile, "second.assertion.jwt")
 	get()
 
-	mu.Lock()
-	defer mu.Unlock()
-
-	want := []string{"first.assertion.jwt", "second.assertion.jwt"}
-	if len(assertions) != len(want) {
-		t.Fatalf("expected %d token requests, got %d: %v", len(want), len(assertions), assertions)
-	}
-	for i := range want {
-		if assertions[i] != want[i] {
-			t.Errorf("token request %d: expected assertion %q, got %q", i, want[i], assertions[i])
-		}
-	}
+	assertAssertions(t, assertions(), []string{"first.assertion.jwt", "second.assertion.jwt"})
 }
 
-// TestSecretOIDCClientCredentialsClientAssertionReadFailure verifies that a
-// client assertion that is temporarily unreadable -- as can happen if the file
-// is missing while the platform rotates it -- surfaces a clear error and does
-// not leave the client permanently broken once the file reappears.
+// TestSecretOIDCClientCredentialsClientAssertionReadFailure verifies that an
+// unreadable assertion, as during rotation, surfaces a clear error and the
+// client recovers once the file reappears.
 func TestSecretOIDCClientCredentialsClientAssertionReadFailure(t *testing.T) {
-	ctx := context.Background()
-
 	assertionFile := filepath.Join(t.TempDir(), "azure-identity-token")
-	if err := os.WriteFile(assertionFile, []byte("first.assertion.jwt"), 0o600); err != nil {
-		t.Fatalf("failed to write assertion file: %v", err)
-	}
+	writeFile(t, assertionFile, "first.assertion.jwt")
 
-	var (
-		mu         sync.Mutex
-		assertions []string
-	)
+	server, assertions := newAssertionServer(t, 1)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Bad request", http.StatusBadRequest)
-			return
-		}
-
-		mu.Lock()
-		assertions = append(assertions, r.Form.Get("client_assertion"))
-		mu.Unlock()
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"access_token": "access_" + r.Form.Get("client_assertion"),
-			"token_type":   "Bearer",
-			"expires_in":   1,
-		})
-	})
-	mux.HandleFunc("/resource", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-
-	secret := config.Secret{
-		Name: "test_secret",
-		Value: map[string]any{
-			"type":                  "oidc_client_credentials",
-			"token_endpoint":        server.URL + "/token",
-			"client_id":             "test_client",
-			"client_assertion_file": assertionFile,
-		},
-	}
-
-	resolved, err := secret.Typed(ctx)
-	if err != nil {
-		t.Fatalf("failed to resolve secret: %v", err)
-	}
-
-	creds, ok := resolved.(*config.SecretOIDCClientCredentials)
-	if !ok {
-		t.Fatalf("unexpected secret type: %T", resolved)
-	}
-
-	client, err := creds.Client(ctx)
+	client, err := assertionCredentials(t, server, assertionFile).Client(t.Context())
 	if err != nil {
 		t.Fatalf("failed to build client: %v", err)
 	}
@@ -277,7 +230,6 @@ func TestSecretOIDCClientCredentialsClientAssertionReadFailure(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	// The assertion disappears, as it may briefly during rotation.
 	if err := os.Remove(assertionFile); err != nil {
 		t.Fatalf("failed to remove assertion file: %v", err)
 	}
@@ -288,10 +240,7 @@ func TestSecretOIDCClientCredentialsClientAssertionReadFailure(t *testing.T) {
 		t.Errorf("expected an error naming client_assertion_file, got: %v", err)
 	}
 
-	// Once the assertion is back, the same client must recover without being rebuilt.
-	if err := os.WriteFile(assertionFile, []byte("second.assertion.jwt"), 0o600); err != nil {
-		t.Fatalf("failed to restore assertion file: %v", err)
-	}
+	writeFile(t, assertionFile, "second.assertion.jwt")
 
 	resp, err = client.Get(server.URL + "/resource")
 	if err != nil {
@@ -299,18 +248,7 @@ func TestSecretOIDCClientCredentialsClientAssertionReadFailure(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	mu.Lock()
-	defer mu.Unlock()
-
-	want := []string{"first.assertion.jwt", "second.assertion.jwt"}
-	if len(assertions) != len(want) {
-		t.Fatalf("expected %d token requests, got %d: %v", len(want), len(assertions), assertions)
-	}
-	for i := range want {
-		if assertions[i] != want[i] {
-			t.Errorf("token request %d: expected assertion %q, got %q", i, want[i], assertions[i])
-		}
-	}
+	assertAssertions(t, assertions(), []string{"first.assertion.jwt", "second.assertion.jwt"})
 }
 
 // TestSecretOIDCClientCredentialsClientSecretUnchanged guards the client_secret
@@ -318,8 +256,6 @@ func TestSecretOIDCClientCredentialsClientAssertionReadFailure(t *testing.T) {
 // must still be sent as a client secret, no assertion parameters may appear,
 // and the access token must still be cached across requests.
 func TestSecretOIDCClientCredentialsClientSecretUnchanged(t *testing.T) {
-	ctx := context.Background()
-
 	var (
 		mu               sync.Mutex
 		tokenRequests    int
@@ -366,27 +302,14 @@ func TestSecretOIDCClientCredentialsClientSecretUnchanged(t *testing.T) {
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
-	secret := config.Secret{
-		Name: "test_secret",
-		Value: map[string]any{
-			"type":           "oidc_client_credentials",
-			"token_endpoint": server.URL + "/token",
-			"client_id":      "test_client",
-			"client_secret":  "test_secret",
-		},
-	}
+	creds := oidcCredentials(t, map[string]any{
+		"type":           "oidc_client_credentials",
+		"token_endpoint": server.URL + "/token",
+		"client_id":      "test_client",
+		"client_secret":  "test_secret",
+	})
 
-	resolved, err := secret.Typed(ctx)
-	if err != nil {
-		t.Fatalf("failed to resolve secret: %v", err)
-	}
-
-	creds, ok := resolved.(*config.SecretOIDCClientCredentials)
-	if !ok {
-		t.Fatalf("unexpected secret type: %T", resolved)
-	}
-
-	client, err := creds.Client(ctx)
+	client, err := creds.Client(t.Context())
 	if err != nil {
 		t.Fatalf("failed to build client: %v", err)
 	}
