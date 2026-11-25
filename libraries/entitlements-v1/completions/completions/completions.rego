@@ -1,14 +1,16 @@
 package completions
 
-subjects[s] {
+import rego.v1
+
+subjects contains s if {
 	_ := data.object.users[s]
 }
 
-subjects[s] {
+subjects contains s if {
 	_ := data.object.groups[s]
 }
 
-subjects[s] {
+subjects contains s if {
 	_ := data.object.serviceaccounts[s]
 }
 

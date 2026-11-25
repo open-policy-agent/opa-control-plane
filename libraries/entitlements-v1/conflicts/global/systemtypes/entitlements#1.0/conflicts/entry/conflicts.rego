@@ -1,5 +1,7 @@
 package global.systemtypes["entitlements:1.0"].conflicts.entry
 
+import rego.v1
+
 # All rules must exist at data.policy
 
 #############################################
@@ -40,22 +42,22 @@ outcome["notifications"] = notifications
 
 default allow = false
 
-allow = x {
+allow = x if {
 	# if any enforced snippet denied, that overrides allows
 	combined.enforce[_].denied
 	x := false
-} else {
+} else if {
 	# otherwise, allow if any snippet sets allowed to true
 	combined.enforce[_].allowed
 }
 
 entz := union(system_entz | stacks_entz)
 
-decision_type = "ALLOWED" {
+decision_type = "ALLOWED" if {
 	allow
 }
 
-decision_type = "DENIED" {
+decision_type = "DENIED" if {
 	not allow
 }
 
@@ -69,12 +71,12 @@ combined["enforce"] = system_enforce | all_stack_enforce
 
 combined["monitor"] = system_monitor | all_stack_monitor
 
-all_stack_enforce[decision] {
+all_stack_enforce contains decision if {
 	some stack_id
 	stacks_outcomes[stack_id].enforced[decision]
 }
 
-all_stack_monitor[decision] {
+all_stack_monitor contains decision if {
 	some stack_id
 	stacks_outcomes[stack_id].monitored[decision]
 }
@@ -82,19 +84,19 @@ all_stack_monitor[decision] {
 #############################################
 # System processing
 
-system_enforce[decision] {
+system_enforce contains decision if {
 	data.policy.enforce[decision]
 }
 
-system_enforce[decision] {
+system_enforce contains decision if {
 	data.policy[_].enforce[decision]
 }
 
-system_monitor[decision] {
+system_monitor contains decision if {
 	data.policy.monitor[decision]
 }
 
-system_monitor[decision] {
+system_monitor contains decision if {
 	data.policy[_].monitor[decision]
 }
 
@@ -103,14 +105,14 @@ system_entz := {entz |
 	entz := get_entz(decision)
 }
 
-get_entz(decision) = x {
+get_entz(decision) = x if {
 	x := decision.entz
 } else = set()
 
 #############################################
 # Stack processing
 
-stacks_outcomes[stack_id] = x {
+stacks_outcomes[stack_id] = x if {
 	applicable_stacks[stack_id]
 
 	enforced := {decision |
@@ -127,12 +129,12 @@ stacks_outcomes[stack_id] = x {
 	}
 }
 
-stacks_entz[entz] {
+stacks_entz contains entz if {
 	stacks_outcomes[_].enforced[decision]
 	entz := get_entz(decision)
 }
 
-applicable_stacks[stack_id] {
+applicable_stacks contains stack_id if {
 	some stack_id
 	data.stacks[stack_id] = _
 }
@@ -140,11 +142,11 @@ applicable_stacks[stack_id] {
 ### Notifications handling
 
 # system and stack rules that ask for a notification
-notifications[n] {
+notifications contains n if {
 	combined.enforce[_].notify[n]
 }
 
-notifications[n] {
+notifications contains n if {
 	combined.monitor[_].notify[n]
 }
 
@@ -152,12 +154,12 @@ notifications[n] {
 notification_outcome := {"allowed": allow}
 
 # system metadata notifications policy
-notifications[n] {
+notifications contains n if {
 	data.metadata[system_id].notifications.notify[n] with data.context.outcome as notification_outcome
 }
 
 # stacks notifications policy
-notifications[n] {
+notifications contains n if {
 	applicable_stacks[stack_id]
 	data.stacks[stack_id].notifications.notify[n] with data.context.outcome as notification_outcome
 }

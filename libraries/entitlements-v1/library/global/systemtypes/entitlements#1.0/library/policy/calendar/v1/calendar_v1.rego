@@ -1,7 +1,7 @@
 package global.systemtypes["entitlements:1.0"].library.policy.calendar.v1
 
+import rego.v1
 import data.library.parameters
-
 import data.global.systemtypes["entitlements:1.0"].library.utils.v1 as utils
 
 now := time.now_ns()
@@ -31,7 +31,7 @@ now := time.now_ns()
 #     - days
 #     - timezone
 
-match_day_of_week[msg] {
+match_day_of_week contains msg if {
 	tz := object.get(parameters, "timezone", "UTC")
 	day_of_week := time.weekday([now, parameters.timezone])
 	lower_day_of_week := lower(day_of_week)
@@ -64,7 +64,7 @@ match_day_of_week[msg] {
 #       type: string
 #       title: "End date and time (inclusive) in RFC3339 format"
 
-match_time_range[msg] {
+match_time_range contains msg if {
 	# Note that we want to do this only once to make sure now_ns() does not
 	# change between checks.
 	now_time := time.now_ns()
@@ -105,7 +105,7 @@ match_time_range[msg] {
 #   required:
 #     - months
 
-match_month[msg] {
+match_month contains msg if {
 	#   The months must be provided as a list of strings with full month names,
 	#   1-indexed month number, or 3 letter abbreviations. The months are
 	#   case-insensitive.
@@ -134,21 +134,21 @@ match_month[msg] {
 
 # Helper rule to get the correct message to display for the
 # match_requests_by_time rule.
-match_requests_by_time_range_msg = msg {
+match_requests_by_time_range_msg = msg if {
 	utils.object_contains_key(parameters, "start_time")
 	utils.object_contains_key(parameters, "end_time")
 	parameters.start_time != ""
 	parameters.end_time != ""
 	msg := sprintf("Request occurred between %s and %s", [parameters.start_time, parameters.end_time])
-} else = msg {
+} else = msg if {
 	utils.object_contains_key(parameters, "start_time")
 	parameters.start_time != ""
 	msg := sprintf("Request occurred after %s", [parameters.start_time])
-} else = msg {
+} else = msg if {
 	utils.object_contains_key(parameters, "end_time")
 	parameters.end_time != ""
 	msg := sprintf("Request occurred before %s", [parameters.end_time])
-} else = msg {
+} else = msg if {
 	msg := "Request allowed because neither start_time nor end_time specified"
 }
 
@@ -156,7 +156,7 @@ match_requests_by_time_range_msg = msg {
 # abbreviation (see match_requests_by_month) to a 1-indexed month number.
 string_to_month_number(s) := month_number(lower(numbers_to_strings(s)))
 
-numbers_to_strings(s) := s {
+numbers_to_strings(s) := s if {
 	is_string(s)
 }
 
@@ -208,7 +208,7 @@ month_number("december") := 12
 
 month_number("dec") := 12
 
-month_number(s) := x { # "1", "2", ...
+month_number(s) := x if { # "1", "2", ...
 	x := to_number(s)
 	x <= 12
 	x >= 1
@@ -239,7 +239,7 @@ month_number_to_string(11) = "November"
 month_number_to_string(12) = "December"
 
 # Helper function to convert a timestamp in ns to an RFC3339 string.
-ns_to_rfc3339(ns) = result {
+ns_to_rfc3339(ns) = result if {
 	date := time.date(ns)
 	year := date[0]
 	month := date[1]

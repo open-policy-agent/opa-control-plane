@@ -1,13 +1,14 @@
 package global.systemtypes["entitlements:1.0"].library.policy.abac.v1
 
+import rego.v1
 import data.global.systemtypes["entitlements:1.0"].library.utils.v1 as utils
 import data.library.parameters
 
-object_users = data.object.users {
+object_users = data.object.users if {
 	true
 } else = {}
 
-object_resources = data.object.resources {
+object_resources = data.object.resources if {
 	true
 } else = {}
 
@@ -34,7 +35,7 @@ object_resources = data.object.resources {
 #         title: "Value"
 #   required:
 #     - attributes
-resource_has_attributes_glob[msg] {
+resource_has_attributes_glob contains msg if {
 	some resourceID
 	resource := object_resources[resourceID]
 	utils.resource_glob(resourceID, input.resource)
@@ -66,7 +67,7 @@ resource_has_attributes_glob[msg] {
 #   required:
 #     - attributes
 #     - actions
-resource_has_attributes[msg] {
+resource_has_attributes contains msg if {
 	# Backwards-compatibility - before filters were implemented, we used to
 	# allow a list of actions to be provided. This feature is deprecated,
 	# but existing code that uses this snippet should continue to work.
@@ -78,7 +79,7 @@ resource_has_attributes[msg] {
 # DEPRECATED
 #
 # Maintained for backwards-compatibility only.
-resource_has_attributes[msg] {
+resource_has_attributes contains msg if {
 	utils.object_contains_key(parameters, "actions")
 	object_has_all_attributes(object_resources[input.resource], parameters.attributes)
 	input.action == parameters.actions[_]
@@ -109,7 +110,7 @@ resource_has_attributes[msg] {
 #   required:
 #     - attributes
 
-user_has_attributes[msg] {
+user_has_attributes contains msg if {
 	object_has_all_attributes(object_users[input.subject], parameters.attributes)
 	msg := sprintf("User %s has attributes %v", [input.subject, parameters.attributes])
 }
@@ -151,7 +152,7 @@ user_has_attributes[msg] {
 #     - user_attributes
 #     - resource_attributes
 
-user_and_resource_has_attributes[msg] {
+user_and_resource_has_attributes contains msg if {
 	object_has_all_attributes(object_users[input.subject], parameters.user_attributes)
 	object_has_all_attributes(object_resources[input.resource], parameters.resource_attributes)
 	msg := sprintf("User %s has attributes %q and resource %s has attributes %q", [input.subject, parameters.user_attributes, input.resource, parameters.resource_attributes])
@@ -193,7 +194,7 @@ user_and_resource_has_attributes[msg] {
 #   required:
 #     - user_attributes
 #     - resource_attributes
-user_and_resource_has_attributes_glob[msg] {
+user_and_resource_has_attributes_glob contains msg if {
 	object_has_all_attributes(object_users[input.subject], parameters.user_attributes)
 	some resourceID
 	resource := object_resources[resourceID]
@@ -202,7 +203,7 @@ user_and_resource_has_attributes_glob[msg] {
 	msg := sprintf("User %s has attributes %q and resource %s has attributes %q", [input.subject, parameters.user_attributes, input.resource, parameters.resource_attributes])
 }
 
-object_has_all_attributes(object, attributes) {
+object_has_all_attributes(object, attributes) if {
 	matches := [match |
 		attr_value := attributes[attr_key]
 		object[attr_key] == attr_value

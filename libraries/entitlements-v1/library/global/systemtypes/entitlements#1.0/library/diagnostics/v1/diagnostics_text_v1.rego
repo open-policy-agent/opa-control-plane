@@ -1,5 +1,7 @@
 package global.systemtypes["entitlements:1.0"].library.diagnostics.v1
 
+import rego.v1
+
 # This file contains user-visible text/messages/prose for diagnostics, to allow
 # those messages to be viewed and modified independently from the rest of the
 # diagnostics code.
@@ -194,7 +196,7 @@ text := {
 # textID - the ID for the text fragment.
 #
 # fmt - array passed to sprintf for formatting diagnostic text.
-get_text(diagnosticID, textID, fmt) = fragment {
+get_text(diagnosticID, textID, fmt) = fragment if {
 	# If only the diagnosticID is bad, then the not clause will always be
 	# true since outer will be an empty object. If only the textID is bad,
 	# then it still won't be found in outer.
@@ -204,7 +206,7 @@ get_text(diagnosticID, textID, fmt) = fragment {
 	# print(sprintf("get_text(%s, %s, %v) -> %s", [diagnosticID, textID, fmt, fragment]))
 }
 
-get_text(diagnosticID, textID, fmt) = fragment {
+get_text(diagnosticID, textID, fmt) = fragment if {
 	outer := object.get(text, diagnosticID, {})
 	unformatted := outer[textID]
 	fragment := sprintf(unformatted, fmt)

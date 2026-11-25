@@ -1,5 +1,7 @@
 package global.systemtypes["entitlements:1.0"].library.transform.okta.v1
 
+import rego.v1
+
 # METADATA: transform-snippet
 # version: v1
 # title: "Import Okta Data (Okta IDs)"
@@ -13,7 +15,7 @@ package global.systemtypes["entitlements:1.0"].library.transform.okta.v1
 #    - http
 #    - aws/s3
 #    - okta
-okta_raw = obj {
+okta_raw = obj if {
 	obj := {
 		"users": okta_raw_users,
 		"groups": okta_raw_groups,
@@ -22,24 +24,24 @@ okta_raw = obj {
 	}
 }
 
-okta_raw_users[id] = attributes {
+okta_raw_users[id] = attributes if {
 	okta_user := input[""].users[_]
 	id := okta_user.id
 	attributes := okta_user
 }
 
-okta_raw_groups[id] = users {
+okta_raw_groups[id] = users if {
 	members := input[""]["group-members"][id]
 	users := {"users": {member.id | member := members[_]}}
 }
 
-okta_raw_resources[id] = attributes {
+okta_raw_resources[id] = attributes if {
 	app := input[""].apps[_]
 	id := app.id
 	attributes := app
 }
 
-okta_raw_roles[id] = {} {
+okta_raw_roles[id] = {} if {
 	role := input[""].roles[_]
 	id := role.id
 }
@@ -57,7 +59,7 @@ okta_raw_roles[id] = {} {
 #    - http
 #    - aws/s3
 #    - okta
-okta_readable = obj {
+okta_readable = obj if {
 	obj := {
 		"users": okta_readable_users,
 		"groups": okta_readable_groups,
@@ -66,7 +68,7 @@ okta_readable = obj {
 	}
 }
 
-okta_readable_users[id] = attributes {
+okta_readable_users[id] = attributes if {
 	okta_user := input[""].users[_]
 	raw_id := okta_user.id
 	profile := object.get(okta_user, "profile", {})
@@ -74,7 +76,7 @@ okta_readable_users[id] = attributes {
 	attributes := okta_user
 }
 
-okta_readable_groups[id] = users {
+okta_readable_groups[id] = users if {
 	input[""]["group-members"][raw_id]
 	group := input[""].groups[_]
 	group.id == raw_id
@@ -84,14 +86,14 @@ okta_readable_groups[id] = users {
 	users := {"users": {object.get(object.get(member, "profile", {}), "login", member.id) | member := members[_]}}
 }
 
-okta_readable_resources[id] = attributes {
+okta_readable_resources[id] = attributes if {
 	app := input[""].apps[_]
 	raw_id := app.id
 	id := object.get(app, "name", raw_id)
 	attributes := app
 }
 
-okta_readable_roles[id] = {} {
+okta_readable_roles[id] = {} if {
 	role := input[""].roles[_]
 	id := role.id
 }

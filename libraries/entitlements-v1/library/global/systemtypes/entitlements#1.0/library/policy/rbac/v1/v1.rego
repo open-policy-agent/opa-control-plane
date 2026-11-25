@@ -1,14 +1,15 @@
 package global.systemtypes["entitlements:1.0"].library.policy.rbac.v1
 
+import rego.v1
 import data.global.systemtypes["entitlements:1.0"].library.utils.v1 as utils
 import data.library.parameters
 
 # optional data
-object_groups = data.object.groups {
+object_groups = data.object.groups if {
 	true
 } else = set()
 
-object_users = data.object.users {
+object_users = data.object.users if {
 	true
 } else = set()
 
@@ -42,7 +43,7 @@ object_users = data.object.users {
 #     - type: rego
 #       key: message
 #       value: "message"
-any_role_allows_access[msg] {
+any_role_allows_access contains msg if {
 	allowing_roles := {role_id |
 		roles_bound_to_subject(input.subject)[role_id]
 		role_allows_access(data.object.roles[role_id], input)
@@ -83,7 +84,7 @@ any_role_allows_access[msg] {
 #     - type: rego
 #       key: message
 #       value: "message"
-any_role_denies_access[msg] {
+any_role_denies_access contains msg if {
 	denying_roles := {role_id |
 		role_denies_access(data.object.roles[roles_bound_to_subject(input.subject)[role_id]], input)
 	}
@@ -118,7 +119,7 @@ any_role_denies_access[msg] {
 #     - type: string
 #       key: message
 #       value: ""
-roles_bound_to_request_subject = roles {
+roles_bound_to_request_subject = roles if {
 	roles := {{
 		"snippet": "global/systemtypes/entitlements:1.0/library/policy/rbac/v1/roles_bound_to_request_subject",
 		"roles": roles_bound_to_subject(input.subject),
@@ -147,33 +148,33 @@ roles_bound_to_request_subject = roles {
 #     - type: string
 #       key: message
 #       value: ""
-groups_for_input_user = groups {
+groups_for_input_user = groups if {
 	groups := {{
 		"snippet": "global/systemtypes/entitlements:1.0/library/policy/rbac/v1/groups_for_input_user",
 		"groups": groups_for_subject(input.subject),
 	}}
 }
 
-role_allows_access(roledef, request) {
+role_allows_access(roledef, request) if {
 	included := resource_is_matched(roledef, "allow", "include", request.action, request.resource)
 	excluded := resource_is_matched(roledef, "allow", "exclude", request.action, request.resource)
 	included == true
 	excluded == false
 }
 
-role_denies_access(roledef, request) {
+role_denies_access(roledef, request) if {
 	included := resource_is_matched(roledef, "deny", "include", request.action, request.resource)
 	excluded := resource_is_matched(roledef, "deny", "exclude", request.action, request.resource)
 	included == true
 	excluded == false
 }
 
-resource_is_matched(roledef, roledef_allow_or_deny, roledef_include_or_exclude, action, resource) {
+resource_is_matched(roledef, roledef_allow_or_deny, roledef_include_or_exclude, action, resource) if {
 	glob.match(roledef[roledef_allow_or_deny][roledef_include_or_exclude][idx].actions[_], ["."], action)
 	glob.match(roledef[roledef_allow_or_deny][roledef_include_or_exclude][idx].resources[_], ["."], resource)
 } else = false
 
-transitive_roles[subject] = roles {
+transitive_roles[subject] = roles if {
 	# In the case where a user or service account is bound to a group, they
 	# transitively get roles from that group. This returns the roles bound
 	# to the groups the subject is in, if the subject is a user, and else
@@ -190,12 +191,12 @@ plausible_subjects := ((({sid | sid := data.object.role_bindings[_].subjects.ids
 
 # Notice that we explicitly do not allow roles with empty or undefined
 # membership attributes to have dynamic membership.
-direct_roles_by_subject[subject] = roles {
+direct_roles_by_subject[subject] = roles if {
 	plausible_subjects[subject]
 	roles := {role_id | data.object.role_bindings[role_id].subjects.ids[_] == subject}
 }
 
-dynamic_roles_by_subject[subject] = roles {
+dynamic_roles_by_subject[subject] = roles if {
 	plausible_subjects[subject]
 	subject_type(subject) == "user"
 	roles := {role_id |
@@ -204,7 +205,7 @@ dynamic_roles_by_subject[subject] = roles {
 	}
 }
 
-dynamic_roles_by_subject[subject] = roles {
+dynamic_roles_by_subject[subject] = roles if {
 	plausible_subjects[subject]
 	subject_type(subject) == "service_account"
 	roles := {role_id |
@@ -213,25 +214,25 @@ dynamic_roles_by_subject[subject] = roles {
 	}
 }
 
-dynamic_roles_by_subject[subject] = roles {
+dynamic_roles_by_subject[subject] = roles if {
 	plausible_subjects[subject]
 	subject_type(subject) != "user"
 	subject_type(subject) != "service_account"
 	roles = set()
 }
 
-nontransitive_roles_bound_to_subject(subject) = roles {
+nontransitive_roles_bound_to_subject(subject) = roles if {
 	# Roles directly bound to subjects by their ID.
 	roles := {r | some r; direct_roles_by_subject[subject][r]} | {r | some r; dynamic_roles_by_subject[subject][r]}
 }
 
-roles_bound_to_subject(subject) = roles {
+roles_bound_to_subject(subject) = roles if {
 	roles := nontransitive_roles_bound_to_subject(subject) | {r | some r; transitive_roles[subject][r]}
 }
 
 # Notice that we explicitly do not allow dynamic membership in groups
 # which have empty or undefined membership-attributes fields.
-dynamic_groups_by_subject[subject] = groups {
+dynamic_groups_by_subject[subject] = groups if {
 	plausible_subjects[subject]
 	subject_type(subject) == "user"
 	groups := {group_id |
@@ -240,7 +241,7 @@ dynamic_groups_by_subject[subject] = groups {
 	}
 }
 
-dynamic_groups_by_subject[subject] = groups {
+dynamic_groups_by_subject[subject] = groups if {
 	plausible_subjects[subject]
 	subject_type(subject) == "service_account"
 	groups := {group_id |
@@ -249,7 +250,7 @@ dynamic_groups_by_subject[subject] = groups {
 	}
 }
 
-groups_for_subject(subject) = groups {
+groups_for_subject(subject) = groups if {
 	# Determine the effective groups for the subject. If the subject is
 	# a group, it is considered to be the only group in the set.
 
@@ -290,17 +291,17 @@ groups_for_subject(subject) = groups {
 	groups := direct_groups | {g | some g; dynamic_groups_by_subject[subject][g]}
 }
 
-groups_for_subject(subject) = groups {
+groups_for_subject(subject) = groups if {
 	subject_type(subject) == "group"
 	groups := {subject}
 }
 
-groups_for_subject(subject) = groups {
+groups_for_subject(subject) = groups if {
 	not subject_type(subject)
 	groups := set()
 }
 
-subject_type(subject) = subject_type {
+subject_type(subject) = subject_type if {
 	# Given a subject ID, return one of three possible types, as a string:
 	#
 	# * "user" - the subject ID corresponds to an extant user
@@ -314,18 +315,18 @@ subject_type(subject) = subject_type {
 
 	utils.object_contains_key(data.object.users, subject)
 	subject_type := "user"
-} else = subject_type {
+} else = subject_type if {
 	utils.object_contains_key(data.object.groups, subject)
 	subject_type := "group"
-} else = subject_type {
+} else = subject_type if {
 	utils.object_contains_key(data.object.service_accounts, subject)
 	subject_type := "service_account"
-} else = subject_type {
+} else = subject_type if {
 	subject_type := "none"
 }
 
 # Map of role ID -> { {"resource": X, "action": Y, "outcome": "allow / deny", "connective": "include / exclude"} }
-role_can_do_what[roleID] = result {
+role_can_do_what[roleID] = result if {
 	role := data.object.roles[roleID]
 	result := {{"resource": resourceID, "action": action, "outcome": outcome, "connective": connective} |
 		role[outcome][connective][i]
@@ -334,7 +335,7 @@ role_can_do_what[roleID] = result {
 	}
 }
 
-user_can_do_what[subjectID] = result {
+user_can_do_what[subjectID] = result if {
 	plausible_subjects[subjectID]
 	roles := roles_bound_to_subject(subjectID)
 	result := union({role_can_do_what[r] | r := roles[_]})
@@ -362,14 +363,14 @@ user_can_do_what[subjectID] = result {
 #     - type: string
 #       key: message
 #       value: ""
-snippet_ucdw = result {
+snippet_ucdw = result if {
 	result := {{
 		"snippet": "global/systemtypes/entitlements:1.0/library/policy/rbac/v1/snippet_ucdw",
 		"ucdw": user_can_do_what[input.subject],
 	}}
 }
 
-subjects_for_role[roleID] = subjects {
+subjects_for_role[roleID] = subjects if {
 	role := data.object.roles[roleID]
 	subjects := {subjectID |
 		plausible_subjects[subjectID]
@@ -378,7 +379,7 @@ subjects_for_role[roleID] = subjects {
 }
 
 # map of resource ID -> {role, action, connective, outcome}
-roles_actions_for_resource[resourceID] = result {
+roles_actions_for_resource[resourceID] = result if {
 	data.object.resources[resourceID]
 	result := {{"role": roleID, "outcome": outcome, "connective": connective, "action": action} |
 		role := data.object.roles[roleID]
@@ -388,7 +389,7 @@ roles_actions_for_resource[resourceID] = result {
 }
 
 # map of resource ID -> action -> {subject, connective, outcome}
-who_can_do_this[resourceID] = result {
+who_can_do_this[resourceID] = result if {
 	data.object.resources[resourceID]
 	actions := {t.action | t := roles_actions_for_resource[resourceID][_]}
 	result := {action: {{"subject": subject, "connective": t.connective, "outcome": t.outcome, "action": action} |
@@ -401,20 +402,20 @@ who_can_do_this[resourceID] = result {
 	}
 }
 
-who_can_do_this_glob(resourceID, action) = result {
+who_can_do_this_glob(resourceID, action) = result if {
 	is_string(action)
 	matched_resources := {r | data.object.resources[r]; utils.resource_glob(r, resourceID)}
 	result := {tup | r := matched_resources[_]; wcdt := who_can_do_this[r][action]; tup := wcdt[_]}
 } else = set()
 
-who_can_do_this_glob_all_actions(resourceID) = result {
+who_can_do_this_glob_all_actions(resourceID) = result if {
 	matched_resources := {r | data.object.resources[r]; utils.resource_glob(r, resourceID)}
 	result := {tup | r := matched_resources[_]; wcdt := who_can_do_this[r][_]; tup := wcdt[_]}
 }
 
-matched_who_can_do_this = result {
+matched_who_can_do_this = result if {
 	result := who_can_do_this_glob(input.resource, input.action)
-} else = result {
+} else = result if {
 	result := who_can_do_this_glob_all_actions(input.resource)
 } else = set()
 
@@ -448,7 +449,7 @@ matched_who_can_do_this = result {
 #     - type: rego
 #       key: entz
 #       value: "obj"
-snippet_who_can_do_this[obj] {
+snippet_who_can_do_this contains obj if {
 	outcome_filter := {
 		"allow": {"allow"},
 		"deny": {"deny"},

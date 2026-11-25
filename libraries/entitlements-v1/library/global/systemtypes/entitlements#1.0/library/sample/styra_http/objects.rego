@@ -1,5 +1,7 @@
 package global.systemtypes["entitlements:1.0"].library.sample.styra_http
 
+import rego.v1
+
 input_request := {
 	"action": "create",
 	"context": {

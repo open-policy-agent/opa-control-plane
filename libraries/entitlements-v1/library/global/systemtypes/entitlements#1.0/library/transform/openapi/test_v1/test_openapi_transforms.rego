@@ -1,8 +1,9 @@
 package global.systemtypes["entitlements:1.0"].library.transform.openapi.test_v1
 
+import rego.v1
 import data.global.systemtypes["entitlements:1.0"].library.transform.openapi.v1 as openapi
 
-test_openapi_resources_v2 {
+test_openapi_resources_v2 if {
 	doc := {
 		"swagger": "2.0",
 		"info": {
@@ -47,7 +48,7 @@ test_openapi_resources_v2 {
 	got == expected
 }
 
-test_openapi_resources_v3 {
+test_openapi_resources_v3 if {
 	doc := {
 		"openapi": "3.0",
 		"paths": {"/foo/bar/{id}": {
@@ -67,7 +68,7 @@ test_openapi_resources_v3 {
 	got == expected
 }
 
-test_replace_path_templates_with_globs {
+test_replace_path_templates_with_globs if {
 	tests := [
 		{
 			"input": "/foo/bar",

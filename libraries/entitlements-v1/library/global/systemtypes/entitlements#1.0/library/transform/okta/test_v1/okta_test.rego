@@ -1,5 +1,6 @@
 package global.systemtypes["entitlements:1.0"].library.transform.okta.test_v1
 
+import rego.v1
 import data.global.systemtypes["entitlements:1.0"].library.transform.okta.v1 as okta
 
 sample_okta_data := {
@@ -538,7 +539,7 @@ expected_output_raw := {
 	},
 }
 
-test_okta_raw {
+test_okta_raw if {
 	actual := okta.okta_raw with input as {"": sample_okta_data}
 	print("---- expected")
 	print(expected_output_raw)
@@ -756,7 +757,7 @@ expected_output_readable := {
 	},
 }
 
-test_okta_readable {
+test_okta_readable if {
 	actual := okta.okta_readable with input as {"": sample_okta_data}
 	print("---- expected")
 	print(expected_output_readable)
